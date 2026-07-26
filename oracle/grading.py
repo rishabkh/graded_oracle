@@ -1,0 +1,164 @@
+"""Orchestration: two sequenced sby runs combined by the decision table.
+
+One sby invocation per mode — never a multi-task .sby file, whose OR'd
+return codes would re-create the exact ambiguity this oracle exists to
+eliminate. ERROR/TIMEOUT are non-verdicts; PROVEN is never granted
+without completed, fully-accounted cover evidence.
+"""
+from __future__ import annotations
+
+import shutil
+import tempfile
+from pathlib import Path
+
+from .inject import InjectionError, inject_covers
+from .parse import parse_cover_log, tail
+from .sby import DEFAULT_ENGINE, SbyOutcome, run_sby, sby_available
+from .types import GradeResult, PropertyInfo, RunEvidence, Tier
+
+NA_NOTE = "vacuity_check: not_applicable (no antecedent)"
+SANITY_NOTE = ("sanity_cover_unreached: instrument suspect — "
+               "distrust the vacuity verdict for this design")
+
+
+def _evidence(mode: str, out: SbyOutcome, depth: int, *,
+              timeout_source: str | None = None) -> RunEvidence:
+    return RunEvidence(
+        mode=mode, rc=out.rc, depth=depth, engine=DEFAULT_ENGINE,
+        duration_s=out.duration_s, workdir=out.workdir,
+        log_excerpt=tail(out.log_text), trace_paths=out.trace_paths,
+        timeout_source=timeout_source)
+
+
+def grade(verilog_file: Path | str, prop: PropertyInfo, *,
+          depth: int = 20, timeout_s: int = 300,
+          workdir_root: Path | None = None,
+          keep_workdirs: bool = True) -> GradeResult:
+    result = _grade(Path(verilog_file), prop, depth, timeout_s,
+                    Path(workdir_root) if workdir_root is not None
+                    else Path(__file__).resolve().parent.parent / "runs")
+    if not keep_workdirs:
+        for ev in result.runs:
+            shutil.rmtree(ev.workdir.parent, ignore_errors=True)
+            ev.notes.append("workdir removed (keep_workdirs=False)")
+    return result
+
+
+def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
+           timeout_s: int, root: Path) -> GradeResult:
+    runs: list[RunEvidence] = []
+    if not sby_available():
+        return GradeResult(Tier.ERROR,
+                           "sby not found on PATH (activate hwtools)", runs)
+    if not verilog_file.is_file():
+        return GradeResult(Tier.ERROR,
+                           f"verilog file not found: {verilog_file}", runs)
+
+    prove = run_sby(verilog_file.stem, verilog_file, prop.top_module,
+                    "prove", depth, timeout_s, root)
+
+    if prove.rc is None:
+        runs.append(_evidence("prove", prove, depth,
+                              timeout_source="outer_guard"))
+        return GradeResult(Tier.TIMEOUT,
+                           "prove run killed by outer guard "
+                           "(sby itself hung)", runs)
+    if prove.rc == 8:
+        runs.append(_evidence("prove", prove, depth, timeout_source="sby"))
+        return GradeResult(Tier.TIMEOUT,
+                           f"prove run hit sby timeout ({timeout_s}s)", runs)
+    if prove.rc == 2:
+        runs.append(_evidence("prove", prove, depth))
+        return GradeResult(Tier.FALSE,
+                           "counterexample reachable from reset "
+                           "(trace in evidence)", runs)
+    if prove.rc not in (0, 4):
+        runs.append(_evidence("prove", prove, depth))
+        return GradeResult(Tier.ERROR,
+                           f"judge did not run (prove rc={prove.rc})", runs)
+
+    pass_tier = Tier.PROVEN if prove.rc == 0 else Tier.NOT_INDUCTIVE
+    pass_reason = (
+        f"proven by k-induction at depth {depth}"
+        if prove.rc == 0 else
+        f"no bug to depth {depth} but induction did not close "
+        "with the supplied invariants (CTI trace in evidence)")
+
+    prove_ev = _evidence("prove", prove, depth)
+    runs.append(prove_ev)
+
+    if not prop.antecedents:
+        prove_ev.notes.append(NA_NOTE)
+        return GradeResult(pass_tier,
+                           f"{pass_reason}; vacuity check not applicable "
+                           "(no antecedent)", runs)
+
+    try:
+        inj = inject_covers(verilog_file.read_text(), prop.top_module,
+                            prop.clock, prop.antecedents, prop.sanity_covers)
+    except InjectionError as exc:
+        return GradeResult(Tier.ERROR, f"cover injection failed: {exc}", runs)
+
+    with tempfile.TemporaryDirectory() as td:
+        inj_path = Path(td) / verilog_file.name
+        inj_path.write_text(inj.text)
+        cover = run_sby(verilog_file.stem, inj_path, prop.top_module,
+                        "cover", depth, timeout_s, root)
+
+    if cover.rc is None:
+        runs.append(_evidence("cover", cover, depth,
+                              timeout_source="outer_guard"))
+        return GradeResult(Tier.TIMEOUT,
+                           "cover run killed by outer guard — no verdict "
+                           "without completed vacuity evidence", runs)
+    if cover.rc == 8:
+        runs.append(_evidence("cover", cover, depth, timeout_source="sby"))
+        return GradeResult(Tier.TIMEOUT,
+                           f"cover run hit sby timeout ({timeout_s}s) — no "
+                           "verdict without completed vacuity evidence", runs)
+    if cover.rc not in (0, 2):  # rc=2 just means some cover unreached
+        runs.append(_evidence("cover", cover, depth))
+        return GradeResult(Tier.ERROR,
+                           f"cover run failed to run (rc={cover.rc})", runs)
+
+    cover_ev = _evidence("cover", cover, depth)
+    runs.append(cover_ev)
+    reached_lines, unreached_lines = parse_cover_log(cover.log_text)
+
+    unreached_antecedents: list[str] = []
+    missing_antecedents: list[str] = []
+    sanity_ok = True
+    for lineno, (kind, expr) in inj.line_map.items():
+        if lineno in reached_lines:
+            cover_ev.reached_covers.append(expr)
+        elif lineno in unreached_lines:
+            cover_ev.unreached_covers.append(expr)
+            if kind == "antecedent":
+                unreached_antecedents.append(expr)
+            else:
+                sanity_ok = False
+        else:
+            if kind == "antecedent":
+                missing_antecedents.append(expr)
+            else:
+                sanity_ok = False
+
+    if not sanity_ok:
+        cover_ev.notes.append(SANITY_NOTE)
+
+    if missing_antecedents:
+        return GradeResult(
+            Tier.ERROR,
+            "cover result missing from log for antecedent(s): "
+            f"{', '.join(missing_antecedents)} — instrument integrity "
+            "failure, no verdict without complete evidence", runs)
+
+    if unreached_antecedents:
+        return GradeResult(
+            Tier.VACUOUS,
+            "antecedent(s) unreachable within depth "
+            f"{depth}: {', '.join(unreached_antecedents)} — "
+            "the property proves nothing", runs)
+
+    return GradeResult(pass_tier,
+                       f"{pass_reason}; all antecedent(s) reachable", runs)

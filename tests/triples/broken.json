@@ -1,0 +1,7 @@
+{
+  "sv": "broken.sv",
+  "top_module": "broken",
+  "clock": "clk",
+  "antecedents": [],
+  "expected_tier": "ERROR"
+}

@@ -1,0 +1,8 @@
+{
+  "sv": "slow_factor.sv",
+  "top_module": "slow_factor",
+  "clock": "clk",
+  "antecedents": [],
+  "expected_tier": "TIMEOUT",
+  "grade_kwargs": {"timeout_s": 1}
+}

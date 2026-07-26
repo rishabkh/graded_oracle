@@ -1,0 +1,8 @@
+{
+  "sv": "kitest_weak.sv",
+  "top_module": "kitest",
+  "clock": "i_clk",
+  "antecedents": [],
+  "expected_tier": "NOT_INDUCTIVE",
+  "grade_kwargs": {"timeout_s": 120}
+}

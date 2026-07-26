@@ -1,0 +1,8 @@
+{
+  "sv": "counter_vacuous.sv",
+  "top_module": "counter_vac",
+  "clock": "clk",
+  "antecedents": ["count == 5'd20"],
+  "sanity_covers": ["count == 4'd15"],
+  "expected_tier": "VACUOUS"
+}

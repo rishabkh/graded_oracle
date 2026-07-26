@@ -1,0 +1,8 @@
+{
+  "sv": "counter_proven.sv",
+  "top_module": "counter",
+  "clock": "clk",
+  "antecedents": ["past_rst"],
+  "sanity_covers": ["count == 4'd15"],
+  "expected_tier": "PROVEN"
+}

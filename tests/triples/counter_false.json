@@ -1,0 +1,7 @@
+{
+  "sv": "counter_false.sv",
+  "top_module": "counter_false",
+  "clock": "clk",
+  "antecedents": [],
+  "expected_tier": "FALSE"
+}

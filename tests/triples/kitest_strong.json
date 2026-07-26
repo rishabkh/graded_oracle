@@ -1,0 +1,8 @@
+{
+  "sv": "kitest_strong.sv",
+  "top_module": "kitest",
+  "clock": "i_clk",
+  "antecedents": [],
+  "expected_tier": "PROVEN",
+  "grade_kwargs": {"timeout_s": 120}
+}
