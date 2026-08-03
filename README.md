@@ -40,6 +40,16 @@ r = grade_triple("kitest_weak.sv", prop)
 print(r.verdict.name, "—", r.reason)   # NECESSARY — ...
 ```
 
+The LLM-facing boundary — workers emit one JSON object (inline verilog +
+structured metadata); malformed output grades ERROR, never raises:
+
+```python
+from oracle import grade_generated
+
+r = grade_generated(llm_response_text)   # or grade_triple_generated
+print(r.tier.name, "—", r.reason)
+```
+
 ## Demo / tests
 
 - `venv/bin/python demo.py` — every exemplar triple → its tier.

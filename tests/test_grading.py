@@ -4,9 +4,11 @@ from pathlib import Path
 
 import pytest
 
+import json
+
 import oracle.grading as grading
 from oracle import GradeResult, NecessityVerdict, PropertyInfo, Tier
-from oracle.grading import grade, grade_triple
+from oracle.grading import grade, grade_generated, grade_triple, grade_triple_generated
 from oracle.sby import DEFAULT_ENGINE, SbyOutcome
 
 SV = """module m (
@@ -260,6 +262,55 @@ def test_triple_injection_failure_is_not_proven(sv_file, tmp_path, monkeypatch):
     r = grade_triple(sv_file, prop, workdir_root=tmp_path / "runs")
     assert r.verdict is NecessityVerdict.NOT_PROVEN
     assert r.with_invariants.tier is Tier.ERROR
+
+
+# --- generator output contract boundary ---
+
+GENERATED = json.dumps({
+    "verilog": SV,
+    "top_module": "m",
+    "antecedents": ["a"],
+    "sanity_covers": ["b"],
+})
+
+
+def test_grade_generated_valid_reaches_verdict(tmp_path, monkeypatch):
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby", fake_run_sby(0))
+    r = grade_generated(GENERATED, workdir_root=tmp_path / "runs")
+    assert r.tier is Tier.PROVEN
+    assert "a" in r.runs[1].reached_covers
+
+
+def test_grade_generated_malformed_is_error_without_running_sby(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby",
+                        lambda *a, **k: calls.append(a) or None)
+    r = grade_generated("not json at all", workdir_root=tmp_path / "runs")
+    assert r.tier is Tier.ERROR
+    assert "contract violation" in r.reason
+    assert calls == []
+
+
+def test_grade_triple_generated_valid(tmp_path, monkeypatch):
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby", fake_run_sby(INV_LOADBEARING))
+    text = json.dumps({"verilog": SV, "top_module": "m",
+                       "invariants": ["sa == sb"]})
+    r = grade_triple_generated(text, workdir_root=tmp_path / "runs")
+    assert r.verdict is NecessityVerdict.NECESSARY
+
+
+def test_grade_triple_generated_malformed_is_not_proven(tmp_path, monkeypatch):
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError))
+    r = grade_triple_generated("{\"verilog\": 3}",
+                               workdir_root=tmp_path / "runs")
+    assert r.verdict is NecessityVerdict.NOT_PROVEN
+    assert r.with_invariants.tier is Tier.ERROR
+    assert "contract violation" in r.with_invariants.reason
 
 
 def test_keep_workdirs_false_removes_rundirs(sv_file, tmp_path, monkeypatch):

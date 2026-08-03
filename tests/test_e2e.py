@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from oracle import NecessityVerdict, PropertyInfo, Tier, grade, grade_triple
+from oracle import (NecessityVerdict, PropertyInfo, Tier, grade,
+                    grade_generated, grade_triple)
 from oracle.sby import sby_available
 
 TRIPLES = Path(__file__).parent / "triples"
@@ -99,6 +100,33 @@ def test_necessary_kitest_strengthening_is_load_bearing(tmp_path):
     assert r.without_invariants.tier is Tier.NOT_INDUCTIVE
     assert any("induct" in p.name
                for p in r.without_invariants.runs[0].trace_paths)
+
+
+# --- generator output contract, live ---
+
+@requires_sby
+def test_generated_json_grades_proven(tmp_path):
+    # Simulates a well-formed Initiator emission: inline verilog +
+    # structured metadata, graded end-to-end through real sby.
+    output = json.dumps({
+        "verilog": (TRIPLES / "counter_proven.sv").read_text(),
+        "top_module": "counter",
+        "clock": "clk",
+        "antecedents": ["past_rst"],
+        "sanity_covers": ["count == 4'd15"],
+    })
+    r = grade_generated(output, workdir_root=tmp_path / "runs")
+    assert r.tier is Tier.PROVEN, r.reason
+    assert "past_rst" in r.runs[1].reached_covers
+
+
+def test_malformed_generated_output_is_error_without_sby(tmp_path):
+    # No @requires_sby: contract violations are classified before sby
+    # is ever needed.
+    r = grade_generated("```json\n{\"verilog\": \"module m\"\n```",
+                        workdir_root=tmp_path / "runs")
+    assert r.tier is Tier.ERROR
+    assert "contract violation" in r.reason
 
 
 @requires_sby

@@ -11,6 +11,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from .contract import ContractViolation, parse_generator_output
 from .inject import InjectionError, inject_covers, inject_invariants
 from .parse import parse_cover_log, tail
 from .sby import DEFAULT_ENGINE, SbyOutcome, run_sby, sby_available
@@ -43,6 +44,48 @@ def grade(verilog_file: Path | str, prop: PropertyInfo, *,
             shutil.rmtree(ev.workdir.parent, ignore_errors=True)
             ev.notes.append("workdir removed (keep_workdirs=False)")
     return result
+
+
+def grade_generated(output_text: str, *,
+                    depth: int = 20, timeout_s: int = 300,
+                    workdir_root: Path | None = None,
+                    keep_workdirs: bool = True) -> GradeResult:
+    """Grade raw generator (LLM) output: one JSON object per attempt.
+
+    Malformed output is a contract violation and grades ERROR — a
+    non-verdict the loop can route — never an exception. sby is not
+    invoked for output that fails the contract.
+    """
+    try:
+        gen = parse_generator_output(output_text)
+    except ContractViolation as exc:
+        return GradeResult(Tier.ERROR,
+                           f"generator output contract violation: {exc}")
+    with tempfile.TemporaryDirectory() as td:
+        sv = Path(td) / f"{gen.prop.top_module}.sv"
+        sv.write_text(gen.verilog)
+        return grade(sv, gen.prop, depth=depth, timeout_s=timeout_s,
+                     workdir_root=workdir_root, keep_workdirs=keep_workdirs)
+
+
+def grade_triple_generated(output_text: str, *,
+                           depth: int = 20, timeout_s: int = 300,
+                           workdir_root: Path | None = None,
+                           keep_workdirs: bool = True) -> TripleResult:
+    """Necessity-check raw generator output (see grade_generated)."""
+    try:
+        gen = parse_generator_output(output_text)
+    except ContractViolation as exc:
+        err = GradeResult(Tier.ERROR,
+                          f"generator output contract violation: {exc}")
+        return TripleResult(NecessityVerdict.NOT_PROVEN, err.reason,
+                            with_invariants=err)
+    with tempfile.TemporaryDirectory() as td:
+        sv = Path(td) / f"{gen.prop.top_module}.sv"
+        sv.write_text(gen.verilog)
+        return grade_triple(sv, gen.prop, depth=depth, timeout_s=timeout_s,
+                            workdir_root=workdir_root,
+                            keep_workdirs=keep_workdirs)
 
 
 def grade_triple(verilog_file: Path | str, prop: PropertyInfo, *,
