@@ -48,6 +48,12 @@ class RunEvidence:
     unreached_covers: list[str] = field(default_factory=list)
     timeout_source: str | None = None   # "sby" | "outer_guard" | None
     notes: list[str] = field(default_factory=list)
+    # Source lines of failed assertions (rc=2) — decides whether the
+    # false thing was the property or an injected invariant.
+    failed_assert_lines: list[int] = field(default_factory=list)
+    # Plain-text rendering of the CEX/CTI trace — the Fixer-readable
+    # form of trace_paths[0]; a .vcd cannot go in a prompt.
+    trace_text: str | None = None
 
 
 @dataclass

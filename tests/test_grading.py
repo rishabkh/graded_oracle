@@ -28,8 +28,23 @@ def sv_file(tmp_path):
     return p
 
 
+MINI_VCD = """\
+$var integer 32 t smt_step $end
+$scope module m $end
+$var wire 4 q count $end
+$upscope $end
+$enddefinitions $end
+#0
+b0101 q
+b00000000000000000000000000000000 t
+#10
+b0110 q
+b00000000000000000000000000000001 t
+"""
+
+
 def fake_run_sby(prove_rc, cover_plan=None, cover_rc_override=None,
-                 pdr_rc=None, pdr_unreach_rc=None):
+                 pdr_rc=None, pdr_unreach_rc=None, false_line=None):
     """cover_plan: dict expr -> 'reached' | 'unreached' | 'missing'.
     The fake reads the injected file it is handed, finds the oracle's
     cover lines, and fabricates a log naming those exact line numbers.
@@ -57,14 +72,27 @@ def fake_run_sby(prove_rc, cover_plan=None, cover_rc_override=None,
                               log_text="pdr log", trace_paths=traces,
                               engine=engine)
         if mode == "prove":
-            rc = prove_rc(sv_path.read_text()) if callable(prove_rc) else prove_rc
+            text = sv_path.read_text()
+            rc = prove_rc(text) if callable(prove_rc) else prove_rc
             traces = []
             if rc == 2:
                 traces = [wd / "engine_0" / "trace.vcd"]
             if rc == 4:
                 traces = [wd / "engine_0" / "trace_induct.vcd"]
+            for t in traces:
+                t.parent.mkdir(parents=True, exist_ok=True)
+                t.write_text(MINI_VCD)
+            log = "prove log"
+            if rc == 2 and false_line is not None:
+                marker = ("// invariant" if false_line == "invariant"
+                          else "assert (1'b1)")
+                lineno = next(i for i, l in enumerate(text.splitlines(), 1)
+                              if marker in l)
+                log = (f"engine_0.basecase: ##   0:00:00  Assert failed in "
+                       f"{top_module}: {sv_path.name}:{lineno}.9-{lineno}.31 "
+                       f"(_witness_.check)")
             return SbyOutcome(rc=rc, duration_s=0.1, workdir=wd,
-                              log_text="prove log", trace_paths=traces,
+                              log_text=log, trace_paths=traces,
                               engine=engine)
         assert mode == "cover"
         log_lines = []
@@ -393,6 +421,56 @@ def test_rc4_pdr_unknown_keeps_tier_with_note(sv_file, tmp_path, monkeypatch):
     assert r.tier is Tier.NOT_INDUCTIVE
     pdr_ev = [ev for ev in r.runs if ev.engine == "abc pdr"][0]
     assert any("inconclusive" in n for n in pdr_ev.notes)
+
+
+# --- rc=2 attribution + readable traces ---
+
+def test_false_evidence_carries_lines_and_trace_text(sv_file, tmp_path, monkeypatch):
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby",
+                        fake_run_sby(2, false_line="property"))
+    r = grade(sv_file, PropertyInfo(top_module="m"),
+              workdir_root=tmp_path / "runs")
+    assert r.tier is Tier.FALSE
+    assert r.runs[0].failed_assert_lines  # which assert, by line
+    assert "Trace summary" in r.runs[0].trace_text
+    assert "count = 4'h5" in r.runs[0].trace_text
+
+
+def test_cti_trace_text_on_rc4(sv_file, tmp_path, monkeypatch):
+    r = _grade(sv_file, tmp_path, monkeypatch, prove_rc=4)
+    assert r.tier is Tier.NOT_INDUCTIVE
+    assert "Trace summary" in r.runs[0].trace_text
+    assert "At start state (step 0)" in r.runs[0].trace_text
+
+
+def _triple_false(sv_file, tmp_path, monkeypatch, false_line):
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby",
+                        fake_run_sby(2, false_line=false_line))
+    prop = PropertyInfo(top_module="m", invariants=["bad_inv"])
+    return grade_triple(sv_file, prop, workdir_root=tmp_path / "runs")
+
+
+def test_falsified_invariant_attributed(sv_file, tmp_path, monkeypatch):
+    r = _triple_false(sv_file, tmp_path, monkeypatch, "invariant")
+    assert r.verdict is NecessityVerdict.NOT_PROVEN
+    assert "falsified invariant" in r.reason
+    assert "bad_inv" in r.reason
+    assert "property was not shown false" in r.reason
+
+
+def test_false_property_attributed(sv_file, tmp_path, monkeypatch):
+    r = _triple_false(sv_file, tmp_path, monkeypatch, "property")
+    assert r.verdict is NecessityVerdict.NOT_PROVEN
+    assert "property itself is false" in r.reason
+    assert "leave the invariants alone" in r.reason
+
+
+def test_false_without_attribution_notes_it(sv_file, tmp_path, monkeypatch):
+    r = _triple_false(sv_file, tmp_path, monkeypatch, None)
+    assert r.verdict is NecessityVerdict.NOT_PROVEN
+    assert "not attributable" in r.reason
 
 
 # --- generator output contract boundary ---

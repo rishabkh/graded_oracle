@@ -1,4 +1,12 @@
-from oracle.parse import parse_cover_log, tail
+from oracle.parse import parse_assert_failures, parse_cover_log, tail
+
+# Verbatim from runs/counter_false_prove_*/job/logfile.txt.
+ASSERT_FAIL_LOG = """\
+SBY 15:09:12 [job] engine_0.basecase: ##   0:00:00  Assert failed in counter_false: counter_false.sv:15.9-15.31 (_witness_.check_assert_counter_false_sv_15_4)
+SBY 15:09:12 [job] engine_0.induction: ##   0:00:00  Assert failed in counter_false: counter_false.sv:15.9-15.31 (_witness_.check_assert_counter_false_sv_15_4)
+SBY 15:09:12 [job] engine_0.basecase: ##   0:00:00  Status: failed
+SBY 15:09:12 [job] DONE (FAIL, rc=2)
+"""
 
 # Verbatim lines (timestamps and all) from a real Stage 1 run:
 # vacuity_test/counter_cover/logfile.txt (sby + smtbmc, oss-cad-suite).
@@ -42,6 +50,19 @@ def test_all_reached():
 
 def test_empty_log():
     assert parse_cover_log("") == (set(), set())
+
+
+def test_assert_failures_extracted_by_line():
+    assert parse_assert_failures(ASSERT_FAIL_LOG) == {15}
+
+
+def test_assert_failures_empty_on_clean_log():
+    assert parse_assert_failures(ALL_REACHED_LOG) == set()
+    assert parse_assert_failures("") == set()
+
+
+def test_assert_failures_ignore_cover_lines():
+    assert parse_assert_failures(MIXED_LOG) == set()
 
 
 def test_tail():

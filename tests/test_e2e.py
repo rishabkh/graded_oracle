@@ -53,6 +53,13 @@ def test_not_inductive_carries_cti(tmp_path):
     r = run_triple("kitest_weak", tmp_path)
     assert r.runs[0].rc == 4
     assert any("induct" in p.name for p in r.runs[0].trace_paths)
+    # The CTI as prompt-ready text: both registers, differing values.
+    text = r.runs[0].trace_text
+    assert "Trace summary" in text
+    assert "sa = 32'h" in text and "sb = 32'h" in text
+    sa = [l for l in text.splitlines() if "sa = " in l]
+    sb = [l for l in text.splitlines() if "sb = " in l]
+    assert sa[0] != sb[0].replace("sb", "sa")  # the bogus differing state
 
 
 @requires_sby
@@ -60,6 +67,8 @@ def test_false_carries_cex(tmp_path):
     r = run_triple("counter_false", tmp_path)
     assert r.runs[0].rc == 2
     assert r.runs[0].trace_paths
+    assert r.runs[0].failed_assert_lines == [15]  # the assert's source line
+    assert "Trace summary" in r.runs[0].trace_text
 
 
 @requires_sby
@@ -139,6 +148,32 @@ def test_necessary_kitest_strengthening_is_load_bearing(tmp_path):
     assert r.without_invariants.tier is Tier.NOT_INDUCTIVE
     assert any("induct" in p.name
                for p in r.without_invariants.runs[0].trace_paths)
+
+
+# --- rc=2 attribution, live ---
+
+@requires_sby
+def test_falsified_invariant_attributed_live(tmp_path):
+    # True property, false invariant (count reaches 9): the Fixer must
+    # be told to fix the invariant, not the property.
+    prop = PropertyInfo(top_module="counter",
+                        invariants=["count != 4'd9"])
+    r = grade_triple(TRIPLES / "counter_proven.sv", prop,
+                     workdir_root=tmp_path / "runs")
+    assert r.verdict is NecessityVerdict.NOT_PROVEN, r.reason
+    assert "falsified invariant" in r.reason
+    assert "count != 4'd9" in r.reason
+
+
+@requires_sby
+def test_false_property_attributed_live(tmp_path):
+    # False property, harmless true invariant: opposite repair route.
+    prop = PropertyInfo(top_module="counter_false",
+                        invariants=["count <= 4'd15"])
+    r = grade_triple(TRIPLES / "counter_false.sv", prop,
+                     workdir_root=tmp_path / "runs")
+    assert r.verdict is NecessityVerdict.NOT_PROVEN, r.reason
+    assert "property itself is false" in r.reason
 
 
 # --- generator output contract, live ---

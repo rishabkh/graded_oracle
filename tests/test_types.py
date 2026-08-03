@@ -24,6 +24,8 @@ def test_run_evidence_defaults():
     assert ev.trace_paths == [] and ev.reached_covers == []
     assert ev.unreached_covers == [] and ev.notes == []
     assert ev.timeout_source is None
+    assert ev.failed_assert_lines == []
+    assert ev.trace_text is None
 
 
 def test_grade_result_defaults():

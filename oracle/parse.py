@@ -17,6 +17,17 @@ import re
 
 _REACHED = re.compile(r"Reached cover statement in step \d+ at .*?\.sv:(\d+)\.")
 _UNREACHED = re.compile(r"Unreached cover statement at .*?\.sv:(\d+)\.")
+_ASSERT_FAILED = re.compile(r"Assert failed in .*?\.sv:(\d+)\.")
+
+
+def parse_assert_failures(log_text: str) -> set[int]:
+    """Source line numbers of failed assertions (prove-mode rc=2).
+
+    The line identifies WHICH assertion is false — an oracle-injected
+    invariant or the property itself — which decides the repair route.
+    """
+    return {int(m.group(1))
+            for m in _ASSERT_FAILED.finditer(log_text)}
 
 
 def parse_cover_log(log_text: str) -> tuple[set[int], set[int]]:

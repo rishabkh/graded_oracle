@@ -14,8 +14,9 @@ from pathlib import Path
 from .contract import ContractViolation, parse_generator_output
 from .inject import (InjectionError, inject_covers, inject_invariants,
                      strip_assertions)
-from .parse import parse_cover_log, tail
+from .parse import parse_assert_failures, parse_cover_log, tail
 from .sby import DEFAULT_ENGINE, PDR_ENGINE, SbyOutcome, run_sby, sby_available
+from .trace import summarize_vcd
 from .types import (GradeResult, NecessityVerdict, PropertyInfo, RunEvidence,
                     Tier, TripleResult)
 
@@ -26,11 +27,20 @@ SANITY_NOTE = ("sanity_cover_unreached: instrument suspect — "
 
 def _evidence(mode: str, out: SbyOutcome, depth: int, *,
               timeout_source: str | None = None) -> RunEvidence:
-    return RunEvidence(
+    ev = RunEvidence(
         mode=mode, rc=out.rc, depth=depth, engine=out.engine,
         duration_s=out.duration_s, workdir=out.workdir,
         log_excerpt=tail(out.log_text), trace_paths=out.trace_paths,
-        timeout_source=timeout_source)
+        timeout_source=timeout_source,
+        failed_assert_lines=sorted(parse_assert_failures(out.log_text)))
+    if out.trace_paths:
+        # A .vcd cannot go in a prompt; render the trace as text. A
+        # rendering failure is noted, never fatal — the .vcd path stays.
+        try:
+            ev.trace_text = summarize_vcd(out.trace_paths[0])
+        except Exception as exc:
+            ev.notes.append(f"trace summary unavailable: {exc}")
+    return ev
 
 
 def grade(verilog_file: Path | str, prop: PropertyInfo, *,
@@ -128,6 +138,34 @@ def grade_triple(verilog_file: Path | str, prop: PropertyInfo, *,
         strengthened = Path(td) / verilog_file.name
         strengthened.write_text(inj.text)
         with_res = grade(strengthened, prop, **kwargs)
+
+    if with_res.tier is Tier.FALSE:
+        # Attribution: WHICH assertion failed decides the repair route.
+        # The invariant lines are ours (inj.line_map); everything else
+        # in the strengthened copy is the generator's.
+        failed = {line for ev in with_res.runs
+                  for line in ev.failed_assert_lines}
+        failed_invs = [inj.line_map[l][1] for l in sorted(failed)
+                       if l in inj.line_map]
+        failed_other = sorted(failed - set(inj.line_map))
+        if failed_invs and not failed_other:
+            detail = (f"falsified invariant(s): {', '.join(failed_invs)} — "
+                      "fix or drop the invariant; the property was not "
+                      "shown false")
+        elif failed_other and not failed_invs:
+            detail = ("the property itself is false (assert at line "
+                      f"{', '.join(map(str, failed_other))}) — rewrite the "
+                      "property, leave the invariants alone")
+        elif failed_invs and failed_other:
+            detail = (f"both falsified: invariant(s) {', '.join(failed_invs)} "
+                      f"AND property assert(s) at line "
+                      f"{', '.join(map(str, failed_other))}")
+        else:
+            detail = "failing assertion not attributable from the log"
+        return TripleResult(
+            NecessityVerdict.NOT_PROVEN,
+            f"with-invariants grade is FALSE: {detail}",
+            with_invariants=with_res)
 
     if with_res.tier is not Tier.PROVEN:
         return TripleResult(
