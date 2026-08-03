@@ -84,6 +84,45 @@ def test_timeout_records_source(tmp_path):
     assert r.runs[0].timeout_source in ("sby", "outer_guard")
 
 
+# --- depth problem, live ---
+
+@requires_sby
+def test_deep_antecedent_rescued_by_pdr_witness(tmp_path):
+    # Antecedent reachable only at cycle 40 (> depth 20). The bounded
+    # check alone would emit a false VACUOUS; the PDR witness proves the
+    # antecedent live and the triple grades PROVEN.
+    r = run_triple("deep_antecedent", tmp_path)
+    cover = [ev for ev in r.runs if ev.mode == "cover"][0]
+    assert "count == 6'd40" in cover.unreached_covers   # bounded probe missed it
+    pdr = [ev for ev in r.runs if ev.engine == "abc pdr"][0]
+    assert pdr.rc == 2                                  # reachability witness
+    assert pdr.trace_paths
+    assert any("reachable beyond depth" in n for n in pdr.notes)
+
+
+@requires_sby
+def test_vacuous_verdict_is_now_pdr_proven(tmp_path):
+    # counter_vacuous still grades VACUOUS, but the verdict is now an
+    # unbounded proof, not a depth guess.
+    r = run_triple("counter_vacuous", tmp_path)
+    pdr = [ev for ev in r.runs if ev.engine == "abc pdr"][0]
+    assert pdr.rc == 0
+    assert any("proven unreachable" in n for n in pdr.notes)
+    assert "for all time" in r.reason
+
+
+@requires_sby
+def test_kitest_weak_gets_pdr_second_opinion(tmp_path):
+    # rc=4 now carries the corpus-protecting second opinion: PDR proves
+    # the property true (unbounded), so NOT_INDUCTIVE is legitimate
+    # Fixer food — and the necessity of the strengthening is scoped to
+    # k-induction, measured, not assumed.
+    r = run_triple("kitest_weak", tmp_path)
+    pdr = [ev for ev in r.runs if ev.engine == "abc pdr"][0]
+    assert pdr.rc == 0
+    assert any("proven true" in n for n in pdr.notes)
+
+
 # --- necessity criterion, live ---
 
 @requires_sby

@@ -1,0 +1,8 @@
+{
+  "sv": "deep_antecedent.sv",
+  "top_module": "deep_antecedent",
+  "clock": "clk",
+  "antecedents": ["count == 6'd40"],
+  "sanity_covers": ["count == 6'd15"],
+  "expected_tier": "PROVEN"
+}

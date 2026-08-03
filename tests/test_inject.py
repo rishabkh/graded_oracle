@@ -1,7 +1,7 @@
 import pytest
 
 from oracle.inject import (Injection, InjectionError, inject_covers,
-                           inject_invariants)
+                           inject_invariants, strip_assertions)
 
 SIMPLE = """module m (
     input wire clk,
@@ -100,3 +100,56 @@ def test_invariant_injection_empty_list_is_identity():
     inj = inject_invariants(SIMPLE, "m", [])
     assert inj.text == SIMPLE
     assert inj.line_map == {}
+
+
+STRIP_SRC = """module m (input wire clk, input wire rst);
+    reg [3:0] count = 0;
+    always @(posedge clk) count <= count + 1;
+
+    always @(posedge clk) begin
+        if (rst)
+            assert (count == 4'd0);
+    end
+    always @(*)
+        assert (count <= 4'd9 && (count != 4'd3 || rst));
+    always @(posedge clk) begin
+        cover (count == 4'd5);
+        assume (!rst);
+    end
+    // assert (this one is a comment);
+endmodule
+"""
+
+
+def test_strip_removes_all_asserts():
+    out = strip_assertions(STRIP_SRC)
+    assert "assert" not in out.replace("// assert (this one is a comment);", "")
+
+
+def test_strip_keeps_cover_assume_and_design():
+    out = strip_assertions(STRIP_SRC)
+    assert "cover (count == 4'd5);" in out
+    assert "assume (!rst);" in out
+    assert "count <= count + 1;" in out
+
+
+def test_strip_leaves_valid_statement_in_guarded_position():
+    # `if (rst) assert(...);` must not become `if (rst) <nothing>` —
+    # the statement is replaced by an empty statement `;`.
+    out = strip_assertions(STRIP_SRC)
+    assert "if (rst)\n            ;" in out
+
+
+def test_strip_handles_nested_parens():
+    out = strip_assertions(STRIP_SRC)
+    assert "count != 4'd3" not in out
+
+
+def test_strip_ignores_comments():
+    out = strip_assertions(STRIP_SRC)
+    assert "// assert (this one is a comment);" in out
+
+
+def test_strip_is_identity_when_no_asserts():
+    src = "module m (input wire clk);\n    reg r;\nendmodule\n"
+    assert strip_assertions(src) == src

@@ -14,6 +14,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULT_ENGINE = "smtbmc yices"
+# ABC's IC3/PDR: unbounded proofs, no depth parameter, synthesizes its
+# own inductive invariant. Used for the vacuity soundness check and the
+# rc=4 second opinion.
+PDR_ENGINE = "abc pdr"
 OUTER_GUARD_FACTOR = 1.5
 OUTER_GUARD_GRACE_S = 10
 
@@ -25,6 +29,7 @@ class SbyOutcome:
     workdir: Path
     log_text: str
     trace_paths: list[Path] = field(default_factory=list)
+    engine: str = DEFAULT_ENGINE
 
 
 def sby_available() -> bool:
@@ -86,4 +91,4 @@ def run_sby(name: str, sv_path: Path, top_module: str, mode: str, depth: int,
         log_text = stderr
     traces = sorted(workdir.rglob("*.vcd")) if workdir.exists() else []
     return SbyOutcome(rc=rc, duration_s=duration, workdir=workdir,
-                      log_text=log_text, trace_paths=traces)
+                      log_text=log_text, trace_paths=traces, engine=engine)

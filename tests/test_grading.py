@@ -28,17 +28,34 @@ def sv_file(tmp_path):
     return p
 
 
-def fake_run_sby(prove_rc, cover_plan=None, cover_rc_override=None):
+def fake_run_sby(prove_rc, cover_plan=None, cover_rc_override=None,
+                 pdr_rc=None, pdr_unreach_rc=None):
     """cover_plan: dict expr -> 'reached' | 'unreached' | 'missing'.
     The fake reads the injected file it is handed, finds the oracle's
     cover lines, and fabricates a log naming those exact line numbers.
     prove_rc may be an int, or a callable(sv_text) -> int so tests can
     make the verdict depend on whether injected invariants are present.
+    pdr_rc answers `abc pdr` second-opinion runs; pdr_unreach_rc answers
+    `abc pdr` unreachability runs (recognized by the injected-invariant
+    header in a stripped file). Defaulting to prove_rc keeps old tests
+    on the unknown path.
     """
     def fake(name, sv_path, top_module, mode, depth, timeout_s,
              workdir_root, engine=DEFAULT_ENGINE):
         wd = Path(workdir_root) / f"{name}_{mode}_fake" / "job"
         wd.mkdir(parents=True, exist_ok=True)
+        if engine == "abc pdr":
+            text = sv_path.read_text()
+            is_unreach = "ORACLE-INJECTED INVARIANTS" in text
+            rc = pdr_unreach_rc if is_unreach else pdr_rc
+            if rc is None:
+                rc = prove_rc
+            if callable(rc):
+                rc = rc(text)
+            traces = [wd / "engine_0" / "trace.vcd"] if rc == 2 else []
+            return SbyOutcome(rc=rc, duration_s=0.1, workdir=wd,
+                              log_text="pdr log", trace_paths=traces,
+                              engine=engine)
         if mode == "prove":
             rc = prove_rc(sv_path.read_text()) if callable(prove_rc) else prove_rc
             traces = []
@@ -47,7 +64,8 @@ def fake_run_sby(prove_rc, cover_plan=None, cover_rc_override=None):
             if rc == 4:
                 traces = [wd / "engine_0" / "trace_induct.vcd"]
             return SbyOutcome(rc=rc, duration_s=0.1, workdir=wd,
-                              log_text="prove log", trace_paths=traces)
+                              log_text="prove log", trace_paths=traces,
+                              engine=engine)
         assert mode == "cover"
         log_lines = []
         any_unreached = False
@@ -69,15 +87,19 @@ def fake_run_sby(prove_rc, cover_plan=None, cover_rc_override=None):
         rc = cover_rc_override if cover_rc_override is not None else (
             2 if any_unreached else 0)
         return SbyOutcome(rc=rc, duration_s=0.1, workdir=wd,
-                          log_text="\n".join(log_lines), trace_paths=[])
+                          log_text="\n".join(log_lines), trace_paths=[],
+                          engine=engine)
     return fake
 
 
 def _grade(sv_file, tmp_path, monkeypatch, prove_rc, antecedents=None,
-           sanity=None, cover_plan=None, cover_rc_override=None):
+           sanity=None, cover_plan=None, cover_rc_override=None,
+           pdr_rc=None, pdr_unreach_rc=None):
     monkeypatch.setattr(grading, "sby_available", lambda: True)
     monkeypatch.setattr(grading, "run_sby",
-                        fake_run_sby(prove_rc, cover_plan, cover_rc_override))
+                        fake_run_sby(prove_rc, cover_plan, cover_rc_override,
+                                     pdr_rc=pdr_rc,
+                                     pdr_unreach_rc=pdr_unreach_rc))
     prop = PropertyInfo(top_module="m", antecedents=antecedents or [],
                         sanity_covers=sanity or [])
     return grade(sv_file, prop, workdir_root=tmp_path / "runs")
@@ -144,7 +166,8 @@ def test_proven_with_reachable_antecedent(sv_file, tmp_path, monkeypatch):
 
 def test_vacuous_demotes_full_pass(sv_file, tmp_path, monkeypatch):
     r = _grade(sv_file, tmp_path, monkeypatch, prove_rc=0,
-               antecedents=["a"], cover_plan={"a": "unreached"})
+               antecedents=["a"], cover_plan={"a": "unreached"},
+               pdr_unreach_rc=0)
     assert r.tier is Tier.VACUOUS
     assert "a" in r.runs[1].unreached_covers
 
@@ -152,8 +175,78 @@ def test_vacuous_demotes_full_pass(sv_file, tmp_path, monkeypatch):
 def test_vacuous_demotes_rc4_too(sv_file, tmp_path, monkeypatch):
     # The settled rule: an unreachable antecedent outranks NOT_INDUCTIVE.
     r = _grade(sv_file, tmp_path, monkeypatch, prove_rc=4,
-               antecedents=["a"], cover_plan={"a": "unreached"})
+               antecedents=["a"], cover_plan={"a": "unreached"},
+               pdr_rc=0, pdr_unreach_rc=0)
     assert r.tier is Tier.VACUOUS
+
+
+# --- Fix A: unbounded vacuity via PDR unreachability ---
+
+def test_vacuous_requires_pdr_proof_of_unreachability(sv_file, tmp_path, monkeypatch):
+    r = _grade(sv_file, tmp_path, monkeypatch, prove_rc=0,
+               antecedents=["a"], cover_plan={"a": "unreached"},
+               pdr_unreach_rc=0)
+    assert r.tier is Tier.VACUOUS
+    assert "abc pdr" in r.reason or "unreachable for all time" in r.reason
+    pdr_ev = [ev for ev in r.runs if ev.engine == "abc pdr"][0]
+    assert any("proven unreachable" in n for n in pdr_ev.notes)
+
+
+def test_deep_antecedent_is_not_vacuous(sv_file, tmp_path, monkeypatch):
+    # Antecedent unreached at depth D but PDR finds a deeper witness:
+    # the old bounded check would have falsely discarded this triple.
+    r = _grade(sv_file, tmp_path, monkeypatch, prove_rc=0,
+               antecedents=["a"], cover_plan={"a": "unreached"},
+               pdr_unreach_rc=2)
+    assert r.tier is Tier.PROVEN
+    pdr_ev = [ev for ev in r.runs if ev.engine == "abc pdr"][0]
+    assert pdr_ev.trace_paths  # the reachability witness
+    assert any("reachable beyond depth" in n for n in pdr_ev.notes)
+
+
+def test_unreach_check_file_is_stripped_and_negated(sv_file, tmp_path, monkeypatch):
+    seen = {}
+    inner = fake_run_sby(0, cover_plan={"a": "unreached"}, pdr_unreach_rc=0)
+
+    def spy(name, sv_path, top_module, mode, depth, timeout_s,
+            workdir_root, engine=DEFAULT_ENGINE):
+        if engine == "abc pdr":
+            seen["text"] = sv_path.read_text()
+        return inner(name, sv_path, top_module, mode, depth, timeout_s,
+                     workdir_root, engine)
+
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby", spy)
+    prop = PropertyInfo(top_module="m", antecedents=["a"])
+    grade(sv_file, prop, workdir_root=tmp_path / "runs")
+    assert "assert (1'b1)" not in seen["text"]   # original assert stripped
+    assert "assert (!(a));" in seen["text"]      # negated antecedent only
+
+
+def test_unreach_pdr_timeout_is_timeout_tier(sv_file, tmp_path, monkeypatch):
+    r = _grade(sv_file, tmp_path, monkeypatch, prove_rc=0,
+               antecedents=["a"], cover_plan={"a": "unreached"},
+               pdr_unreach_rc=8)
+    assert r.tier is Tier.TIMEOUT
+    assert "vacuity undecided" in r.reason
+
+
+def test_unreach_pdr_error_is_error_tier(sv_file, tmp_path, monkeypatch):
+    r = _grade(sv_file, tmp_path, monkeypatch, prove_rc=0,
+               antecedents=["a"], cover_plan={"a": "unreached"},
+               pdr_unreach_rc=16)
+    assert r.tier is Tier.ERROR
+
+
+def test_mixed_antecedents_one_deep_one_dead(sv_file, tmp_path, monkeypatch):
+    # 'a' has a deep witness, 'c' is provably dead -> VACUOUS names 'c'.
+    unreach_rc = lambda text: 2 if "!(a)" in text else 0  # noqa: E731
+    r = _grade(sv_file, tmp_path, monkeypatch, prove_rc=0,
+               antecedents=["a", "c"],
+               cover_plan={"a": "unreached", "c": "unreached"},
+               pdr_unreach_rc=unreach_rc)
+    assert r.tier is Tier.VACUOUS
+    assert "c" in r.reason
 
 
 def test_sanity_unreached_is_note_not_tier_change(sv_file, tmp_path, monkeypatch):
@@ -214,7 +307,8 @@ def test_necessary_when_invariant_is_load_bearing(sv_file, tmp_path, monkeypatch
     assert r.with_invariants.tier is Tier.PROVEN
     assert r.without_invariants.tier is Tier.NOT_INDUCTIVE
     # without-run must skip the cover stage: its only job is the rc
-    assert len(r.without_invariants.runs) == 1
+    # (a pdr second-opinion run may accompany the prove run)
+    assert not any(ev.mode == "cover" for ev in r.without_invariants.runs)
 
 
 def test_decorative_when_proven_without_help(sv_file, tmp_path, monkeypatch):
@@ -262,6 +356,43 @@ def test_triple_injection_failure_is_not_proven(sv_file, tmp_path, monkeypatch):
     r = grade_triple(sv_file, prop, workdir_root=tmp_path / "runs")
     assert r.verdict is NecessityVerdict.NOT_PROVEN
     assert r.with_invariants.tier is Tier.ERROR
+
+
+# --- Fix B: PDR second opinion on rc=4 ---
+
+def _grade_pdr(sv_file, tmp_path, monkeypatch, **fake_kwargs):
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby", fake_run_sby(**fake_kwargs))
+    prop = PropertyInfo(top_module="m")
+    return grade(sv_file, prop, workdir_root=tmp_path / "runs")
+
+
+def test_rc4_pdr_proves_stays_not_inductive(sv_file, tmp_path, monkeypatch):
+    r = _grade_pdr(sv_file, tmp_path, monkeypatch, prove_rc=4, pdr_rc=0)
+    assert r.tier is Tier.NOT_INDUCTIVE
+    pdr_runs = [ev for ev in r.runs if ev.engine == "abc pdr"]
+    assert len(pdr_runs) == 1
+    assert any("pdr_second_opinion" in n and "true" in n
+               for n in pdr_runs[0].notes)
+
+
+def test_rc4_pdr_refutes_is_false_not_fixer_food(sv_file, tmp_path, monkeypatch):
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby", fake_run_sby(4, pdr_rc=2))
+    prop = PropertyInfo(top_module="m", antecedents=["a"])
+    r = grade(sv_file, prop, workdir_root=tmp_path / "runs")
+    assert r.tier is Tier.FALSE
+    assert "deep" in r.reason
+    pdr_ev = [ev for ev in r.runs if ev.engine == "abc pdr"][0]
+    assert pdr_ev.trace_paths  # the deep counterexample witness
+    assert not any(ev.mode == "cover" for ev in r.runs)  # no cover run
+
+
+def test_rc4_pdr_unknown_keeps_tier_with_note(sv_file, tmp_path, monkeypatch):
+    r = _grade_pdr(sv_file, tmp_path, monkeypatch, prove_rc=4, pdr_rc=8)
+    assert r.tier is Tier.NOT_INDUCTIVE
+    pdr_ev = [ev for ev in r.runs if ev.engine == "abc pdr"][0]
+    assert any("inconclusive" in n for n in pdr_ev.notes)
 
 
 # --- generator output contract boundary ---

@@ -12,9 +12,10 @@ import tempfile
 from pathlib import Path
 
 from .contract import ContractViolation, parse_generator_output
-from .inject import InjectionError, inject_covers, inject_invariants
+from .inject import (InjectionError, inject_covers, inject_invariants,
+                     strip_assertions)
 from .parse import parse_cover_log, tail
-from .sby import DEFAULT_ENGINE, SbyOutcome, run_sby, sby_available
+from .sby import DEFAULT_ENGINE, PDR_ENGINE, SbyOutcome, run_sby, sby_available
 from .types import (GradeResult, NecessityVerdict, PropertyInfo, RunEvidence,
                     Tier, TripleResult)
 
@@ -26,7 +27,7 @@ SANITY_NOTE = ("sanity_cover_unreached: instrument suspect — "
 def _evidence(mode: str, out: SbyOutcome, depth: int, *,
               timeout_source: str | None = None) -> RunEvidence:
     return RunEvidence(
-        mode=mode, rc=out.rc, depth=depth, engine=DEFAULT_ENGINE,
+        mode=mode, rc=out.rc, depth=depth, engine=out.engine,
         duration_s=out.duration_s, workdir=out.workdir,
         log_excerpt=tail(out.log_text), trace_paths=out.trace_paths,
         timeout_source=timeout_source)
@@ -198,14 +199,44 @@ def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
     prove_ev = _evidence("prove", prove, depth)
     runs.append(prove_ev)
 
+    if prove.rc == 4:
+        # Fix B: rc=4 conflates true-but-not-inductive with false-with-a-
+        # deep-counterexample. PDR (unbounded, no depth guess) separates
+        # them; a false property must never reach the Fixer, because its
+        # repair traces would contaminate the training corpus.
+        pdr = run_sby(f"{verilog_file.stem}_pdr2nd", verilog_file,
+                      prop.top_module, "prove", depth, timeout_s, root,
+                      engine=PDR_ENGINE)
+        pdr_ev = _evidence("prove", pdr, depth)
+        runs.append(pdr_ev)
+        if pdr.rc == 2:
+            pdr_ev.notes.append(
+                "pdr_second_opinion: property refuted — counterexample "
+                f"deeper than depth {depth} (witness in evidence)")
+            return GradeResult(Tier.FALSE,
+                               "property is false: abc pdr found a "
+                               f"counterexample deeper than depth {depth} "
+                               "— do not route to Fixer", runs)
+        if pdr.rc == 0:
+            pdr_ev.notes.append(
+                "pdr_second_opinion: property proven true (unbounded) by "
+                "abc pdr — induction failure is a strengthening gap, "
+                "not falsity")
+        else:
+            pdr_ev.notes.append(
+                f"pdr_second_opinion: inconclusive (rc={pdr.rc}) — "
+                "NOT_INDUCTIVE retained; safe error direction is yield, "
+                "not contamination")
+
     if not prop.antecedents:
         prove_ev.notes.append(NA_NOTE)
         return GradeResult(pass_tier,
                            f"{pass_reason}; vacuity check not applicable "
                            "(no antecedent)", runs)
 
+    source = verilog_file.read_text()
     try:
-        inj = inject_covers(verilog_file.read_text(), prop.top_module,
+        inj = inject_covers(source, prop.top_module,
                             prop.clock, prop.antecedents, prop.sanity_covers)
     except InjectionError as exc:
         return GradeResult(Tier.ERROR, f"cover injection failed: {exc}", runs)
@@ -264,12 +295,54 @@ def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
             f"{', '.join(missing_antecedents)} — instrument integrity "
             "failure, no verdict without complete evidence", runs)
 
-    if unreached_antecedents:
+    # Fix A: "unreached at depth D" is not "unreachable". The bounded
+    # cover run is only a cheap first pass; the verdict comes from an
+    # unbounded PDR proof of assert(!A) on a copy with all other
+    # assertions stripped (so a failure elsewhere cannot masquerade as a
+    # reachability witness). No depth guess anywhere in a VACUOUS verdict.
+    deep_reachable: list[str] = []
+    for ante in unreached_antecedents:
+        stripped = strip_assertions(source)
+        neg = inject_invariants(stripped, prop.top_module, [f"!({ante})"])
+        with tempfile.TemporaryDirectory() as td:
+            unreach_path = Path(td) / verilog_file.name
+            unreach_path.write_text(neg.text)
+            pdr = run_sby(f"{verilog_file.stem}_unreach", unreach_path,
+                          prop.top_module, "prove", depth, timeout_s, root,
+                          engine=PDR_ENGINE)
+        pdr_ev = _evidence("prove", pdr, depth)
+        runs.append(pdr_ev)
+        if pdr.rc == 0:
+            pdr_ev.notes.append(
+                f"pdr_unreachability: antecedent '{ante}' proven "
+                "unreachable for all time")
+            return GradeResult(
+                Tier.VACUOUS,
+                f"antecedent '{ante}' proven unreachable for all time by "
+                "abc pdr — the property proves nothing", runs)
+        if pdr.rc == 2:
+            pdr_ev.notes.append(
+                f"pdr_unreachability: antecedent '{ante}' reachable beyond "
+                f"depth {depth} (witness trace in evidence)")
+            deep_reachable.append(ante)
+            continue
+        if pdr.rc == 8 or pdr.rc is None:
+            pdr_ev.timeout_source = "sby" if pdr.rc == 8 else "outer_guard"
+            return GradeResult(
+                Tier.TIMEOUT,
+                f"vacuity undecided: antecedent '{ante}' unreached at depth "
+                f"{depth} and the pdr unreachability check did not finish "
+                "— no verdict without complete evidence", runs)
         return GradeResult(
-            Tier.VACUOUS,
-            "antecedent(s) unreachable within depth "
-            f"{depth}: {', '.join(unreached_antecedents)} — "
-            "the property proves nothing", runs)
+            Tier.ERROR,
+            f"pdr unreachability check failed to run (rc={pdr.rc}) for "
+            f"antecedent '{ante}'", runs)
 
+    if deep_reachable:
+        return GradeResult(
+            pass_tier,
+            f"{pass_reason}; all antecedent(s) reachable "
+            f"({', '.join(deep_reachable)} beyond depth {depth}, via pdr "
+            "witness)", runs)
     return GradeResult(pass_tier,
                        f"{pass_reason}; all antecedent(s) reachable", runs)

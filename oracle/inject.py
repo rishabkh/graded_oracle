@@ -81,3 +81,46 @@ def inject_invariants(source: str, top_module: str,
     tagged = [("invariant", e) for e in invariants]
     return _inject_block(source, top_module, INVARIANT_HEADER,
                          "always @(*) begin", "assert", tagged)
+
+
+def strip_assertions(source: str) -> str:
+    """Remove every assert statement, preserving covers/assumes/design.
+
+    Used before the PDR unreachability check (assert(!antecedent)): any
+    other assertion left in the copy could fail and masquerade as a
+    reachability result. Each `assert (...);` is replaced by an empty
+    statement `;` so guarded positions (`if (x) assert(...);`) remain
+    syntactically valid. Comments are masked during the scan, so asserts
+    mentioned in comments are untouched.
+    """
+    masked = _mask_comments(source)
+    spans: list[tuple[int, int]] = []
+    for m in re.finditer(r"\bassert\b", masked):
+        popen = masked.find("(", m.end())
+        if popen == -1:
+            continue
+        depth = 0
+        k = popen
+        while k < len(masked):
+            if masked[k] == "(":
+                depth += 1
+            elif masked[k] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            k += 1
+        if k >= len(masked):
+            continue
+        semi = masked.find(";", k)
+        if semi == -1:
+            continue
+        spans.append((m.start(), semi + 1))
+
+    out = []
+    prev = 0
+    for start, end in spans:
+        out.append(source[prev:start])
+        out.append(";")
+        prev = end
+    out.append(source[prev:])
+    return "".join(out)

@@ -7,6 +7,13 @@ ERROR, TIMEOUT, FALSE, VACUOUS, NOT_INDUCTIVE, BOUNDED (reserved), PROVEN —
 with complete evidence (return codes, depth, engine, timings, log
 excerpts, counterexample/CTI traces) attached to every verdict.
 
+Depth guesses never decide verdicts: VACUOUS requires an unbounded
+`abc pdr` proof that the antecedent is unreachable (an antecedent merely
+unreached at depth D gets a PDR reachability check that can rescue it
+with a deep witness), and prove-mode rc=4 gets a PDR second opinion so
+false-with-a-deep-counterexample properties grade FALSE instead of being
+routed to the Fixer as NOT_INDUCTIVE.
+
 Design spec: `design_spec.md`.
 
 ## Prerequisites

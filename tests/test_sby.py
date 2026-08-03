@@ -3,7 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from oracle.sby import DEFAULT_ENGINE, SbyOutcome, make_sby_text, run_sby, sby_available
+from oracle.sby import (DEFAULT_ENGINE, PDR_ENGINE, SbyOutcome, make_sby_text,
+                        run_sby, sby_available)
 
 requires_sby = pytest.mark.skipif(
     not sby_available(), reason="sby not on PATH — activate hwtools first")
@@ -39,6 +40,22 @@ def test_outer_guard_returns_rc_none(monkeypatch, tmp_path):
     out = run_sby("m", sv, "m", "prove", 5, 1, tmp_path / "runs")
     assert out.rc is None
     assert out.duration_s >= 0
+
+
+def test_outcome_records_engine(monkeypatch, tmp_path):
+    def fake_run(*args, **kwargs):
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("oracle.sby.subprocess.run", fake_run)
+    sv = tmp_path / "m.sv"
+    sv.write_text("module m; endmodule\n")
+    a = run_sby("m", sv, "m", "prove", 5, 60, tmp_path / "runs")
+    b = run_sby("m", sv, "m", "prove", 5, 60, tmp_path / "runs",
+                engine=PDR_ENGINE)
+    assert a.engine == DEFAULT_ENGINE
+    assert b.engine == "abc pdr"
+    assert "abc pdr" in make_sby_text("m.sv", "m", "prove", 5, 60,
+                                      engine=PDR_ENGINE)
 
 
 def test_unique_rundirs(monkeypatch, tmp_path):
