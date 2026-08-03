@@ -1,6 +1,7 @@
 import pytest
 
-from oracle.inject import Injection, InjectionError, inject_covers
+from oracle.inject import (Injection, InjectionError, inject_covers,
+                           inject_invariants)
 
 SIMPLE = """module m (
     input wire clk,
@@ -72,3 +73,30 @@ def test_missing_top_module_raises():
 def test_missing_endmodule_raises():
     with pytest.raises(InjectionError):
         inject_covers("module m (input wire clk);\n  reg r;\n", "m", "clk", ["a"], [])
+
+
+def test_invariant_injection_combinational_asserts():
+    inj = inject_invariants(SIMPLE, "m", ["sa == sb", "cnt <= 4'd9"])
+    assert "ORACLE-INJECTED INVARIANTS" in inj.text
+    assert "always @(*) begin" in inj.text
+    for lineno, (kind, expr) in sorted(inj.line_map.items()):
+        assert kind == "invariant"
+        assert f"assert ({expr});" in _line(inj.text, lineno)
+    assert len(inj.line_map) == 2
+    assert inj.text.rstrip().endswith("endmodule")
+
+
+def test_invariant_injection_targets_named_module():
+    inj = inject_invariants(TWO_MODULES, "top", ["w"])
+    assert inj.text.index("assert (w);") < inj.text.index("endmodule")
+
+
+def test_invariant_injection_missing_module_raises():
+    with pytest.raises(InjectionError):
+        inject_invariants(SIMPLE, "nope", ["a"])
+
+
+def test_invariant_injection_empty_list_is_identity():
+    inj = inject_invariants(SIMPLE, "m", [])
+    assert inj.text == SIMPLE
+    assert inj.line_map == {}

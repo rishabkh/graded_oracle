@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 import oracle.grading as grading
-from oracle import GradeResult, PropertyInfo, Tier
-from oracle.grading import grade
+from oracle import GradeResult, NecessityVerdict, PropertyInfo, Tier
+from oracle.grading import grade, grade_triple
 from oracle.sby import DEFAULT_ENGINE, SbyOutcome
 
 SV = """module m (
@@ -30,18 +30,21 @@ def fake_run_sby(prove_rc, cover_plan=None, cover_rc_override=None):
     """cover_plan: dict expr -> 'reached' | 'unreached' | 'missing'.
     The fake reads the injected file it is handed, finds the oracle's
     cover lines, and fabricates a log naming those exact line numbers.
+    prove_rc may be an int, or a callable(sv_text) -> int so tests can
+    make the verdict depend on whether injected invariants are present.
     """
     def fake(name, sv_path, top_module, mode, depth, timeout_s,
              workdir_root, engine=DEFAULT_ENGINE):
         wd = Path(workdir_root) / f"{name}_{mode}_fake" / "job"
         wd.mkdir(parents=True, exist_ok=True)
         if mode == "prove":
+            rc = prove_rc(sv_path.read_text()) if callable(prove_rc) else prove_rc
             traces = []
-            if prove_rc == 2:
+            if rc == 2:
                 traces = [wd / "engine_0" / "trace.vcd"]
-            if prove_rc == 4:
+            if rc == 4:
                 traces = [wd / "engine_0" / "trace_induct.vcd"]
-            return SbyOutcome(rc=prove_rc, duration_s=0.1, workdir=wd,
+            return SbyOutcome(rc=rc, duration_s=0.1, workdir=wd,
                               log_text="prove log", trace_paths=traces)
         assert mode == "cover"
         log_lines = []
@@ -186,6 +189,77 @@ def test_injection_failure_is_error(sv_file, tmp_path, monkeypatch):
     # injection then fails on the missing module name.
     assert r.tier is Tier.ERROR
     assert "injection" in r.reason.lower()
+
+
+# --- necessity criterion (grade_triple) ---
+
+INV_LOADBEARING = lambda text: 0 if "// invariant" in text else 4  # noqa: E731
+
+
+def _triple(sv_file, tmp_path, monkeypatch, prove_rc, invariants=None,
+            antecedents=None, cover_plan=None):
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby", fake_run_sby(prove_rc, cover_plan))
+    prop = PropertyInfo(top_module="m", antecedents=antecedents or [],
+                        invariants=invariants if invariants is not None
+                        else ["sa == sb"])
+    return grade_triple(sv_file, prop, workdir_root=tmp_path / "runs")
+
+
+def test_necessary_when_invariant_is_load_bearing(sv_file, tmp_path, monkeypatch):
+    r = _triple(sv_file, tmp_path, monkeypatch, INV_LOADBEARING)
+    assert r.verdict is NecessityVerdict.NECESSARY
+    assert r.with_invariants.tier is Tier.PROVEN
+    assert r.without_invariants.tier is Tier.NOT_INDUCTIVE
+    # without-run must skip the cover stage: its only job is the rc
+    assert len(r.without_invariants.runs) == 1
+
+
+def test_decorative_when_proven_without_help(sv_file, tmp_path, monkeypatch):
+    r = _triple(sv_file, tmp_path, monkeypatch, prove_rc=0)
+    assert r.verdict is NecessityVerdict.DECORATIVE
+    assert r.without_invariants.tier is Tier.PROVEN
+
+
+def test_not_proven_when_with_run_fails(sv_file, tmp_path, monkeypatch):
+    r = _triple(sv_file, tmp_path, monkeypatch, prove_rc=4)
+    assert r.verdict is NecessityVerdict.NOT_PROVEN
+    assert r.with_invariants.tier is Tier.NOT_INDUCTIVE
+    assert r.without_invariants is None  # second call never made
+
+
+def test_not_proven_when_with_run_vacuous(sv_file, tmp_path, monkeypatch):
+    r = _triple(sv_file, tmp_path, monkeypatch, INV_LOADBEARING,
+                antecedents=["a"], cover_plan={"a": "unreached"})
+    assert r.verdict is NecessityVerdict.NOT_PROVEN
+    assert r.with_invariants.tier is Tier.VACUOUS
+
+
+def test_inconclusive_when_without_run_times_out(sv_file, tmp_path, monkeypatch):
+    rc_fn = lambda text: 0 if "// invariant" in text else 8  # noqa: E731
+    r = _triple(sv_file, tmp_path, monkeypatch, rc_fn)
+    assert r.verdict is NecessityVerdict.INCONCLUSIVE
+    assert r.without_invariants.tier is Tier.TIMEOUT
+
+
+def test_no_invariants_short_circuits(sv_file, tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby",
+                        lambda *a, **k: calls.append(a) or None)
+    r = grade_triple(sv_file, PropertyInfo(top_module="m"),
+                     workdir_root=tmp_path / "runs")
+    assert r.verdict is NecessityVerdict.NO_INVARIANTS
+    assert calls == []  # nothing was run
+
+
+def test_triple_injection_failure_is_not_proven(sv_file, tmp_path, monkeypatch):
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby", fake_run_sby(0))
+    prop = PropertyInfo(top_module="wrong_name", invariants=["x"])
+    r = grade_triple(sv_file, prop, workdir_root=tmp_path / "runs")
+    assert r.verdict is NecessityVerdict.NOT_PROVEN
+    assert r.with_invariants.tier is Tier.ERROR
 
 
 def test_keep_workdirs_false_removes_rundirs(sv_file, tmp_path, monkeypatch):

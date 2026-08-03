@@ -8,7 +8,7 @@ by the v1 orchestration (grade() always runs prove mode).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import IntEnum
+from enum import Enum, IntEnum
 from pathlib import Path
 
 
@@ -28,6 +28,10 @@ class PropertyInfo:
     clock: str = "clk"
     antecedents: list[str] = field(default_factory=list)
     sanity_covers: list[str] = field(default_factory=list)
+    # Candidate strengthening invariants (Verilog expressions), supplied
+    # separately from the design so grade_triple() can test necessity by
+    # grading with and without them.
+    invariants: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -51,3 +55,24 @@ class GradeResult:
     tier: Tier
     reason: str
     runs: list[RunEvidence] = field(default_factory=list)
+
+
+class NecessityVerdict(Enum):
+    """Outcome of the two-call necessity check (grade_triple).
+
+    A triple is Stage-4-worthy only when the strengthening invariants are
+    load-bearing: PROVEN with them, NOT_INDUCTIVE without them.
+    """
+    NECESSARY = "necessary"          # with: PROVEN, without: NOT_INDUCTIVE
+    DECORATIVE = "decorative"        # with: PROVEN, without: PROVEN
+    NOT_PROVEN = "not_proven"        # with-invariants grade != PROVEN
+    INCONCLUSIVE = "inconclusive"    # without-run gave a non-verdict/other
+    NO_INVARIANTS = "no_invariants"  # nothing to test necessity of
+
+
+@dataclass
+class TripleResult:
+    verdict: NecessityVerdict
+    reason: str
+    with_invariants: GradeResult | None = None
+    without_invariants: GradeResult | None = None

@@ -26,6 +26,20 @@ result = grade("design.sv", prop, depth=20, timeout_s=300)
 print(result.tier.name, "—", result.reason)
 ```
 
+The necessity criterion — is the strengthening invariant load-bearing,
+or decorative? Graded by two calls (with the invariants injected, then
+with them stripped); only PROVEN-with + NOT_INDUCTIVE-without earns
+NECESSARY, the Stage-4 acceptance criterion:
+
+```python
+from oracle import grade_triple, PropertyInfo
+
+prop = PropertyInfo(top_module="kitest", clock="i_clk",
+                    invariants=["sa == sb"])
+r = grade_triple("kitest_weak.sv", prop)
+print(r.verdict.name, "—", r.reason)   # NECESSARY — ...
+```
+
 ## Demo / tests
 
 - `venv/bin/python demo.py` — every exemplar triple → its tier.

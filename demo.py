@@ -8,10 +8,22 @@ import json
 import sys
 from pathlib import Path
 
-from oracle import PropertyInfo, grade
+from oracle import NecessityVerdict, PropertyInfo, grade, grade_triple
 from oracle.sby import sby_available
 
 TRIPLES = Path(__file__).parent / "tests" / "triples"
+
+NECESSITY_DEMOS = [
+    # (label, sv, PropertyInfo kwargs, expected verdict)
+    ("kitest + 'sa == sb'",
+     "kitest_weak.sv",
+     dict(top_module="kitest", clock="i_clk", invariants=["sa == sb"]),
+     NecessityVerdict.NECESSARY),
+    ("counter + tautology",
+     "counter_proven.sv",
+     dict(top_module="counter", invariants=["count <= 4'd15"]),
+     NecessityVerdict.DECORATIVE),
+]
 
 
 def main() -> int:
@@ -34,6 +46,17 @@ def main() -> int:
         mark = "ok      " if ok else "MISMATCH"
         print(f"{mark} {jf.stem:18s} expected={expected:13s} "
               f"got={result.tier.name:13s} {result.reason}")
+
+    print()
+    print("necessity criterion (grade twice: with / without invariants):")
+    for label, sv, prop_kwargs, expected_verdict in NECESSITY_DEMOS:
+        r = grade_triple(TRIPLES / sv, PropertyInfo(**prop_kwargs),
+                         timeout_s=120)
+        ok = r.verdict is expected_verdict
+        mismatches += 0 if ok else 1
+        mark = "ok      " if ok else "MISMATCH"
+        print(f"{mark} {label:22s} expected={expected_verdict.name:11s} "
+              f"got={r.verdict.name:11s} {r.reason}")
     return 1 if mismatches else 0
 
 

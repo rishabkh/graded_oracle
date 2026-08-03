@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from oracle.types import GradeResult, PropertyInfo, RunEvidence, Tier
+from oracle.types import (GradeResult, NecessityVerdict, PropertyInfo,
+                          RunEvidence, Tier, TripleResult)
 
 
 def test_tier_ordering_matches_spec():
@@ -28,3 +29,22 @@ def test_run_evidence_defaults():
 def test_grade_result_defaults():
     r = GradeResult(tier=Tier.PROVEN, reason="ok")
     assert r.runs == []
+
+
+def test_property_info_invariants_default_not_shared():
+    a = PropertyInfo(top_module="m")
+    b = PropertyInfo(top_module="n")
+    a.invariants.append("x == y")
+    assert b.invariants == []
+
+
+def test_necessity_verdict_members():
+    assert {v.name for v in NecessityVerdict} == {
+        "NECESSARY", "DECORATIVE", "NOT_PROVEN", "INCONCLUSIVE",
+        "NO_INVARIANTS"}
+
+
+def test_triple_result_shape():
+    r = TripleResult(verdict=NecessityVerdict.NO_INVARIANTS,
+                     reason="no invariants supplied")
+    assert r.with_invariants is None and r.without_invariants is None

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from oracle import PropertyInfo, Tier, grade
+from oracle import NecessityVerdict, PropertyInfo, Tier, grade, grade_triple
 from oracle.sby import sby_available
 
 TRIPLES = Path(__file__).parent / "triples"
@@ -81,3 +81,34 @@ def test_error_on_broken_syntax(tmp_path):
 def test_timeout_records_source(tmp_path):
     r = run_triple("slow_factor", tmp_path)
     assert r.runs[0].timeout_source in ("sby", "outer_guard")
+
+
+# --- necessity criterion, live ---
+
+@requires_sby
+def test_necessary_kitest_strengthening_is_load_bearing(tmp_path):
+    # kitest_weak.sv = design + property only; the strengthening is
+    # supplied separately and injected by the oracle. This is the real
+    # Stage-4 triple shape.
+    prop = PropertyInfo(top_module="kitest", clock="i_clk",
+                        invariants=["sa == sb"])
+    r = grade_triple(TRIPLES / "kitest_weak.sv", prop,
+                     workdir_root=tmp_path / "runs", timeout_s=120)
+    assert r.verdict is NecessityVerdict.NECESSARY, r.reason
+    assert r.with_invariants.tier is Tier.PROVEN
+    assert r.without_invariants.tier is Tier.NOT_INDUCTIVE
+    assert any("induct" in p.name
+               for p in r.without_invariants.runs[0].trace_paths)
+
+
+@requires_sby
+def test_decorative_tautology_invariant_is_rejected(tmp_path):
+    # count <= 4'd15 is true by the type system — the counter proves its
+    # property with or without it. Exactly the reviewer's trap.
+    prop = PropertyInfo(top_module="counter",
+                        invariants=["count <= 4'd15"])
+    r = grade_triple(TRIPLES / "counter_proven.sv", prop,
+                     workdir_root=tmp_path / "runs")
+    assert r.verdict is NecessityVerdict.DECORATIVE, r.reason
+    assert r.with_invariants.tier is Tier.PROVEN
+    assert r.without_invariants.tier is Tier.PROVEN

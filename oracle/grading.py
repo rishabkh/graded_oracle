@@ -11,10 +11,11 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from .inject import InjectionError, inject_covers
+from .inject import InjectionError, inject_covers, inject_invariants
 from .parse import parse_cover_log, tail
 from .sby import DEFAULT_ENGINE, SbyOutcome, run_sby, sby_available
-from .types import GradeResult, PropertyInfo, RunEvidence, Tier
+from .types import (GradeResult, NecessityVerdict, PropertyInfo, RunEvidence,
+                    Tier, TripleResult)
 
 NA_NOTE = "vacuity_check: not_applicable (no antecedent)"
 SANITY_NOTE = ("sanity_cover_unreached: instrument suspect — "
@@ -42,6 +43,73 @@ def grade(verilog_file: Path | str, prop: PropertyInfo, *,
             shutil.rmtree(ev.workdir.parent, ignore_errors=True)
             ev.notes.append("workdir removed (keep_workdirs=False)")
     return result
+
+
+def grade_triple(verilog_file: Path | str, prop: PropertyInfo, *,
+                 depth: int = 20, timeout_s: int = 300,
+                 workdir_root: Path | None = None,
+                 keep_workdirs: bool = True) -> TripleResult:
+    """The necessity criterion: grade twice, with and without invariants.
+
+    A triple is Stage-4-worthy only if the strengthening is load-bearing:
+    PROVEN with the invariants injected AND NOT_INDUCTIVE with them
+    stripped. PROVEN both ways means the invariant was decorative — the
+    plumbing worked but the premise wasn't tested.
+
+    The without-run strips the antecedents too: its only job is "does
+    induction close unaided", so the cover stage would be wasted compute.
+    """
+    kwargs = dict(depth=depth, timeout_s=timeout_s,
+                  workdir_root=workdir_root, keep_workdirs=keep_workdirs)
+    if not prop.invariants:
+        return TripleResult(NecessityVerdict.NO_INVARIANTS,
+                            "no invariants supplied — nothing to test "
+                            "necessity of")
+
+    verilog_file = Path(verilog_file)
+    if not verilog_file.is_file():
+        err = GradeResult(Tier.ERROR,
+                          f"verilog file not found: {verilog_file}")
+        return TripleResult(NecessityVerdict.NOT_PROVEN, err.reason,
+                            with_invariants=err)
+    try:
+        inj = inject_invariants(verilog_file.read_text(), prop.top_module,
+                                prop.invariants)
+    except InjectionError as exc:
+        err = GradeResult(Tier.ERROR, f"invariant injection failed: {exc}")
+        return TripleResult(NecessityVerdict.NOT_PROVEN, err.reason,
+                            with_invariants=err)
+
+    with tempfile.TemporaryDirectory() as td:
+        strengthened = Path(td) / verilog_file.name
+        strengthened.write_text(inj.text)
+        with_res = grade(strengthened, prop, **kwargs)
+
+    if with_res.tier is not Tier.PROVEN:
+        return TripleResult(
+            NecessityVerdict.NOT_PROVEN,
+            f"with-invariants grade is {with_res.tier.name}, not PROVEN",
+            with_invariants=with_res)
+
+    prop_without = PropertyInfo(top_module=prop.top_module, clock=prop.clock)
+    without_res = grade(verilog_file, prop_without, **kwargs)
+
+    if without_res.tier is Tier.NOT_INDUCTIVE:
+        return TripleResult(
+            NecessityVerdict.NECESSARY,
+            "strengthening is load-bearing: PROVEN with invariants, "
+            "NOT_INDUCTIVE without",
+            with_invariants=with_res, without_invariants=without_res)
+    if without_res.tier is Tier.PROVEN:
+        return TripleResult(
+            NecessityVerdict.DECORATIVE,
+            "invariants are decorative: the property proves without them",
+            with_invariants=with_res, without_invariants=without_res)
+    return TripleResult(
+        NecessityVerdict.INCONCLUSIVE,
+        f"without-invariants grade is {without_res.tier.name} — necessity "
+        "not established",
+        with_invariants=with_res, without_invariants=without_res)
 
 
 def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
