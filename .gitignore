@@ -3,3 +3,6 @@ venv/
 __pycache__/
 .pytest_cache/
 *.pyc
+design_spec.md
+initial_prd.md
+README_SOFAR.md
