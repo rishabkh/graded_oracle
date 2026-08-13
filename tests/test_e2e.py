@@ -204,6 +204,39 @@ def test_malformed_generated_output_is_error_without_sby(tmp_path):
 
 
 @requires_sby
+def test_necessary_fifo_count_pointer_link(tmp_path):
+    # Hidden facts: count <= 4 and count[1:0] == wptr - rptr, true by
+    # construction. Weak claim (empty => pointers agree) follows from
+    # them but cannot prove itself.
+    prop = PropertyInfo(top_module="fifo",
+                        antecedents=["count == 3'd0"],
+                        sanity_covers=["count == 3'd2"],
+                        invariants=["count <= 3'd4",
+                                    "count[1:0] == (wptr - rptr)"])
+    r = grade_triple(TRIPLES / "fifo.sv", prop,
+                     workdir_root=tmp_path / "runs")
+    assert r.verdict is NecessityVerdict.NECESSARY, r.reason
+    cover = [ev for ev in r.with_invariants.runs if ev.mode == "cover"][0]
+    assert "count == 3'd0" in cover.reached_covers
+
+
+@requires_sby
+def test_necessary_onehot_fsm(tmp_path):
+    # Hidden fact: exactly one bit set. Weak claim (bits 0 and 2 never
+    # both set) is broken by the legal-but-unreachable state 4'b1010
+    # rotating into 4'b0101.
+    prop = PropertyInfo(top_module="onehot_fsm",
+                        invariants=["(state == 4'b0001) || "
+                                    "(state == 4'b0010) || "
+                                    "(state == 4'b0100) || "
+                                    "(state == 4'b1000)"])
+    r = grade_triple(TRIPLES / "onehot_fsm.sv", prop,
+                     workdir_root=tmp_path / "runs")
+    assert r.verdict is NecessityVerdict.NECESSARY, r.reason
+    assert r.without_invariants.runs[0].trace_text  # the CTI, readable
+
+
+@requires_sby
 def test_decorative_tautology_invariant_is_rejected(tmp_path):
     # count <= 4'd15 is true by the type system — the counter proves its
     # property with or without it. Exactly the reviewer's trap.
