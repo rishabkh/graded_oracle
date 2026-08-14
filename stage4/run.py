@@ -1,0 +1,232 @@
+"""Stage 4 Initiator loop: sample seeds -> call the model -> grade -> log.
+
+Standalone by design: no Formal Disco, no Fixer, no agenda. Run the
+stages in order, cheapest first:
+
+  venv/bin/python stage4/run.py check-contract    # no API, no solver
+  venv/bin/python stage4/run.py check-exemplars   # solver, no API (needs hwtools)
+  venv/bin/python stage4/run.py one               # ONE API call, prints raw output, no grading
+  venv/bin/python stage4/run.py grade-one         # one API call + grade (needs both)
+  venv/bin/python stage4/run.py pilot --n 10      # the loop (asserts exemplar pool first)
+
+Model: claude-opus-5. Temperature is not a parameter on this model
+(the API rejects it); diversity comes from seed rotation + adaptive
+thinking, and the log records model + effort instead. Server-side
+refusal fallbacks are deliberately NOT enabled: a corpus row must record
+which model wrote it, so a refusal is logged and discarded, never
+silently rerouted to another model.
+"""
+import argparse
+import itertools
+import json
+import random
+import sys
+import threading
+import time
+from dataclasses import asdict
+from datetime import datetime, timezone
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))   # graded_oracle root -> `oracle` package
+sys.path.insert(0, str(HERE))
+
+from prompts import SYSTEM_PROMPT, USER_TEMPLATE   # noqa: E402
+from schema import TRIPLE_SCHEMA                   # noqa: E402
+
+from oracle import NecessityVerdict, grade_triple_generated  # noqa: E402
+from oracle.contract import parse_generator_output           # noqa: E402
+
+MODEL = "claude-opus-5"
+EFFORT = "high"
+MAX_TOKENS = 16000
+GRADE_KWARGS = dict(timeout_s=120)
+LOG_PATH = HERE / "logs" / "attempts.jsonl"
+
+
+class Spinner:
+    """Terminal spinner with a label and elapsed seconds; silent when
+    stderr is not a TTY (logs and pipes stay clean)."""
+    FRAMES = "|/-\\"
+
+    def __init__(self, label):
+        self.label = label
+        self._stop = threading.Event()
+        self._thread = None
+
+    def _spin(self):
+        start = time.monotonic()
+        for frame in itertools.cycle(self.FRAMES):
+            if self._stop.is_set():
+                break
+            elapsed = time.monotonic() - start
+            sys.stderr.write(f"\r{frame} {self.label} ({elapsed:.0f}s) ")
+            sys.stderr.flush()
+            self._stop.wait(0.2)
+        sys.stderr.write("\r" + " " * (len(self.label) + 12) + "\r")
+        sys.stderr.flush()
+
+    def __enter__(self):
+        if sys.stderr.isatty():
+            self._thread = threading.Thread(target=self._spin, daemon=True)
+            self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        if self._thread:
+            self._thread.join()
+
+
+def load_pools():
+    exemplars = json.loads((HERE / "exemplars.json").read_text())
+    shapes = [s.strip() for s in (HERE / "shapes.txt").read_text().splitlines()
+              if s.strip()]
+    readmes = [json.loads(line) for line in
+               (HERE / "readmes.jsonl").read_text().splitlines() if line.strip()]
+    return exemplars, shapes, readmes
+
+
+def check_contract():
+    """Preflight 0.1: unknown cti_* fields must not trip a violation."""
+    out = parse_generator_output(
+        '{"verilog": "module m (input wire clk); always @(*) assert (1); endmodule",'
+        ' "top_module": "m", "cti_state": [{"signal": "x", "value": "1"}],'
+        ' "cti_reasoning": "t"}')
+    print(f"contract ok: parsed top_module={out.prop.top_module!r}, "
+          "cti_* fields ignored without violation")
+
+
+def assert_exemplar_pool(exemplars):
+    """Preflight 0.2: every exemplar must grade NECESSARY, or the run
+    would teach the model to imitate a broken example."""
+    for name, ex in exemplars.items():
+        with Spinner(f"grading exemplar {name}"):
+            r = grade_triple_generated(json.dumps(ex), **GRADE_KWARGS)
+        assert r.verdict is NecessityVerdict.NECESSARY, \
+            f"exemplar {name}: {r.verdict.name} - {r.reason}"
+        print(f"exemplar {name}: NECESSARY")
+    print(f"exemplar pool ok ({len(exemplars)})")
+
+
+def build_user_msg(readme, shapes2, exemplar):
+    return USER_TEMPLATE.format(
+        readme=readme["readme"], shape_1=shapes2[0], shape_2=shapes2[1],
+        exemplar=json.dumps(exemplar, indent=2))
+
+
+def call_model(client, user_msg):
+    """One API call. Returns (raw_json_text or None, response)."""
+    resp = client.messages.create(
+        model=MODEL,
+        max_tokens=MAX_TOKENS,
+        output_config={"effort": EFFORT,
+                       "format": {"type": "json_schema", "schema": TRIPLE_SCHEMA}},
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+    if resp.stop_reason == "refusal":
+        return None, resp
+    text = next(b.text for b in resp.content if b.type == "text")
+    return text, resp
+
+
+def dump(record):
+    LOG_PATH.parent.mkdir(exist_ok=True)
+    try:
+        line = json.dumps(record, default=str)
+        with LOG_PATH.open("a") as f:
+            f.write(line + "\n")
+    except Exception as exc:
+        # Never lose the artifact to a serialisation bug.
+        print(f"LOG WRITE FAILED ({exc}); raw_json follows:", file=sys.stderr)
+        print(record.get("raw_json"), file=sys.stderr)
+
+
+def sample_seeds(exemplars, shapes, readmes):
+    readme = random.choice(readmes)
+    shapes2 = random.sample(shapes, k=2)
+    ex_id, exemplar = random.choice(list(exemplars.items()))
+    return readme, shapes2, ex_id, exemplar
+
+
+def run_attempts(n, grade=True, show_raw=False):
+    import anthropic
+    client = anthropic.Anthropic()
+    exemplars, shapes, readmes = load_pools()
+    if grade:
+        assert_exemplar_pool(exemplars)
+
+    tally = {}
+    for i in range(n):
+        readme, shapes2, ex_id, exemplar = sample_seeds(exemplars, shapes, readmes)
+        record = {
+            "attempt": i,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "model": MODEL, "effort": EFFORT,
+            "temperature": None,   # not a parameter on this model; kept for schema stability
+            "readme_id": readme["repo"], "shape_ids": shapes2, "exemplar_id": ex_id,
+        }
+        try:
+            with Spinner(f"[{i}] {MODEL} writing a triple"):
+                raw_json, resp = call_model(
+                    client, build_user_msg(readme, shapes2, exemplar))
+        except anthropic.APIError as exc:
+            record["error"] = f"{type(exc).__name__}: {exc}"
+            dump(record)
+            print(f"[{i}] API error: {type(exc).__name__} — logged, continuing")
+            time.sleep(5)
+            continue
+
+        record["usage"] = {"input": resp.usage.input_tokens,
+                           "output": resp.usage.output_tokens}
+        if raw_json is None:
+            record["verdict"] = "REFUSED"
+            dump(record)
+            print(f"[{i}] refusal — logged, continuing")
+            continue
+        record["raw_json"] = raw_json
+        if show_raw:
+            print(json.dumps(json.loads(raw_json), indent=2))
+
+        if grade:
+            t0 = time.monotonic()
+            with Spinner(f"[{i}] oracle grading"):
+                result = grade_triple_generated(raw_json, **GRADE_KWARGS)
+            record["grade_wall_s"] = round(time.monotonic() - t0, 2)
+            record["verdict"] = result.verdict.name
+            record["result"] = asdict(result)
+            tally[result.verdict.name] = tally.get(result.verdict.name, 0) + 1
+            print(f"[{i}] {result.verdict.name:12s} ({record['grade_wall_s']}s) "
+                  f"— {result.reason[:100]}")
+        dump(record)
+
+    if grade and tally:
+        print("\nverdict distribution:", dict(sorted(tally.items())))
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    sub = p.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("check-contract")
+    sub.add_parser("check-exemplars")
+    sub.add_parser("one")
+    sub.add_parser("grade-one")
+    pilot = sub.add_parser("pilot")
+    pilot.add_argument("--n", type=int, default=10)
+
+    args = p.parse_args()
+    if args.cmd == "check-contract":
+        check_contract()
+    elif args.cmd == "check-exemplars":
+        assert_exemplar_pool(load_pools()[0])
+    elif args.cmd == "one":
+        run_attempts(1, grade=False, show_raw=True)
+    elif args.cmd == "grade-one":
+        run_attempts(1, grade=True, show_raw=True)
+    elif args.cmd == "pilot":
+        run_attempts(args.n, grade=True)
+
+
+if __name__ == "__main__":
+    main()

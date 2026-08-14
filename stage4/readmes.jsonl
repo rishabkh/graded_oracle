@@ -1,0 +1,5 @@
+{"repo": "example/stack-lib", "readme": "# stack-lib\nA minimal stack data structure library with push, pop, and peek operations. Guarantees LIFO ordering and safe behavior on empty stacks."}
+{"repo": "example/int-utils", "readme": "# int-utils\nSmall integer utilities: absolute value, min/max of a list, integer square root, and greatest common divisor. Focus on correctness for edge cases like zero and negative numbers."}
+{"repo": "example/string-tools", "readme": "# string-tools\nString helpers: reverse, palindrome check, and counting character occurrences. Simple, dependency-free implementations."}
+{"repo": "example/sorted-list", "readme": "# sorted-list\nA sorted list container supporting insertion that maintains order, binary search lookup, and merging of two sorted lists."}
+{"repo": "example/queue-ring", "readme": "# queue-ring\nA bounded FIFO queue backed by a ring buffer, with enqueue, dequeue, and size tracking. Documents behavior when the queue is full or empty."}

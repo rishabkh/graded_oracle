@@ -1,0 +1,10 @@
+a relation between two counters
+a bound on the difference of two values
+a one-hot or exactly-one condition
+a pointer equality that must hold under a guard
+a shadow register that must agree with the value it shadows
+two signals that must never both be high
+an occupancy count that must match a computed difference
+a saturating value that must never exceed its bound
+a valid bit that implies its payload is well-formed
+a grant that implies a request was pending

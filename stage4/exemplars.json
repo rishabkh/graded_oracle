@@ -1,0 +1,41 @@
+{
+  "A_fifo": {
+    "cti_reasoning": "This state satisfies the property because count is not zero, so the guard does not fire. It violates the invariant because count[1:0] is 1 while wptr - rptr is 2. With push and pop both low the design idles here indefinitely; one pop then takes count to 0 while the pointers still disagree, so the property fails in the next state.",
+    "cti_state": [
+      {"signal": "count", "value": "3'd1"},
+      {"signal": "wptr", "value": "2'd2"},
+      {"signal": "rptr", "value": "2'd0"}
+    ],
+    "invariants": ["count <= 3'd4", "count[1:0] == wptr - rptr"],
+    "verilog": "module fifo (\n    input wire clk,\n    input wire rst,\n    input wire push,\n    input wire pop,\n    output reg [2:0] count\n);\n    reg [1:0] wptr, rptr;\n    initial begin wptr = 0; rptr = 0; count = 0; end\n\n    wire do_push = push && count != 3'd4;\n    wire do_pop  = pop  && count != 3'd0;\n\n    always @(posedge clk) begin\n        if (rst) begin\n            wptr <= 0; rptr <= 0; count <= 0;\n        end else begin\n            if (do_push) wptr <= wptr + 1;\n            if (do_pop)  rptr <= rptr + 1;\n            case ({do_push, do_pop})\n                2'b10:   count <= count + 1;\n                2'b01:   count <= count - 1;\n                default: count <= count;\n            endcase\n        end\n    end\n\n    always @(posedge clk)\n        if (count == 3'd0)\n            assert (wptr == rptr);\nendmodule",
+    "top_module": "fifo",
+    "clock": "clk",
+    "antecedents": ["count == 3'd0"],
+    "sanity_covers": ["count == 3'd2"]
+  },
+  "B_onehot": {
+    "cti_reasoning": "This state satisfies the property because bits 0 and 2 are both clear. It violates the invariant because two bits are set rather than one. With step low the design idles here indefinitely; one rotate-left step then yields 4'b0101, where bits 0 and 2 are both set, breaking the property.",
+    "cti_state": [
+      {"signal": "state", "value": "4'b1010"}
+    ],
+    "invariants": ["state == 4'b0001 || state == 4'b0010 || state == 4'b0100 || state == 4'b1000"],
+    "verilog": "module onehot_fsm (\n    input wire clk,\n    input wire rst,\n    input wire step,\n    output reg [3:0] state\n);\n    initial state = 4'b0001;\n\n    always @(posedge clk) begin\n        if (rst)\n            state <= 4'b0001;\n        else if (step)\n            state <= {state[2:0], state[3]};\n    end\n\n    always @(posedge clk)\n        assert (!(state[0] && state[2]));\nendmodule",
+    "top_module": "onehot_fsm",
+    "clock": "clk",
+    "antecedents": [],
+    "sanity_covers": ["state == 4'b0100"]
+  },
+  "C_kitest": {
+    "cti_reasoning": "The MSBs agree, so the XOR is zero and the property holds. The registers differ at bit 30, violating the invariant. With i_ce low the design idles in this state for as long as the induction window requires; one shift with i_ce high then moves the differing bit into the MSB, where the XOR becomes one and the property fails.",
+    "cti_state": [
+      {"signal": "sa", "value": "32'h40000000"},
+      {"signal": "sb", "value": "32'h00000000"}
+    ],
+    "invariants": ["sa == sb"],
+    "verilog": "module kitest (\n    input wire i_clk,\n    input wire i_reset,\n    input wire i_ce,\n    input wire i_in,\n    output wire o_bit\n);\n    parameter LN = 32;\n    reg [LN-1:0] sa, sb;\n    initial sa = 0;\n    initial sb = 0;\n\n    always @(posedge i_clk)\n        if (i_reset) begin\n            sa <= 0;\n            sb <= 0;\n        end else if (i_ce) begin\n            sa <= { sa[LN-2:0], i_in };\n            sb <= { sb[LN-2:0], i_in };\n        end\n\n    assign o_bit = sa[LN-1] ^ sb[LN-1];\n\n    always @(*)\n        assert (!o_bit);\nendmodule",
+    "top_module": "kitest",
+    "clock": "i_clk",
+    "antecedents": [],
+    "sanity_covers": ["sa[0] == 1'b1"]
+  }
+}
