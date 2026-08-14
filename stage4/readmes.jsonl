@@ -1,5 +1,23 @@
 {"repo": "example/stack-lib", "readme": "# stack-lib\nA minimal stack data structure library with push, pop, and peek operations. Guarantees LIFO ordering and safe behavior on empty stacks."}
-{"repo": "example/int-utils", "readme": "# int-utils\nSmall integer utilities: absolute value, min/max of a list, integer square root, and greatest common divisor. Focus on correctness for edge cases like zero and negative numbers."}
-{"repo": "example/string-tools", "readme": "# string-tools\nString helpers: reverse, palindrome check, and counting character occurrences. Simple, dependency-free implementations."}
-{"repo": "example/sorted-list", "readme": "# sorted-list\nA sorted list container supporting insertion that maintains order, binary search lookup, and merging of two sorted lists."}
-{"repo": "example/queue-ring", "readme": "# queue-ring\nA bounded FIFO queue backed by a ring buffer, with enqueue, dequeue, and size tracking. Documents behavior when the queue is full or empty."}
+{"repo": "example/int-utils", "readme": "# int-utils\nSmall integer utilities: absolute value, min/max of a list, integer square root, and greatest common divisor. Focus on correctness for edge cases like zero and negative inputs."}
+{"repo": "example/string-tools", "readme": "# string-tools\nString helpers: reverse, palindrome check, character counting, and substring search. Simple implementations meant for teaching."}
+{"repo": "example/sorted-list", "readme": "# sorted-list\nAn always-sorted list with insert and remove. Maintains ordering invariants on every operation."}
+{"repo": "example/queue-ring", "readme": "# queue-ring\nA fixed-capacity ring buffer queue with enqueue, dequeue, and full/empty tracking."}
+{"repo": "example/uart-lite", "readme": "# uart-lite\nA minimal UART transmitter/receiver with configurable baud rate. Tracks start bit, data bits, and stop bit phases; flags framing errors when the stop bit is missing."}
+{"repo": "example/dma-copier", "readme": "# dma-copier\nA simple DMA engine that copies a block of words from a source to a destination address. Tracks words remaining and raises done exactly when the count reaches zero."}
+{"repo": "example/rr-arbiter", "readme": "# rr-arbiter\nRound-robin arbiter for four requesters sharing one resource, rotating a priority pointer after each grant so service stays fair."}
+{"repo": "example/pwm-dimmer", "readme": "# pwm-dimmer\nPWM generator for LED dimming: an 8-bit duty cycle compared against a free-running counter to shape the output waveform."}
+{"repo": "example/watchdog", "readme": "# watchdog\nWatchdog timer that must be kicked before the countdown expires, otherwise it asserts a system reset. The reset stays latched until acknowledged."}
+{"repo": "example/crc8-check", "readme": "# crc8-check\nStreaming CRC-8 checksum over a byte stream, one bit per cycle. The remainder register must always equal the polynomial reduction of the bits consumed so far."}
+{"repo": "example/debounce", "readme": "# debounce\nButton debouncer: the output only changes after the raw input has been stable for N consecutive samples. A saturating stability counter drives the decision."}
+{"repo": "example/traffic-light", "readme": "# traffic-light\nTwo-road intersection controller cycling green, yellow, red with a timer per phase and an all-red interval between handovers."}
+{"repo": "example/elevator-ctrl", "readme": "# elevator-ctrl\nSingle-cab elevator controller for a four-floor building: current floor register, direction flag, pending request bitmap, one floor of travel per step."}
+{"repo": "example/vending-fsm", "readme": "# vending-fsm\nVending machine accepting 5c and 10c coins toward a 25c item: credit accumulator, dispense pulse, and change calculation."}
+{"repo": "example/thermo-hyst", "readme": "# thermo-hyst\nThermostat with hysteresis: the heater turns on below t_low and off above t_high, never chattering in between. The on/off state and the temperature comparison must stay consistent."}
+{"repo": "example/gray-counter", "readme": "# gray-counter\nGray-code counter for clock-domain crossing: successive values differ in exactly one bit. Keeps a shadow binary counter internally to derive the gray value."}
+{"repo": "example/lfsr-rng", "readme": "# lfsr-rng\nMaximal-length 8-bit LFSR pseudo-random generator with taps at the polynomial positions, stepped once per enable."}
+{"repo": "example/token-bucket", "readme": "# token-bucket\nToken-bucket rate limiter for outbound requests: tokens drip in at a fixed rate, each grant spends one, and requests stall while the bucket is dry."}
+{"repo": "example/chess-clock", "readme": "# chess-clock\nTwo-player chess clock: exactly one side's timer decrements at a time, toggled by a button press, frozen when either side reaches zero."}
+{"repo": "example/nano-alu", "readme": "# nano-alu\nAn 8-bit ALU slice supporting add, subtract, and, or, with carry and zero flags, and a registered result."}
+{"repo": "example/barrel-shifter", "readme": "# barrel-shifter\nBarrel shifter that rotates a 16-bit word by a variable amount in one cycle, built from staged shift-by-1/2/4/8 layers."}
+{"repo": "example/prio-encoder", "readme": "# prio-encoder\nPriority encoder over an 8-bit request vector: reports the index of the highest set bit plus a valid flag, with a registered output stage."}

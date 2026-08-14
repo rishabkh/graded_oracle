@@ -143,28 +143,67 @@ def dump(record):
         print(record.get("raw_json"), file=sys.stderr)
 
 
-def sample_seeds(exemplars, shapes, readmes):
-    readme = random.choice(readmes)
-    shapes2 = random.sample(shapes, k=2)
-    ex_id, exemplar = random.choice(list(exemplars.items()))
+class BalancedSampler:
+    """Deal from a shuffled bag without replacement, reshuffling when the
+    bag empties. Over N draws every item appears floor(N/len) or
+    ceil(N/len) times — no zero-hit seeds, no triple-hits, so seed
+    coverage is not a noise source in the diversity measurement."""
+
+    def __init__(self, items):
+        self.items = list(items)
+        self._bag = []
+
+    def draw(self):
+        if not self._bag:
+            self._bag = random.sample(self.items, len(self.items))
+        return self._bag.pop()
+
+    def draw2(self):
+        a = self.draw()
+        b = self.draw()
+        while b == a:   # only possible across a reshuffle boundary
+            b = self.draw()
+        return [a, b]
+
+
+def make_samplers(exemplars, shapes, readmes):
+    return (BalancedSampler(readmes), BalancedSampler(shapes),
+            BalancedSampler(list(exemplars.items())))
+
+
+def sample_seeds(readme_s, shape_s, exemplar_s):
+    readme = readme_s.draw()
+    shapes2 = shape_s.draw2()
+    ex_id, exemplar = exemplar_s.draw()
     return readme, shapes2, ex_id, exemplar
 
 
-def run_attempts(n, grade=True, show_raw=False):
+def run_attempts(n, grade=True, show_raw=False, cmd=""):
     import anthropic
     client = anthropic.Anthropic()
     exemplars, shapes, readmes = load_pools()
     if grade:
         assert_exemplar_pool(exemplars)
 
+    # One id per invocation: attempts from different runs (one, grade-one,
+    # pilot, the 200) all append to the same file and stay separable.
+    # e.g. "2026-08-14_15h30m42s" (local wall clock; cmd is its own field).
+    run_id = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
+    print(f"run_id: {run_id}")
+
+    samplers = make_samplers(exemplars, shapes, readmes)
     tally = {}
     for i in range(n):
-        readme, shapes2, ex_id, exemplar = sample_seeds(exemplars, shapes, readmes)
+        readme, shapes2, ex_id, exemplar = sample_seeds(*samplers)
         record = {
+            "run_id": run_id,
+            "cmd": cmd,
             "attempt": i,
+            "graded": grade,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "model": MODEL, "effort": EFFORT,
-            "temperature": None,   # not a parameter on this model; kept for schema stability
+            "temperature": "n/a: removed from the API on this model; "
+                           "effort + seed rotation are the diversity knobs",
             "readme_id": readme["repo"], "shape_ids": shapes2, "exemplar_id": ex_id,
         }
         try:
@@ -221,11 +260,11 @@ def main():
     elif args.cmd == "check-exemplars":
         assert_exemplar_pool(load_pools()[0])
     elif args.cmd == "one":
-        run_attempts(1, grade=False, show_raw=True)
+        run_attempts(1, grade=False, show_raw=True, cmd="one")
     elif args.cmd == "grade-one":
-        run_attempts(1, grade=True, show_raw=True)
+        run_attempts(1, grade=True, show_raw=True, cmd="grade-one")
     elif args.cmd == "pilot":
-        run_attempts(args.n, grade=True)
+        run_attempts(args.n, grade=True, cmd="pilot")
 
 
 if __name__ == "__main__":
