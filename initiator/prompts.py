@@ -1,6 +1,6 @@
 """Initiator prompt: fixed system prompt + per-call user template.
 
-The system prompt carries the contract and the criterion (stage4.md 1.1).
+The system prompt carries the contract and the criterion (internal spec 1.1).
 One deviation from the doc: cti_state is an array of {signal, value}
 pairs rather than a free-form dict, because strict structured-output
 schemas require fixed keys on every object. Same information.

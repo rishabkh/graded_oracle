@@ -5,9 +5,9 @@ grade whatever comes back. Solved = NECESSARY.
 Standalone by design — imports nothing from run.py and writes its own
 log, so it cannot interfere with a generation run.
 
-  venv/bin/python stage4/solver_baseline.py --solver opus --dry     # list inputs, no calls
-  venv/bin/python stage4/solver_baseline.py --solver opus           # needs ANTHROPIC_API_KEY + hwtools
-  venv/bin/python stage4/solver_baseline.py --solver qwen           # needs QWEN_* env vars + hwtools
+  venv/bin/python initiator/solver_baseline.py --solver opus --dry     # list inputs, no calls
+  venv/bin/python initiator/solver_baseline.py --solver opus           # needs ANTHROPIC_API_KEY + hwtools
+  venv/bin/python initiator/solver_baseline.py --solver qwen           # needs QWEN_* env vars + hwtools
 
 Qwen runs through any OpenAI-compatible endpoint (OpenRouter, Together,
 Fireworks, ollama). Set:

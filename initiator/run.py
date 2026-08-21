@@ -3,11 +3,11 @@
 Standalone by design: no Formal Disco, no Fixer, no agenda. Run the
 stages in order, cheapest first:
 
-  venv/bin/python stage4/run.py check-contract    # no API, no solver
-  venv/bin/python stage4/run.py check-exemplars   # solver, no API (needs hwtools)
-  venv/bin/python stage4/run.py one               # ONE API call, prints raw output, no grading
-  venv/bin/python stage4/run.py grade-one         # one API call + grade (needs both)
-  venv/bin/python stage4/run.py pilot --n 10      # the loop (asserts exemplar pool first)
+  venv/bin/python initiator/run.py check-contract    # no API, no solver
+  venv/bin/python initiator/run.py check-exemplars   # solver, no API (needs hwtools)
+  venv/bin/python initiator/run.py one               # ONE API call, prints raw output, no grading
+  venv/bin/python initiator/run.py grade-one         # one API call + grade (needs both)
+  venv/bin/python initiator/run.py pilot --n 10      # the loop (asserts exemplar pool first)
 
 Model: claude-opus-5. Temperature is not a parameter on this model
 (the API rejects it); diversity comes from seed rotation + adaptive
