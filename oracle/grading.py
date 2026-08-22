@@ -14,7 +14,8 @@ from pathlib import Path
 from .contract import ContractViolation, parse_generator_output
 from .inject import (InjectionError, inject_covers, inject_invariants,
                      strip_assertions)
-from .parse import parse_assert_failures, parse_cover_log, tail
+from .parse import (parse_assert_failures, parse_cover_log,
+                    parse_induction_status, tail)
 from .sby import DEFAULT_ENGINE, PDR_ENGINE, SbyOutcome, run_sby, sby_available
 from .trace import summarize_vcd
 from .types import (GradeResult, NecessityVerdict, PropertyInfo, RunEvidence,
@@ -23,6 +24,13 @@ from .types import (GradeResult, NecessityVerdict, PropertyInfo, RunEvidence,
 NA_NOTE = "vacuity_check: not_applicable (no antecedent)"
 SANITY_NOTE = ("sanity_cover_unreached: instrument suspect — "
                "distrust the vacuity verdict for this design")
+# sby runs base case and induction in parallel and reports the WORSE
+# status, so a fast induction FAIL under a slow base case surfaces as
+# rc=8. The engine's own status line preserves the definitive answer.
+INDUCTION_FAIL_NOTE = (
+    "induction_failed_before_timeout: induction returned FAIL before the "
+    "base case finished — definitive 'did not prove' for necessity "
+    "(CTI in evidence)")
 
 
 def _evidence(mode: str, out: SbyOutcome, depth: int, *,
@@ -187,6 +195,19 @@ def grade_triple(verilog_file: Path | str, prop: PropertyInfo, *,
             NecessityVerdict.DECORATIVE,
             "invariants are decorative: the property proves without them",
             with_invariants=with_res, without_invariants=without_res)
+    if without_res.tier is Tier.TIMEOUT and any(
+            n.startswith("induction_failed_before_timeout")
+            for ev in without_res.runs for n in ev.notes):
+        # Necessity needs only "did not prove", and induction FAIL is
+        # exactly that. The property's truth is already established by
+        # the with-run's PROVEN (base case + induction + covers), so the
+        # unfinished base case here costs nothing.
+        return TripleResult(
+            NecessityVerdict.NECESSARY,
+            "strengthening is load-bearing: PROVEN with invariants; "
+            "without them induction failed before the base case timed "
+            "out (CTI in evidence)",
+            with_invariants=with_res, without_invariants=without_res)
     return TripleResult(
         NecessityVerdict.INCONCLUSIVE,
         f"without-invariants grade is {without_res.tier.name} — necessity "
@@ -208,13 +229,18 @@ def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
                     "prove", depth, timeout_s, root)
 
     if prove.rc is None:
-        runs.append(_evidence("prove", prove, depth,
-                              timeout_source="outer_guard"))
+        ev = _evidence("prove", prove, depth, timeout_source="outer_guard")
+        if parse_induction_status(prove.log_text) == "FAIL":
+            ev.notes.append(INDUCTION_FAIL_NOTE)
+        runs.append(ev)
         return GradeResult(Tier.TIMEOUT,
                            "prove run killed by outer guard "
                            "(sby itself hung)", runs)
     if prove.rc == 8:
-        runs.append(_evidence("prove", prove, depth, timeout_source="sby"))
+        ev = _evidence("prove", prove, depth, timeout_source="sby")
+        if parse_induction_status(prove.log_text) == "FAIL":
+            ev.notes.append(INDUCTION_FAIL_NOTE)
+        runs.append(ev)
         return GradeResult(Tier.TIMEOUT,
                            f"prove run hit sby timeout ({timeout_s}s)", runs)
     if prove.rc == 2:

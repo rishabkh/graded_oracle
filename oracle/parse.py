@@ -18,6 +18,10 @@ import re
 _REACHED = re.compile(r"Reached cover statement in step \d+ at .*?\.sv:(\d+)\.")
 _UNREACHED = re.compile(r"Unreached cover statement at .*?\.sv:(\d+)\.")
 _ASSERT_FAILED = re.compile(r"Assert failed in .*?\.sv:(\d+)\.")
+# The engine's own status line — the summary section phrases the same fact
+# differently ("returned pass for induction") and deliberately does not match.
+_INDUCTION_STATUS = re.compile(
+    r"Status returned by engine for induction: (\w+)")
 
 
 def parse_assert_failures(log_text: str) -> set[int]:
@@ -42,6 +46,18 @@ def parse_cover_log(log_text: str) -> tuple[set[int], set[int]]:
         if m:
             unreached.add(int(m.group(1)))
     return reached, unreached
+
+
+def parse_induction_status(log_text: str) -> str | None:
+    """The induction engine's own status ("pass" / "FAIL"), or None.
+
+    sby runs base case and induction in parallel and reports the WORSE
+    of the two return codes, so a fast induction FAIL under a slow base
+    case surfaces as rc=8 TIMEOUT. The engine status line preserves the
+    answer the combined rc throws away.
+    """
+    m = _INDUCTION_STATUS.search(log_text)
+    return m.group(1) if m else None
 
 
 def tail(text: str, n: int = 40) -> str:

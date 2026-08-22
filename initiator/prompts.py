@@ -70,6 +70,11 @@ Three conditions, all required.
 - Exactly one property per module.
 - Never write `assume`. Assumptions are not checked and would let a false premise
   carry the proof.
+- Never write `->` as logical implication in an expression — the toolchain rejects
+  it. Write `!a || b` instead.
+- If a register's declared width admits values it can never reach (e.g. a counter
+  that saturates at 8 in a 4-bit reg), include an invariant bounding it — induction
+  otherwise starts from an impossible value and fails on a phantom CTI.
 - Keep the module under 40 lines.
 
 ## Output format

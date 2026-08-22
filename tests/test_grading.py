@@ -44,7 +44,8 @@ b00000000000000000000000000000001 t
 
 
 def fake_run_sby(prove_rc, cover_plan=None, cover_rc_override=None,
-                 pdr_rc=None, pdr_unreach_rc=None, false_line=None):
+                 pdr_rc=None, pdr_unreach_rc=None, false_line=None,
+                 prove_log=None):
     """cover_plan: dict expr -> 'reached' | 'unreached' | 'missing'.
     The fake reads the injected file it is handed, finds the oracle's
     cover lines, and fabricates a log naming those exact line numbers.
@@ -83,6 +84,8 @@ def fake_run_sby(prove_rc, cover_plan=None, cover_rc_override=None,
                 t.parent.mkdir(parents=True, exist_ok=True)
                 t.write_text(MINI_VCD)
             log = "prove log"
+            if rc == 8 and prove_log is not None:
+                log = prove_log
             if rc == 2 and false_line is not None:
                 marker = ("// invariant" if false_line == "invariant"
                           else "assert (1'b1)")
@@ -122,12 +125,13 @@ def fake_run_sby(prove_rc, cover_plan=None, cover_rc_override=None,
 
 def _grade(sv_file, tmp_path, monkeypatch, prove_rc, antecedents=None,
            sanity=None, cover_plan=None, cover_rc_override=None,
-           pdr_rc=None, pdr_unreach_rc=None):
+           pdr_rc=None, pdr_unreach_rc=None, prove_log=None):
     monkeypatch.setattr(grading, "sby_available", lambda: True)
     monkeypatch.setattr(grading, "run_sby",
                         fake_run_sby(prove_rc, cover_plan, cover_rc_override,
                                      pdr_rc=pdr_rc,
-                                     pdr_unreach_rc=pdr_unreach_rc))
+                                     pdr_unreach_rc=pdr_unreach_rc,
+                                     prove_log=prove_log))
     prop = PropertyInfo(top_module="m", antecedents=antecedents or [],
                         sanity_covers=sanity or [])
     return grade(sv_file, prop, workdir_root=tmp_path / "runs")
@@ -320,9 +324,10 @@ INV_LOADBEARING = lambda text: 0 if "// invariant" in text else 4  # noqa: E731
 
 
 def _triple(sv_file, tmp_path, monkeypatch, prove_rc, invariants=None,
-            antecedents=None, cover_plan=None):
+            antecedents=None, cover_plan=None, prove_log=None):
     monkeypatch.setattr(grading, "sby_available", lambda: True)
-    monkeypatch.setattr(grading, "run_sby", fake_run_sby(prove_rc, cover_plan))
+    monkeypatch.setattr(grading, "run_sby", fake_run_sby(prove_rc, cover_plan,
+                                                         prove_log=prove_log))
     prop = PropertyInfo(top_module="m", antecedents=antecedents or [],
                         invariants=invariants if invariants is not None
                         else ["sa == sb"])
@@ -364,6 +369,57 @@ def test_inconclusive_when_without_run_times_out(sv_file, tmp_path, monkeypatch)
     r = _triple(sv_file, tmp_path, monkeypatch, rc_fn)
     assert r.verdict is NecessityVerdict.INCONCLUSIVE
     assert r.without_invariants.tier is Tier.TIMEOUT
+
+
+# sby reports the WORSE of the parallel base-case/induction statuses, so a
+# fast induction FAIL under a slow base case surfaces as rc=8. The engine
+# status line (verbatim shape from the real alu_budget without-run) keeps
+# the definitive answer.
+INDUCTION_FAIL_TIMEOUT_LOG = (
+    "SBY 19:16:29 [job] engine_0.induction: ##   0:00:00  "
+    "Temporal induction failed!\n"
+    "SBY 19:16:29 [job] engine_0.induction: ##   0:00:00  Assert failed in "
+    "m: m.sv:5.9-5.31 (_witness_.check_assert_m_sv_5_1)\n"
+    "SBY 19:16:29 [job] engine_0.induction: "
+    "Status returned by engine for induction: FAIL\n"
+    "SBY 19:18:29 [job] DONE (TIMEOUT, rc=8)")
+
+
+def test_timeout_notes_definitive_induction_fail(sv_file, tmp_path, monkeypatch):
+    r = _grade(sv_file, tmp_path, monkeypatch, prove_rc=8,
+               prove_log=INDUCTION_FAIL_TIMEOUT_LOG)
+    # grade() alone still refuses a bounded claim: the base case never ran
+    assert r.tier is Tier.TIMEOUT
+    assert any(n.startswith("induction_failed_before_timeout")
+               for n in r.runs[0].notes)
+
+
+def test_timeout_without_fail_line_carries_no_note(sv_file, tmp_path, monkeypatch):
+    r = _grade(sv_file, tmp_path, monkeypatch, prove_rc=8)
+    assert r.tier is Tier.TIMEOUT
+    assert not any(n.startswith("induction_failed_before_timeout")
+                   for n in r.runs[0].notes)
+
+
+def test_necessary_when_without_run_induction_fails_before_timeout(
+        sv_file, tmp_path, monkeypatch):
+    # with-invariants: PROVEN. without: rc=8, but induction already FAILED.
+    # Necessity needs only "did not prove", and induction FAIL is that —
+    # the with-run's PROVEN already establishes the property is true.
+    rc_fn = lambda text: 0 if "// invariant" in text else 8  # noqa: E731
+    r = _triple(sv_file, tmp_path, monkeypatch, rc_fn,
+                prove_log=INDUCTION_FAIL_TIMEOUT_LOG)
+    assert r.verdict is NecessityVerdict.NECESSARY
+    assert r.without_invariants.tier is Tier.TIMEOUT
+    assert "induction" in r.reason
+
+
+def test_inconclusive_when_timeout_has_no_induction_verdict(
+        sv_file, tmp_path, monkeypatch):
+    # a timeout with no definitive induction status stays a non-verdict
+    rc_fn = lambda text: 0 if "// invariant" in text else 8  # noqa: E731
+    r = _triple(sv_file, tmp_path, monkeypatch, rc_fn)
+    assert r.verdict is NecessityVerdict.INCONCLUSIVE
 
 
 def test_no_invariants_short_circuits(sv_file, tmp_path, monkeypatch):
