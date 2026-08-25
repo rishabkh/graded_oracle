@@ -34,7 +34,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
-from build_corpus import extract_asserts, state_bits      # noqa: E402
+from build_corpus import (_mask_comments, extract_asserts,   # noqa: E402
+                          state_bits)
 from extend_one import (DIFF_FORMAT, GRADE_KWARGS, MODEL, EFFORT,   # noqa: E402
                         Spinner, dump, load_parent)
 from patch import PatchError, apply_patch                 # noqa: E402
@@ -109,6 +110,8 @@ For every invariant clause in the parent list, record what happened to it:
   kept        the clause appears verbatim in your new list
   superseded  the clause is no longer true, or is subsumed by a stronger
               clause. Name the replacing clause and give a one-line reason.
+              If several new clauses jointly replace it, list them all in
+              replaced_by — do not paste them into one string.
 
 A parent clause that is neither kept nor declared superseded is a silent
 deletion, and the extension is rejected before it is graded. Deleting a
@@ -255,7 +258,7 @@ _DISPOSITION_ITEMS = {
         "properties": {
             "clause": {"type": "string"},
             "status": {"type": "string", "enum": ["kept", "superseded"]},
-            "replaced_by": {"type": "string"},
+            "replaced_by": {"type": "array", "items": {"type": "string"}},
             "reason": {"type": "string"},
         },
         "required": ["clause", "status", "replaced_by", "reason"],
@@ -318,9 +321,16 @@ def check_dispositions(parent_invs, new_invs, dispositions):
             if clause in new_normed:
                 return (f"clause declared superseded but still present: "
                         f"{disp.get('clause')!r}")
-            if _norm(disp.get("replaced_by", "")) not in new_normed:
-                return (f"superseding clause not in the new list for: "
+            replacements = disp.get("replaced_by") or []
+            if isinstance(replacements, str):   # tolerate the singular form
+                replacements = [replacements]
+            if not replacements:
+                return (f"superseded with no replacing clause named: "
                         f"{disp.get('clause')!r}")
+            missing = [r for r in replacements if _norm(r) not in new_normed]
+            if missing:
+                return (f"superseding clause not in the new list for: "
+                        f"{disp.get('clause')!r} (missing: {missing})")
             if not disp.get("reason", "").strip():
                 return f"superseded without a reason: {disp.get('clause')!r}"
         else:
@@ -379,6 +389,7 @@ _VERILOG_NOISE = {"posedge", "negedge", "always", "assert", "module",
 
 
 def identifiers(text):
+    text = _mask_comments(text)   # comment words are not identifiers
     ids = set(_ID.findall(re.sub(r"\d+'[bodhBODH][0-9a-fA-FxXzZ_?]+", " ",
                                  text)))
     return ids - _VERILOG_NOISE

@@ -16,9 +16,9 @@ from extend import (                     # noqa: E402
 PARENT_INVS = ["tokens_hi == (tokens >= 3'd2)", "tokens <= 3'd4"]
 
 
-def d(clause, status, replaced_by="", reason=""):
+def d(clause, status, replaced_by=(), reason=""):
     return {"clause": clause, "status": status,
-            "replaced_by": replaced_by, "reason": reason}
+            "replaced_by": list(replaced_by), "reason": reason}
 
 
 # --- dispositions: every parent clause accounted for, or rejected ---
@@ -49,7 +49,7 @@ def test_dispositions_superseded_ok():
     err = check_dispositions(
         PARENT_INVS, new,
         [d(PARENT_INVS[0], "superseded",
-           replaced_by="tokens_hi == (tokens >= 3'd2 || boost)",
+           replaced_by=["tokens_hi == (tokens >= 3'd2 || boost)"],
            reason="tokens_hi has a second source now"),
          d(PARENT_INVS[1], "kept")])
     assert err is None
@@ -58,7 +58,7 @@ def test_dispositions_superseded_ok():
 def test_dispositions_superseded_but_replacement_missing():
     err = check_dispositions(
         PARENT_INVS, ["tokens <= 3'd4"],
-        [d(PARENT_INVS[0], "superseded", replaced_by="something_else == 1",
+        [d(PARENT_INVS[0], "superseded", replaced_by=["something_else == 1"],
            reason="r"),
          d(PARENT_INVS[1], "kept")])
     assert err is not None
@@ -68,7 +68,7 @@ def test_dispositions_superseded_needs_reason():
     new = ["stronger", "tokens <= 3'd4"]
     err = check_dispositions(
         PARENT_INVS, new,
-        [d(PARENT_INVS[0], "superseded", replaced_by="stronger", reason=""),
+        [d(PARENT_INVS[0], "superseded", replaced_by=["stronger"], reason=""),
          d(PARENT_INVS[1], "kept")])
     assert err is not None and "reason" in err
 
@@ -140,3 +140,32 @@ def test_coupling_clause_detected():
 def test_no_coupling_when_new_state_isolated():
     assert not has_coupling_clause(
         ["pending <= 2'd2"], PARENT_IDS, NEW_IDS)
+
+
+def test_dispositions_superseded_by_two_clauses_jointly():
+    # the real g0_035 STAGE case: one parent clause replaced by two new
+    # clauses together — must be accepted, not forced into one string
+    new = ["(cnt != 8'd0) || (high_cnt == 8'd0)",
+           "(cnt == 8'd0) || (high_cnt == ((cnt - 8'd1 < d) ? cnt - 8'd1 : d))"]
+    err = check_dispositions(
+        ["high_cnt == ((cnt < d) ? cnt : d)"], new,
+        [d("high_cnt == ((cnt < d) ? cnt : d)", "superseded",
+           replaced_by=new, reason="accumulator now trails the ramp by one")])
+    assert err is None
+
+
+def test_dispositions_superseded_empty_replacement_list():
+    err = check_dispositions(
+        PARENT_INVS, ["tokens <= 3'd4"],
+        [d(PARENT_INVS[0], "superseded", replaced_by=[], reason="r"),
+         d(PARENT_INVS[1], "kept")])
+    assert err is not None
+
+
+def test_identifiers_ignore_comment_words():
+    from extend import identifiers
+    v = ("reg deep;  // registered level flag, re-evaluated when it moves\n"
+         "wire bulk = dec && deep;\n")
+    ids = identifiers(v)
+    assert "deep" in ids and "bulk" in ids and "dec" in ids
+    assert "registered" not in ids and "when" not in ids and "moves" not in ids
