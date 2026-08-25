@@ -140,3 +140,25 @@ def test_pdr_wall_s_absent_when_no_pdr_run():
     rec = {"result": {"without_invariants": {"runs": [
         {"mode": "prove", "engine": "smtbmc yices", "duration_s": 0.3, "notes": []}]}}}
     assert pdr_wall_s(rec) is None
+
+
+# --- zero-extension normalization: {1'b0, x} is width plumbing, not shape ---
+
+def test_template_zero_extension_collapses_to_plain_sum():
+    assert template("({1'b0, sent} + {1'b0, remaining}) == 6'd20") == \
+           template("(sent + remaining) == 20")
+
+
+def test_template_zero_extension_multibit_zeros():
+    assert template("sq == ({3'b000, cnt} * {3'b000, cnt})") == \
+           template("sq == (cnt * cnt)")
+
+
+def test_template_nonzero_concat_is_not_zero_extension():
+    # {1'b1, x} really concatenates a one — a different value, different shape
+    assert template("a == {1'b1, x}") != template("a == x")
+
+
+def test_template_trailing_constant_concat_is_not_zero_extension():
+    # odd == {cnt, 1'b1} is shift-and-set, not width extension
+    assert template("odd == {cnt, 1'b1}") != template("odd == cnt")

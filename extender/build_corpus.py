@@ -43,11 +43,27 @@ _TOKEN = re.compile(r"""
 """, re.X)
 
 
+# A concat whose first element is an all-zeros constant is zero-extension —
+# width plumbing, not shape. {1'b0, x} collapses to x so that the width-safe
+# and plain spellings of one relation count as one family. A NONZERO leading
+# constant ({1'b1, x}) or a trailing constant ({cnt, 1'b1}) is a genuine
+# concat and is left alone.
+_ZERO_EXT = re.compile(r"\{\s*\d+'[bodhBODH][0_]+\s*,\s*([^{},]+?)\s*\}")
+
+
+def _strip_zero_ext(expr):
+    prev = None
+    while prev != expr:
+        prev, expr = expr, _ZERO_EXT.sub(r"\1", expr)
+    return expr
+
+
 def template(expr):
     """Normalize an invariant expression to its shape: identifiers become
-    `id`, numeric constants become `N`, operators and structure remain."""
+    `id`, numeric constants become `N`, operators and structure remain.
+    Zero-extensions are stripped first — see _strip_zero_ext."""
     out = []
-    for tok in _TOKEN.findall(expr):
+    for tok in _TOKEN.findall(_strip_zero_ext(expr)):
         if re.fullmatch(r"\d+'[bodhBODH][0-9a-fA-FxXzZ_?]+|\d+", tok):
             out.append("N")
         elif tok.startswith("$"):
