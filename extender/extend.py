@@ -40,6 +40,7 @@ from extend_one import (DIFF_FORMAT, GRADE_KWARGS, MODEL, EFFORT,   # noqa: E402
                         Spinner, dump, load_parent)
 from patch import PatchError, apply_patch                 # noqa: E402
 
+import llm_client                                               # noqa: E402
 from oracle import PropertyInfo, grade, grade_triple_generated  # noqa: E402
 
 MAX_TOKENS = 20000
@@ -420,19 +421,10 @@ def build_prompt(parent, ext_type, move=None):
 
 
 def call_model(prompt_text, schema):
-    import anthropic
-    client = anthropic.Anthropic()
-    resp = client.messages.create(
-        model=MODEL, max_tokens=MAX_TOKENS,
-        output_config={"effort": EFFORT,
-                       "format": {"type": "json_schema", "schema": schema}},
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt_text}],
-    )
-    if resp.stop_reason == "refusal":
-        return None, resp
-    text = next(b.text for b in resp.content if b.type == "text")
-    return json.loads(text), resp
+    text, usage, stop = llm_client.call_claude(
+        model=MODEL, max_tokens=MAX_TOKENS, system=SYSTEM_PROMPT,
+        user=prompt_text, schema=schema, effort=EFFORT)
+    return (None if text is None else json.loads(text)), usage, stop
 
 
 def grade_step4(parent, ext_type, out, record):
@@ -580,15 +572,15 @@ def main():
     schema = STRUCTURAL_SCHEMA if args.type == "structural" else SECOND_SCHEMA
     record = {"extension_id": datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss"),
               "ext_type": args.type, "move": args.move,
-              "parent_id": parent["id"], "model": MODEL, "effort": EFFORT}
+              "parent_id": parent["id"],
+              "model": llm_client.model_label(MODEL), "effort": EFFORT}
     with Spinner(f"{MODEL} writing a {args.type} extension"):
-        out, resp = call_model(prompt, schema)
-    record["usage"] = {"input": resp.usage.input_tokens,
-                       "output": resp.usage.output_tokens}
+        out, usage, stop = call_model(prompt, schema)
+    record["usage"] = usage
     if out is None:
-        record["verdict"] = "REFUSED"
+        record["verdict"] = "REFUSED" if stop == "refusal" else "UNPARSEABLE"
         dump(record)
-        print("refusal — logged")
+        print(f"{record['verdict'].lower()} — logged")
         return
     for k in ("new_state", "coupling", "induction_gap",
               "why_parent_insufficient", "claim", "shared_state",

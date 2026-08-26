@@ -34,6 +34,7 @@ sys.path.insert(0, str(HERE))
 from prompts import SYSTEM_PROMPT, USER_TEMPLATE   # noqa: E402
 from schema import TRIPLE_SCHEMA                   # noqa: E402
 
+import llm_client                                            # noqa: E402
 from oracle import NecessityVerdict, grade_triple_generated  # noqa: E402
 from oracle.contract import parse_generator_output           # noqa: E402
 
@@ -115,20 +116,12 @@ def build_user_msg(readme, shapes2, exemplar):
         exemplar=json.dumps(exemplar, indent=2))
 
 
-def call_model(client, user_msg):
-    """One API call. Returns (raw_json_text or None, response)."""
-    resp = client.messages.create(
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        output_config={"effort": EFFORT,
-                       "format": {"type": "json_schema", "schema": TRIPLE_SCHEMA}},
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_msg}],
-    )
-    if resp.stop_reason == "refusal":
-        return None, resp
-    text = next(b.text for b in resp.content if b.type == "text")
-    return text, resp
+def call_model(user_msg):
+    """One API call (Anthropic direct or OpenRouter, per CLAUDE_PROVIDER).
+    Returns (raw_json_text or None, usage, stop)."""
+    return llm_client.call_claude(
+        model=MODEL, max_tokens=MAX_TOKENS, system=SYSTEM_PROMPT,
+        user=user_msg, schema=TRIPLE_SCHEMA, effort=EFFORT)
 
 
 def dump(record):
@@ -179,8 +172,6 @@ def sample_seeds(readme_s, shape_s, exemplar_s):
 
 
 def run_attempts(n, grade=True, show_raw=False, cmd=""):
-    import anthropic
-    client = anthropic.Anthropic()
     exemplars, shapes, readmes = load_pools()
     if grade:
         assert_exemplar_pool(exemplars)
@@ -201,26 +192,25 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
             "attempt": i,
             "graded": grade,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "model": MODEL, "effort": EFFORT,
+            "model": llm_client.model_label(MODEL), "effort": EFFORT,
             "temperature": "n/a: removed from the API on this model; "
                            "effort + seed rotation are the diversity knobs",
             "readme_id": readme["repo"], "shape_ids": shapes2, "exemplar_id": ex_id,
         }
         try:
             with Spinner(f"[{i}] {MODEL} writing a triple"):
-                raw_json, resp = call_model(
-                    client, build_user_msg(readme, shapes2, exemplar))
-        except anthropic.APIError as exc:
+                raw_json, usage, stop = call_model(
+                    build_user_msg(readme, shapes2, exemplar))
+        except Exception as exc:
             record["error"] = f"{type(exc).__name__}: {exc}"
             dump(record)
             print(f"[{i}] API error: {type(exc).__name__} — logged, continuing")
             time.sleep(5)
             continue
 
-        record["usage"] = {"input": resp.usage.input_tokens,
-                           "output": resp.usage.output_tokens}
+        record["usage"] = usage
         if raw_json is None:
-            record["verdict"] = "REFUSED"
+            record["verdict"] = "REFUSED" if stop == "refusal" else "UNPARSEABLE"
             dump(record)
             print(f"[{i}] refusal — logged, continuing")
             continue

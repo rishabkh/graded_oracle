@@ -35,6 +35,7 @@ sys.path.insert(0, str(HERE))
 from build_corpus import extract_asserts, state_bits   # noqa: E402
 from patch import PatchError, apply_patch              # noqa: E402
 
+import llm_client                            # noqa: E402
 from oracle import grade_triple_generated    # noqa: E402
 
 CORPUS = HERE / "corpus.jsonl"
@@ -191,18 +192,10 @@ def build_prompt(parent):
 
 
 def call_model(prompt_text):
-    import anthropic
-    client = anthropic.Anthropic()
-    resp = client.messages.create(
-        model=MODEL, max_tokens=MAX_TOKENS,
-        output_config={"effort": EFFORT,
-                       "format": {"type": "json_schema", "schema": EXT_SCHEMA}},
-        messages=[{"role": "user", "content": prompt_text}],
-    )
-    if resp.stop_reason == "refusal":
-        return None, resp
-    text = next(b.text for b in resp.content if b.type == "text")
-    return json.loads(text), resp
+    text, usage, stop = llm_client.call_claude(
+        model=MODEL, max_tokens=MAX_TOKENS, user=prompt_text,
+        schema=EXT_SCHEMA, effort=EFFORT)
+    return (None if text is None else json.loads(text)), usage, stop
 
 
 def grade_extension(parent, patch_text, record):
@@ -302,16 +295,15 @@ def main():
         record["model"] = "selftest (hand-written patch)"
         grade_extension(parent, SELFTEST_PATCH, record)
     else:
-        record["model"] = MODEL
+        record["model"] = llm_client.model_label(MODEL)
         record["effort"] = EFFORT
         with Spinner(f"{MODEL} writing a distractor patch"):
-            out, resp = call_model(build_prompt(parent))
-        record["usage"] = {"input": resp.usage.input_tokens,
-                           "output": resp.usage.output_tokens}
+            out, usage, stop = call_model(build_prompt(parent))
+        record["usage"] = usage
         if out is None:
-            record["verdict"] = "REFUSED"
+            record["verdict"] = "REFUSED" if stop == "refusal" else "UNPARSEABLE"
             dump(record)
-            print("refusal — logged")
+            print(f"{record['verdict'].lower()} — logged")
             return
         record["reasoning"] = out["reasoning"]
         grade_extension(parent, out["patch"], record)
