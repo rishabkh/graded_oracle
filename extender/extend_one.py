@@ -55,9 +55,10 @@ One directive per line:
 Matching ignores leading/trailing whitespace but is otherwise exact. Every
 anchor, = and - line MUST exist in the file (forward of the cursor) or the
 patch is rejected whole — there are no fuzzy matches.
-You cannot delete or replace the line you anchored on: the cursor is already
-past it. To replace a line, anchor on the line ABOVE it, then - the target
-and + its replacement.
+An anchor must be a line ABOVE the edit and must not itself be modified:
+after an anchor matches, the cursor sits past it, so a - or = directive can
+only reach lines below it. To replace a line, anchor on the line above it,
+then - the target and + its replacement.
 
 Example. Applying
 @@ a @@

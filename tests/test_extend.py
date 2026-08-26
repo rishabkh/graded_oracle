@@ -169,3 +169,17 @@ def test_identifiers_ignore_comment_words():
     ids = identifiers(v)
     assert "deep" in ids and "bulk" in ids and "dec" in ids
     assert "registered" not in ids and "when" not in ids and "moves" not in ids
+
+
+# --- property-copy: an invariant identical to a property is a cheat ---
+
+def test_property_copy_detected_after_whitespace_normalisation():
+    from extend import property_copy
+    props = ["{1'b0, hwm} + {1'b0, hdrm} == 5'd8"]
+    invs = ["hwm <= 4'd8", "{1'b0,hwm}   + {1'b0,hdrm} ==  5'd8"]
+    assert property_copy(invs, props) is not None
+
+
+def test_property_copy_none_when_lists_disjoint():
+    from extend import property_copy
+    assert property_copy(["hwm >= sp"], ["tokens != 3'd0"]) is None

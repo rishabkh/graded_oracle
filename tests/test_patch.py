@@ -193,3 +193,20 @@ def test_patched_design_reads_in_yosys(patch):
              f"read_verilog -sv {f}; hierarchy -top token_bucket; proc"],
             capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr[-500:]
+
+
+# --- anchor-then-delete tolerance: the intent is unambiguous, honour it ---
+
+def test_anchor_then_delete_same_line_applies():
+    # the real watchdog case: anchor consumed the line, delete targets it
+    v = "a\nb\nc\n"
+    out = apply_patch(v, "@@ b @@\n- b\n+ B")
+    assert out == "a\nB\nc\n"
+
+
+def test_anchor_then_delete_only_reaches_back_one_line():
+    # backward tolerance is exactly the just-consumed anchor line — a
+    # delete that matches nothing forward and is not the anchored line
+    # still fails loudly
+    with pytest.raises(PatchError, match="delete"):
+        apply_patch("a\nb\nc\n", "@@ c @@\n- a")

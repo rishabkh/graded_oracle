@@ -93,6 +93,12 @@ def apply_patch(text, diff):
             cursor = j + 1
         elif op == "-":
             j = find_forward(payload, cursor)
+            if j is None and cursor > 0 and \
+                    content(cursor - 1).strip() == payload.strip():
+                # Anchor-then-delete of the same line: the anchor already
+                # consumed it, so forward search misses. The intent is
+                # unambiguous — delete the just-anchored line.
+                j = cursor - 1
             if j is None:
                 raise PatchError(f"delete line not found: {payload.strip()!r}")
             del lines[j]

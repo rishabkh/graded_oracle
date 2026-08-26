@@ -103,7 +103,9 @@ INVARIANT_RULES = """\
 - Keep clauses as strong as the parent's. Generalising a clause to cover
   new state is correct. Weakening it until it happens to still hold is not.
 - Add no clause you cannot justify. A clause that could be deleted without
-  breaking the proof is noise in the corpus."""
+  breaking the proof is noise in the corpus.
+- Never copy a property into the invariant list. An invariant clause
+  syntactically identical to any assertion is rejected outright."""
 
 DISPOSITION_BLOCK = """\
 For every invariant clause in the parent list, record what happened to it:
@@ -396,6 +398,20 @@ def identifiers(text):
     return ids - _VERILOG_NOISE
 
 
+def property_copy(invariants, asserts):
+    """An invariant clause syntactically identical to a property (after
+    whitespace normalisation) is the cheapest cheat on the second-property
+    type: sound, but it teaches 'copy the property into the invariant
+    list'. Returns the offending clause, or None. All whitespace is
+    stripped before comparing, so spacing differences cannot hide a copy."""
+    squash = lambda x: "".join(x.split())  # noqa: E731
+    assert_set = {squash(a) for a in asserts}
+    for clause in invariants:
+        if squash(clause) in assert_set:
+            return clause
+    return None
+
+
 def has_coupling_clause(new_invs, parent_ids, new_ids):
     for clause in new_invs:
         ids = identifiers(clause)
@@ -467,6 +483,14 @@ def grade_step4(parent, ext_type, out, record):
     if err:
         record["verdict"] = "DISPOSITION_ERROR"
         record["error"] = err
+        return record
+
+    copied = property_copy(out["invariants"], child_asserts)
+    if copied:
+        record["verdict"] = "PROPERTY_COPY"
+        record["error"] = (f"invariant clause is a verbatim copy of a "
+                           f"property: {copied!r} — sound but teaches the "
+                           "wrong lesson; rejected")
         return record
 
     parent_bits = state_bits(parent["verilog"], parent["top_module"])
