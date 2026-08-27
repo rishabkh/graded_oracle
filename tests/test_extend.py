@@ -183,3 +183,14 @@ def test_property_copy_detected_after_whitespace_normalisation():
 def test_property_copy_none_when_lists_disjoint():
     from extend import property_copy
     assert property_copy(["hwm >= sp"], ["tokens != 3'd0"]) is None
+
+
+def test_identifiers_ignore_verilog_keywords():
+    from extend import identifiers
+    v = ("localparam [7:0] HI_LIMIT = 8'd192;\n"
+         "parameter W = 4;\n"
+         "case (sel) default: q <= 0; endcase\n")
+    ids = identifiers(v)
+    assert "HI_LIMIT" in ids and "sel" in ids and "q" in ids
+    for kw in ("localparam", "parameter", "case", "endcase", "default"):
+        assert kw not in ids, kw

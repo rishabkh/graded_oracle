@@ -302,9 +302,11 @@ def main():
             out, usage, stop = call_model(build_prompt(parent))
         record["usage"] = usage
         if out is None:
-            record["verdict"] = "REFUSED" if stop == "refusal" else "UNPARSEABLE"
+            record["verdict"] = {"refusal": "REFUSED",
+                                 "length": "TRUNCATED"}.get(stop, "UNPARSEABLE")
+            record["raw_text"] = llm_client.LAST_RAW
             dump(record)
-            print(f"{record['verdict'].lower()} — logged")
+            print(f"{record['verdict'].lower()} — logged (raw text kept)")
             return
         record["reasoning"] = out["reasoning"]
         grade_extension(parent, out["patch"], record)

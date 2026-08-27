@@ -27,6 +27,10 @@ import os
 _or_client = None
 _an_client = None
 
+# Raw text of the last reply, kept so an unparseable/truncated answer can
+# be logged instead of vanishing with the money that bought it.
+LAST_RAW = None
+
 
 def provider():
     return os.environ.get("CLAUDE_PROVIDER", "anthropic")
@@ -107,7 +111,11 @@ def _call_anthropic(*, model, max_tokens, user, system, schema, effort):
              "output": resp.usage.output_tokens}
     if resp.stop_reason == "refusal":
         return None, usage, "refusal"
-    text = next(b.text for b in resp.content if b.type == "text")
+    global LAST_RAW
+    text = next((b.text for b in resp.content if b.type == "text"), "")
+    LAST_RAW = text
+    if resp.stop_reason == "max_tokens" and extract_json(text) is None:
+        return None, usage, "length"
     return text, usage, "ok"
 
 
@@ -143,10 +151,13 @@ def _call_openrouter(*, model, max_tokens, user, system, schema, effort):
              "output": resp.usage.completion_tokens}
     if choice.finish_reason == "content_filter":
         return None, usage, "refusal"
+    global LAST_RAW
     text = choice.message.content or ""
+    LAST_RAW = text
     obj = extract_json(text)
     if obj is None:
-        return None, usage, "ok"
+        stop = "length" if choice.finish_reason == "length" else "ok"
+        return None, usage, stop
     # Re-serialise so callers always receive clean JSON text, exactly as
     # the Anthropic structured-output path would have produced.
     return json.dumps(obj), usage, "ok"

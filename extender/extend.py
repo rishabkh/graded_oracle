@@ -43,7 +43,7 @@ from patch import PatchError, apply_patch                 # noqa: E402
 import llm_client                                               # noqa: E402
 from oracle import PropertyInfo, grade, grade_triple_generated  # noqa: E402
 
-MAX_TOKENS = 20000
+MAX_TOKENS = 32000
 
 SYSTEM_PROMPT = """\
 You are extending a formally verified SystemVerilog module.
@@ -388,7 +388,11 @@ def remove_asserts(source, exprs):
 _ID = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _VERILOG_NOISE = {"posedge", "negedge", "always", "assert", "module",
                   "endmodule", "begin", "end", "if", "else", "wire", "reg",
-                  "input", "output", "initial", "assign"}
+                  "input", "output", "initial", "assign",
+                  "localparam", "parameter", "case", "casez", "casex",
+                  "endcase", "default", "function", "endfunction",
+                  "integer", "genvar", "generate", "endgenerate",
+                  "signed", "unsigned", "logic", "assume", "cover"}
 
 
 def identifiers(text):
@@ -602,9 +606,11 @@ def main():
         out, usage, stop = call_model(prompt, schema)
     record["usage"] = usage
     if out is None:
-        record["verdict"] = "REFUSED" if stop == "refusal" else "UNPARSEABLE"
+        record["verdict"] = {"refusal": "REFUSED",
+                             "length": "TRUNCATED"}.get(stop, "UNPARSEABLE")
+        record["raw_text"] = llm_client.LAST_RAW
         dump(record)
-        print(f"{record['verdict'].lower()} — logged")
+        print(f"{record['verdict'].lower()} — logged (raw text kept)")
         return
     for k in ("new_state", "coupling", "induction_gap",
               "why_parent_insufficient", "claim", "shared_state",

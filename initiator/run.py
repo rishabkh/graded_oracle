@@ -210,7 +210,9 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
 
         record["usage"] = usage
         if raw_json is None:
-            record["verdict"] = "REFUSED" if stop == "refusal" else "UNPARSEABLE"
+            record["verdict"] = {"refusal": "REFUSED",
+                                 "length": "TRUNCATED"}.get(stop, "UNPARSEABLE")
+            record["raw_text"] = llm_client.LAST_RAW
             dump(record)
             print(f"[{i}] refusal — logged, continuing")
             continue
