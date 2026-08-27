@@ -247,3 +247,28 @@ def test_decorative_tautology_invariant_is_rejected(tmp_path):
     assert r.verdict is NecessityVerdict.DECORATIVE, r.reason
     assert r.with_invariants.tier is Tier.PROVEN
     assert r.without_invariants.tier is Tier.PROVEN
+
+
+# --- composition semantics (the COMPOSE de-risk pair): a plain wire
+# between two verified parts destroys necessity (structurally-constrained
+# input makes the property inductive unaided); stateful glue that HOLDS
+# under idle restores it, because the glue state is new territory no
+# parent invariant covers ---
+
+def test_compose_plain_wire_is_decorative():
+    r = grade_triple(TRIPLES / "compose_wire.sv",
+                     PropertyInfo(top_module="compose_wire",
+                                  invariants=["held_o != 4'b0000"]),
+                     timeout_s=120, keep_workdirs=False)
+    assert r.verdict is NecessityVerdict.DECORATIVE
+
+
+def test_compose_stateful_glue_is_necessary():
+    r = grade_triple(
+        TRIPLES / "compose_buffer.sv",
+        PropertyInfo(top_module="compose_buffer",
+                     invariants=["buf_d == 4'b0001 || buf_d == 4'b0010 || "
+                                 "buf_d == 4'b0100 || buf_d == 4'b1000"]),
+        timeout_s=120, keep_workdirs=False)
+    assert r.verdict is NecessityVerdict.NECESSARY
+    assert r.without_invariants.tier is Tier.NOT_INDUCTIVE

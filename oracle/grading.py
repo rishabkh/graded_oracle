@@ -340,7 +340,8 @@ def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
 
     unreached_antecedents: list[str] = []
     missing_antecedents: list[str] = []
-    sanity_ok = True
+    unreached_sanities: list[str] = []
+    sanity_suspect = False
     for lineno, (kind, expr) in inj.line_map.items():
         if lineno in reached_lines:
             cover_ev.reached_covers.append(expr)
@@ -349,14 +350,45 @@ def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
             if kind == "antecedent":
                 unreached_antecedents.append(expr)
             else:
-                sanity_ok = False
+                unreached_sanities.append(expr)
         else:
             if kind == "antecedent":
                 missing_antecedents.append(expr)
             else:
-                sanity_ok = False
+                sanity_suspect = True   # missing from the log: no escalation
+                                        # can rescue instrument integrity
 
-    if not sanity_ok:
+    # A sanity cover unreached at depth D gets the same PDR escalation as
+    # an antecedent would: "unreached in 20 cycles" is a depth guess, and a
+    # warning channel that fires on depth guesses cries wolf. Escalation
+    # decides only whether the WARNING fires — sanity never touches tiers.
+    for s in unreached_sanities:
+        stripped = strip_assertions(source)
+        neg = inject_invariants(stripped, prop.top_module, [f"!({s})"])
+        with tempfile.TemporaryDirectory() as td:
+            sanity_path = Path(td) / verilog_file.name
+            sanity_path.write_text(neg.text)
+            pdr = run_sby(f"{verilog_file.stem}_sanity", sanity_path,
+                          prop.top_module, "prove", depth, timeout_s, root,
+                          engine=PDR_ENGINE)
+        pdr_ev = _evidence("prove", pdr, depth)
+        runs.append(pdr_ev)
+        if pdr.rc == 2:
+            pdr_ev.notes.append(
+                f"sanity_reachability: cover '{s}' reachable beyond depth "
+                f"{depth} (witness in evidence) — warning cleared")
+        elif pdr.rc == 0:
+            pdr_ev.notes.append(
+                f"sanity_reachability: cover '{s}' proven unreachable for "
+                "all time by abc pdr")
+            sanity_suspect = True
+        else:
+            pdr_ev.notes.append(
+                f"sanity_reachability: undecided (rc={pdr.rc}) for cover "
+                f"'{s}' — warning retained")
+            sanity_suspect = True
+
+    if sanity_suspect:
         cover_ev.notes.append(SANITY_NOTE)
 
     if missing_antecedents:

@@ -43,6 +43,13 @@ def _strip_fences(text: str) -> str:
     return m.group(1) if m else text
 
 
+# `inst.signal` inside an expression is NOT resolved by yosys's open
+# frontend — it silently becomes a new implicitly-declared dangling wire,
+# so the expression is semantically inert. No legal expression in our
+# Verilog subset contains a dot (no real literals, no struct members).
+_HIER_REF = re.compile(r"[A-Za-z0-9_\]]\s*\.\s*[A-Za-z_]")
+
+
 def _string_list(obj: dict, key: str) -> list[str]:
     value = obj.get(key, [])
     if not isinstance(value, list):
@@ -52,6 +59,12 @@ def _string_list(obj: dict, key: str) -> list[str]:
         if not isinstance(item, str) or not item.strip():
             raise ContractViolation(f"'{key}' must contain only non-empty "
                                     f"strings, got {item!r}")
+        if _HIER_REF.search(item):
+            raise ContractViolation(
+                f"'{key}' contains a hierarchical reference: {item!r} — "
+                "the open toolchain silently turns inst.signal into a "
+                "dangling wire; expose instance state through a top-level "
+                "wire and reference that instead")
     return value
 
 

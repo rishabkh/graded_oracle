@@ -597,3 +597,46 @@ def test_without_run_notes_antecedents_stripped(sv_file, tmp_path, monkeypatch):
     assert r.verdict is NecessityVerdict.NECESSARY
     assert any("stripped" in n for ev in r.without_invariants.runs
                for n in ev.notes)
+
+
+# --- sanity covers get the same PDR escalation as antecedents: a depth
+# guess must not fire the instrument-suspect warning (false alarms train
+# readers to ignore the channel) ---
+
+def test_sanity_unreached_but_pdr_reachable_clears_warning(
+        sv_file, tmp_path, monkeypatch):
+    # sanity unreached at depth, PDR refutes assert(!s) -> deep witness:
+    # genuinely reachable, warning must NOT fire
+    r = _grade(sv_file, tmp_path, monkeypatch, prove_rc=0,
+               antecedents=["a"], sanity=["s"],
+               cover_plan={"a": "reached", "s": "unreached"},
+               pdr_unreach_rc=2)
+    assert r.tier is Tier.PROVEN
+    assert not any("sanity_cover_unreached" in n
+                   for ev in r.runs for n in ev.notes)
+    assert any("beyond depth" in n and "s" in n
+               for ev in r.runs for n in ev.notes)
+
+
+def test_sanity_unreached_and_pdr_unreachable_keeps_warning(
+        sv_file, tmp_path, monkeypatch):
+    # PDR proves the sanity cover unreachable for all time: the instrument
+    # really is suspect; warning fires, verdict unchanged (never VACUOUS)
+    r = _grade(sv_file, tmp_path, monkeypatch, prove_rc=0,
+               antecedents=["a"], sanity=["s"],
+               cover_plan={"a": "reached", "s": "unreached"},
+               pdr_unreach_rc=0)
+    assert r.tier is Tier.PROVEN
+    assert any("sanity_cover_unreached" in n
+               for ev in r.runs for n in ev.notes)
+
+
+def test_sanity_pdr_inconclusive_keeps_warning(sv_file, tmp_path, monkeypatch):
+    # escalation undecided: warn — the safe error direction for a warning
+    r = _grade(sv_file, tmp_path, monkeypatch, prove_rc=0,
+               antecedents=["a"], sanity=["s"],
+               cover_plan={"a": "reached", "s": "unreached"},
+               pdr_unreach_rc=8)
+    assert r.tier is Tier.PROVEN
+    assert any("sanity_cover_unreached" in n
+               for ev in r.runs for n in ev.notes)

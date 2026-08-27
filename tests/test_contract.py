@@ -97,3 +97,31 @@ def test_empty_string_in_list_is_violation():
     bad = dict(VALID, invariants=["sa == sb", ""])
     with pytest.raises(ContractViolation, match="invariants"):
         parse_generator_output(json.dumps(bad))
+
+
+# --- hierarchical references: yosys's open frontend silently turns
+# `u0.count` into a NEW dangling wire (warning: implicitly declared),
+# so a dotted expression is semantically inert, never what was meant ---
+
+def test_hierarchical_ref_in_invariants_rejected():
+    with pytest.raises(ContractViolation, match="hierarchical"):
+        parse_generator_output(json.dumps({
+            "verilog": "module m (input wire clk); always @(*) assert (1); endmodule",
+            "top_module": "m",
+            "invariants": ["u0.count <= 4'd12"]}))
+
+
+def test_hierarchical_ref_in_antecedents_rejected():
+    with pytest.raises(ContractViolation, match="hierarchical"):
+        parse_generator_output(json.dumps({
+            "verilog": "module m (input wire clk); always @(*) assert (1); endmodule",
+            "top_module": "m",
+            "antecedents": ["u1.busy"]}))
+
+
+def test_plain_expressions_still_accepted():
+    out = parse_generator_output(json.dumps({
+        "verilog": "module m (input wire clk); always @(*) assert (1); endmodule",
+        "top_module": "m",
+        "invariants": ["c0 <= 4'd12", "{1'b0, a} + {1'b0, b} == 5'd8"]}))
+    assert out.prop.invariants[0] == "c0 <= 4'd12"
