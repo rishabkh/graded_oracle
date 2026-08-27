@@ -75,7 +75,7 @@ Three conditions, all required.
 - If a register's declared width admits values it can never reach (e.g. a counter
   that saturates at 8 in a 4-bit reg), include an invariant bounding it — induction
   otherwise starts from an impossible value and fails on a phantom CTI.
-- Keep the module under 40 lines.
+- Keep the module under 200 lines.
 
 ## Output format
 

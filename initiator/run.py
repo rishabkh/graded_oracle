@@ -40,7 +40,7 @@ from oracle.contract import parse_generator_output           # noqa: E402
 
 MODEL = "claude-opus-5"
 EFFORT = "high"
-MAX_TOKENS = 16000
+MAX_TOKENS = 32000
 GRADE_KWARGS = dict(timeout_s=120)
 LOG_PATH = HERE / "logs" / "attempts.jsonl"
 

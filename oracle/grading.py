@@ -183,6 +183,13 @@ def grade_triple(verilog_file: Path | str, prop: PropertyInfo, *,
 
     prop_without = PropertyInfo(top_module=prop.top_module, clock=prop.clock)
     without_res = grade(verilog_file, prop_without, **kwargs)
+    if prop.antecedents:
+        for ev in without_res.runs:
+            if ev.mode == "prove":
+                ev.notes.append(
+                    "antecedent(s) deliberately stripped for the "
+                    "without-run — vacuity was checked on the with-run")
+                break
 
     if without_res.tier is Tier.NOT_INDUCTIVE:
         return TripleResult(

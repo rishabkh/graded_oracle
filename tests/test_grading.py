@@ -587,3 +587,13 @@ def test_keep_workdirs_false_removes_rundirs(sv_file, tmp_path, monkeypatch):
     assert r.tier is Tier.PROVEN
     assert not r.runs[0].workdir.parent.exists()
     assert any("workdir removed" in n for n in r.runs[0].notes)
+
+
+def test_without_run_notes_antecedents_stripped(sv_file, tmp_path, monkeypatch):
+    # the without-run strips antecedents by design; its evidence must SAY so,
+    # not claim the property never had one
+    r = _triple(sv_file, tmp_path, monkeypatch, INV_LOADBEARING,
+                antecedents=["a"], cover_plan={"a": "reached"})
+    assert r.verdict is NecessityVerdict.NECESSARY
+    assert any("stripped" in n for ev in r.without_invariants.runs
+               for n in ev.notes)
