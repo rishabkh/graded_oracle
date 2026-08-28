@@ -125,3 +125,25 @@ def test_plain_expressions_still_accepted():
         "top_module": "m",
         "invariants": ["c0 <= 4'd12", "{1'b0, a} + {1'b0, b} == 5'd8"]}))
     assert out.prop.invariants[0] == "c0 <= 4'd12"
+
+
+# --- prose in expression fields: two identifiers separated by bare
+# whitespace is never legal Verilog, so it's a precise prose detector
+# (the real REPLICATE failure: "pool reaches 4'd0 with all eight...") ---
+
+def test_prose_sanity_cover_rejected():
+    with pytest.raises(ContractViolation, match="prose"):
+        parse_generator_output(json.dumps({
+            "verilog": "module m (input wire clk); always @(*) assert (1); endmodule",
+            "top_module": "m",
+            "sanity_covers": ["pool reaches 4'd0 with all credits held"]}))
+
+
+def test_expression_like_fields_still_accepted():
+    out = parse_generator_output(json.dumps({
+        "verilog": "module m (input wire clk); always @(*) assert (1); endmodule",
+        "top_module": "m",
+        "antecedents": ["frozen"],
+        "sanity_covers": ["pool == 4'd0", "$onehot(mask)", "a ? b : c"],
+        "invariants": ["{1'b0, a} + {1'b0, b} == 5'd8"]}))
+    assert out.prop.antecedents == ["frozen"]

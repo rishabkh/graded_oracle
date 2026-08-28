@@ -194,3 +194,171 @@ def test_identifiers_ignore_verilog_keywords():
     assert "HI_LIMIT" in ids and "sel" in ids and "q" in ids
     for kw in ("localparam", "parameter", "case", "endcase", "default"):
         assert kw not in ids, kw
+
+
+# --- REPLICATE checks: per-instance coverage + the aggregate requirement.
+# N per-instance copies of the parent family are EXPECTED (instance-internal
+# asserts need them); what must ALSO exist is >=1 clause that is a genuine
+# sum/reduction across instances — the shape the corpus has zero of. ---
+
+def test_aggregate_clause_detects_sum_over_instances():
+    from extend import aggregate_clause
+    invs = ["t0 <= 3'd4", "t1 <= 3'd4",
+            "({1'b0, free} + {2'b00, t0} + {2'b00, t1} + {2'b00, t2} + "
+            "{2'b00, t3}) == 5'd8"]
+    assert aggregate_clause(invs, 4) is not None
+
+
+def test_aggregate_clause_rejects_pairwise_peer_shape():
+    # the real PEER clause: relates TWO things, no reduction over N
+    from extend import aggregate_clause
+    invs = ["pri_b == (4'b0001 << ((idx + off) & 2'b11))",
+            "pri == (4'b0001 << idx)"]
+    assert aggregate_clause(invs, 4) is None
+
+
+def test_aggregate_clause_bit_selects_count_as_indices():
+    from extend import aggregate_clause
+    assert aggregate_clause(
+        ["(gnt[0] + gnt[1] + gnt[2] + gnt[3]) <= 2'd1"], 4) is not None
+
+
+def test_instance_coverage_gaps_satisfied():
+    from extend import instance_coverage_gaps
+    parent = ["tokens_hi == (tokens >= 3'd2)", "tokens <= 3'd4"]
+    child = (["h0 == (t0 >= 3'd2)", "h1 == (t1 >= 3'd2)"]
+             + ["t0 <= 3'd4", "t1 <= 3'd4"]
+             + ["({1'b0, free} + {2'b00, t0} + {2'b00, t1}) == 5'd8"])
+    assert instance_coverage_gaps(parent, child, 2) == []
+
+
+def test_instance_coverage_gaps_reports_missing_family():
+    from extend import instance_coverage_gaps
+    parent = ["tokens_hi == (tokens >= 3'd2)", "tokens <= 3'd4"]
+    child = ["t0 <= 3'd4", "t1 <= 3'd4"]     # hi-relation family absent
+    gaps = instance_coverage_gaps(parent, child, 2)
+    assert len(gaps) == 1 and "tokens_hi" in gaps[0]
+
+
+# --- COMPOSE gates ---
+
+HOT_SRC = """\
+module hot_src (
+    input wire clk, input wire rst, input wire step,
+    output wire [3:0] hot
+);
+    reg [1:0] sel;
+    initial sel = 2'd0;
+    always @(posedge clk)
+        if (rst) sel <= 2'd0;
+        else if (step) sel <= sel + 2'd1;
+    assign hot = 4'b0001 << sel;
+endmodule
+"""
+
+HOT_LATCH = """\
+module hot_latch (
+    input wire clk, input wire rst, input wire in_valid,
+    input wire [3:0] in_data,
+    output reg [3:0] held
+);
+    initial held = 4'b0001;
+    always @(posedge clk)
+        if (rst) held <= 4'b0001;
+        else if (in_valid) held <= in_data;
+    always @(posedge clk)
+        assert (held == 4'b0001 || held == 4'b0010 ||
+                held == 4'b0100 || held == 4'b1000);
+endmodule
+"""
+
+
+def make_compose_parents():
+    from build_corpus import extract_asserts as ea
+    pa = {"id": "x_src", "top_module": "hot_src", "clock": "clk",
+          "antecedents": [], "sanity_covers": [], "verilog": HOT_SRC,
+          "property": ea(HOT_SRC), "invariants": []}
+    pb = {"id": "x_latch", "top_module": "hot_latch", "clock": "clk",
+          "antecedents": [], "sanity_covers": [], "verilog": HOT_LATCH,
+          "property": ea(HOT_LATCH), "invariants": []}
+    return pa, pb
+
+
+WIRE_WRAPPER = """\
+module hot_link (
+    input wire clk, input wire rst, input wire step, input wire in_valid,
+    output wire [3:0] held_o
+);
+    wire [3:0] hotw;
+    hot_src  a (.clk(clk), .rst(rst), .step(step), .hot(hotw));
+    hot_latch b (.clk(clk), .rst(rst), .in_valid(in_valid),
+                 .in_data(hotw), .held(held_o));
+    always @(posedge clk)
+        if (in_valid) assert (held_o != 4'b1111);
+endmodule
+"""
+
+
+def test_compose_plain_wire_caught_before_grading():
+    # no invariant clause about glue state (there IS no glue state):
+    # rejected structurally, before any sby run or API money
+    from extend import grade_compose
+    pa, pb = make_compose_parents()
+    out = {"wrapper": WIRE_WRAPPER, "top_module": "hot_link",
+           "antecedents": ["in_valid"], "sanity_covers": [],
+           "invariants": ["held_o != 4'b0000"]}
+    rec = grade_compose(pa, pb, out, {})
+    assert rec["verdict"] == "NO_GLUE_CLAUSE"
+    assert "result" not in rec     # oracle never ran
+
+
+def test_compose_wrapper_must_be_new_module():
+    from extend import grade_compose
+    pa, pb = make_compose_parents()
+    out = {"wrapper": WIRE_WRAPPER, "top_module": "hot_src",
+           "antecedents": [], "sanity_covers": [], "invariants": []}
+    rec = grade_compose(pa, pb, out, {})
+    assert rec["verdict"] == "WRAPPER_ERROR"
+
+
+# --- COMPOSE eligibility: a parent whose invariants mention non-port
+# signals cannot be composed (wrapper invariants cannot reach inside an
+# instance — hierarchical refs are fabricated wires). Check BEFORE paying. ---
+
+def test_ports_of_token_bucket():
+    from extend import ports_of
+    from tests.test_patch import TOKEN_BUCKET
+    ports = ports_of(TOKEN_BUCKET, "token_bucket")
+    assert {"clk", "rst", "drip", "spend", "tokens", "tokens_hi"} <= ports
+
+
+def test_compose_eligibility_token_bucket_ok():
+    from extend import compose_hidden_signals
+    from tests.test_patch import TOKEN_BUCKET
+    row = {"top_module": "token_bucket", "verilog": TOKEN_BUCKET,
+           "invariants": ["tokens_hi == (tokens >= 3'd2)", "tokens <= 3'd4"]}
+    assert compose_hidden_signals(row) == set()
+
+
+def test_compose_eligibility_hidden_state_flagged():
+    from extend import compose_hidden_signals
+    v = ("module wd (input wire clk, input wire rst, output reg fault);\n"
+         "reg [3:0] timer;\ninitial timer = 4'd8;\ninitial fault = 0;\n"
+         "always @(posedge clk) begin end\nendmodule\n")
+    row = {"top_module": "wd", "verilog": v,
+           "invariants": ["timer <= 4'd8", "fault == (timer == 4'd0)"]}
+    assert compose_hidden_signals(row) == {"timer"}
+
+
+def test_compose_dotted_invariants_get_their_own_verdict():
+    # dotted clauses must be named as the problem — not surface as a
+    # confusing "coverage missing" for clauses that are visibly present
+    from extend import grade_compose
+    pa, pb = make_compose_parents()
+    out = {"wrapper": WIRE_WRAPPER.replace("hot_link", "hot_link2"),
+           "top_module": "hot_link2",
+           "antecedents": [], "sanity_covers": [],
+           "invariants": ["u_a.sel <= 2'd3"]}
+    rec = grade_compose(pa, pb, out, {})
+    assert rec["verdict"] == "HIERARCHICAL_REF"
+    assert "u_a.sel" in rec["error"]

@@ -48,6 +48,10 @@ def _strip_fences(text: str) -> str:
 # so the expression is semantically inert. No legal expression in our
 # Verilog subset contains a dot (no real literals, no struct members).
 _HIER_REF = re.compile(r"[A-Za-z0-9_\]]\s*\.\s*[A-Za-z_]")
+# Two identifiers separated by bare whitespace is never legal in a Verilog
+# expression — a precise detector for prose ("pool reaches 4'd0 ...").
+# Sized literals (4'd0) are single tokens and never trigger it.
+_PROSE = re.compile(r"[A-Za-z_$][\w$]*\s+[A-Za-z_][\w$]*")
 
 
 def _string_list(obj: dict, key: str) -> list[str]:
@@ -65,6 +69,11 @@ def _string_list(obj: dict, key: str) -> list[str]:
                 "the open toolchain silently turns inst.signal into a "
                 "dangling wire; expose instance state through a top-level "
                 "wire and reference that instead")
+        if _PROSE.search(item):
+            raise ContractViolation(
+                f"'{key}' looks like prose, not a Verilog expression: "
+                f"{item!r} — each entry must be a boolean expression over "
+                "top-level signals (e.g. \"pool == 4'd0\")")
     return value
 
 
