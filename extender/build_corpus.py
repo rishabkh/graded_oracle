@@ -186,6 +186,13 @@ def _spread(name, values):
           f"median={statistics.median(vals):.2f} max={max(vals):.2f}")
 
 
+def merge_corpus(g0_rows, existing_rows):
+    """A rebuild regenerates generation zero from the run log; promoted
+    later generations live only in corpus.jsonl and must survive."""
+    return g0_rows + [r for r in existing_rows
+                      if r.get("generation", 0) > 0]
+
+
 def print_distributions(rows):
     print(f"\n=== generation-zero baseline over {len(rows)} triples ===")
     _spread("state_bits", [r["metrics"]["state_bits"] for r in rows])
@@ -223,10 +230,15 @@ def main():
             print(f"  {row['id']} {row['top_module']:24s} "
                   f"state_bits={row['metrics']['state_bits']}")
 
+    existing = ([json.loads(l) for l in CORPUS.read_text().splitlines()]
+                if CORPUS.exists() else [])
+    rows = merge_corpus(rows, existing)
     with CORPUS.open("w") as f:
         for row in rows:
             f.write(json.dumps(row) + "\n")
-    print(f"\nwrote {len(rows)} rows -> {CORPUS}")
+    n_later = sum(1 for r in rows if r.get("generation", 0) > 0)
+    print(f"\nwrote {len(rows)} rows -> {CORPUS} "
+          f"({n_later} promoted row(s) preserved)")
 
     print_distributions(rows)
 

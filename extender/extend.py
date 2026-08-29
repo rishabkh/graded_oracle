@@ -345,7 +345,9 @@ WORK IT OUT BEFORE YOU WRITE THE WRAPPER
    property, can be held indefinitely with enables low, and steps to a
    property violation.
 3. why_parents_insufficient: why neither parent's invariants exclude it.
-4. Then the wrapper module, then the complete invariant list.
+4. Then the wrapper module, then the complete invariant list. The wrapper
+   field is PLAIN Verilog module source — not a diff, no +/- line
+   prefixes, no ---/+++/@@ headers.
 
 FIELD NOTES for the JSON reply — antecedents and sanity_covers are
 VERILOG BOOLEAN EXPRESSIONS over top-level signals, never descriptions:
@@ -424,7 +426,9 @@ WORK IT OUT BEFORE YOU WRITE THE WRAPPER
    low, and steps to a property violation.
 3. why_aggregate_needed: why no collection of per-instance clauses excludes
    that state.
-4. Then the wrapper module, then the complete invariant list.
+4. Then the wrapper module, then the complete invariant list. The wrapper
+   field is PLAIN Verilog module source — not a diff, no +/- line
+   prefixes, no ---/+++/@@ headers.
 
 FIELD NOTES for the JSON reply — antecedents and sanity_covers are
 VERILOG BOOLEAN EXPRESSIONS over top-level signals, never descriptions:
@@ -672,6 +676,30 @@ def compose_hidden_signals(row):
     return used - ports
 
 
+_DIFF_MARKER = re.compile(r"^(---\s|\+\+\+\s|@@)", re.M)
+
+
+def strip_diff_decoration(text):
+    """Recover a plain module from an answer wrapped in unified-diff
+    syntax (---/+++/@@ headers, + line prefixes). Applied only when diff
+    markers are present, so plain Verilog passes through untouched —
+    same philosophy as fence-stripping: a formatting tic must not waste
+    the call."""
+    if not _DIFF_MARKER.search(text):
+        return text
+    out = []
+    for line in text.splitlines():
+        if re.match(r"^(---\s|\+\+\+\s|@@)", line) or line == "@@":
+            continue
+        if line.startswith("+"):
+            out.append(line[1:])
+        elif line.startswith("-"):
+            continue
+        else:
+            out.append(line)
+    return "\n".join(out) + "\n"
+
+
 def hierarchical_refs(out):
     """Dotted references in any expression field — named early with the
     correct fix, instead of surfacing later as a baffling coverage miss
@@ -736,7 +764,7 @@ def grade_compose(pa, pb, out, record):
     """assemble (A verbatim + B verbatim + glue wrapper) -> property
     discipline -> coverage + glue-clause gates -> yosys -> oracle.
     A DECORATIVE verdict here means the glue was not stateful enough."""
-    wrapper = out["wrapper"]
+    wrapper = strip_diff_decoration(out["wrapper"])
     top = out["top_module"]
     record["wrapper"] = wrapper
     record["invariants"] = out["invariants"]
@@ -831,7 +859,7 @@ def grade_compose(pa, pb, out, record):
 def grade_replicate(parent, out, record, n):
     """assemble (parent verbatim + wrapper) -> property discipline ->
     coverage + aggregate checks -> yosys -> oracle."""
-    wrapper = out["wrapper"]
+    wrapper = strip_diff_decoration(out["wrapper"])
     top = out["top_module"]
     record["wrapper"] = wrapper
     record["invariants"] = out["invariants"]

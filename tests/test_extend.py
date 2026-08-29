@@ -362,3 +362,36 @@ def test_compose_dotted_invariants_get_their_own_verdict():
     rec = grade_compose(pa, pb, out, {})
     assert rec["verdict"] == "HIERARCHICAL_REF"
     assert "u_a.sel" in rec["error"]
+
+
+# --- diff-decoration stripping: the model sometimes wraps a plain-module
+# answer in unified-diff syntax (---/+++/@@ headers, + prefixes) out of
+# patch-format habit. Same philosophy as fence-stripping: clean it,
+# don't waste the call. ---
+
+DIFF_DECORATED = """\
+--- a/design.sv
++++ b/design.sv
+@@
++// a comment
++module wrapped_top (
++    input wire clk
++);
++    reg r;
++    initial r = 1'b0;
++endmodule
+"""
+
+
+def test_strip_diff_decoration_recovers_module():
+    from extend import strip_diff_decoration
+    out = strip_diff_decoration(DIFF_DECORATED)
+    assert out.splitlines()[0] == "// a comment"
+    assert "module wrapped_top (" in out
+    assert "+" not in out and "@@" not in out
+
+
+def test_strip_diff_decoration_leaves_plain_verilog_alone():
+    from extend import strip_diff_decoration
+    plain = "module m (\n    input wire clk\n);\n    reg r;\nendmodule\n"
+    assert strip_diff_decoration(plain) == plain

@@ -162,3 +162,15 @@ def test_template_nonzero_concat_is_not_zero_extension():
 def test_template_trailing_constant_concat_is_not_zero_extension():
     # odd == {cnt, 1'b1} is shift-and-set, not width extension
     assert template("odd == {cnt, 1'b1}") != template("odd == cnt")
+
+
+# --- rebuilding gen-0 must never erase promoted later generations ---
+
+def test_merge_corpus_preserves_later_generations():
+    from extender.build_corpus import merge_corpus
+    g0 = [{"id": "g0_000", "generation": 0}]
+    existing = [{"id": "g0_000", "generation": 0},   # stale g0: replaced
+                {"id": "g1_000", "generation": 1},
+                {"id": "g2_000", "generation": 2}]
+    merged = merge_corpus(g0, existing)
+    assert [r["id"] for r in merged] == ["g0_000", "g1_000", "g2_000"]
