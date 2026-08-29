@@ -36,6 +36,7 @@ sys.path.insert(0, str(HERE))
 
 from build_corpus import (extract_asserts, pdr_wall_s, state_bits,   # noqa: E402
                           template)
+from coi import coi_ratio                                            # noqa: E402
 
 CORPUS = HERE / "corpus.jsonl"
 EXT_LOG = HERE / "logs" / "extensions.jsonl"
@@ -133,6 +134,8 @@ def promote(corpus_rows, ext_records, compute_metrics=True):
             "metrics": {
                 "state_bits": (state_bits(child_v, top)
                                if compute_metrics else None),
+                "coi_ratio": (coi_ratio(child_v, top)
+                              if compute_metrics else None),
                 "pdr_wall_s": pdr_wall_s(rec),
                 "clause_count": len(invariants),
                 "invariant_templates": [template(x) for x in invariants],

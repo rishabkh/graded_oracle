@@ -168,6 +168,7 @@ def flatten_record(record, idx):
         "invariants": invariants,
         "metrics": {
             "state_bits": None,          # filled by main() when yosys runs
+            "coi_ratio": None,           # filled by main() when yosys runs
             "pdr_wall_s": pdr_wall_s(record),
             "clause_count": len(invariants),
             "invariant_templates": [template(x) for x in invariants],
@@ -196,6 +197,7 @@ def merge_corpus(g0_rows, existing_rows):
 def print_distributions(rows):
     print(f"\n=== generation-zero baseline over {len(rows)} triples ===")
     _spread("state_bits", [r["metrics"]["state_bits"] for r in rows])
+    _spread("coi_ratio", [r["metrics"].get("coi_ratio") for r in rows])
     _spread("pdr_wall_s", [r["metrics"]["pdr_wall_s"] for r in rows])
 
     clauses = Counter(r["metrics"]["clause_count"] for r in rows)
@@ -224,11 +226,15 @@ def main():
         if shutil.which("yosys") is None:
             sys.exit("yosys not on PATH — run `hwtools` first, "
                      "or pass --no-yosys")
+        from coi import coi_ratio
         for row in rows:
             row["metrics"]["state_bits"] = state_bits(
                 row["verilog"], row["top_module"])
+            row["metrics"]["coi_ratio"] = coi_ratio(
+                row["verilog"], row["top_module"])
             print(f"  {row['id']} {row['top_module']:24s} "
-                  f"state_bits={row['metrics']['state_bits']}")
+                  f"state_bits={row['metrics']['state_bits']} "
+                  f"coi={row['metrics']['coi_ratio']}")
 
     existing = ([json.loads(l) for l in CORPUS.read_text().splitlines()]
                 if CORPUS.exists() else [])

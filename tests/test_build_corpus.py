@@ -174,3 +174,26 @@ def test_merge_corpus_preserves_later_generations():
                 {"id": "g2_000", "generation": 2}]
     merged = merge_corpus(g0, existing)
     assert [r["id"] for r in merged] == ["g0_000", "g1_000", "g2_000"]
+
+
+# --- cone-of-influence ratio (step 8): lines driving the property over
+# total lines — the direct measure of whether distractors are working ---
+
+import shutil as _shutil
+import pytest as _pytest
+
+
+@_pytest.mark.skipif(_shutil.which("yosys") is None,
+                     reason="yosys not on PATH (run hwtools)")
+def test_coi_ratio_drops_when_irrelevant_logic_is_added():
+    from extender.coi import coi_ratio
+    from tests.test_patch import TOKEN_BUCKET
+    from extender.patch import apply_patch
+    from extender.extend_one import SELFTEST_PATCH
+    parent = coi_ratio(TOKEN_BUCKET, "token_bucket")
+    child = coi_ratio(apply_patch(TOKEN_BUCKET, SELFTEST_PATCH),
+                      "token_bucket")
+    assert 0 < parent <= 1
+    # the distractor's spent_total counter is OUTSIDE the property's cone:
+    # same cone, more total lines, so the ratio must fall
+    assert child < parent
