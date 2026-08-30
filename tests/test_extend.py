@@ -106,6 +106,48 @@ def test_second_property_two_new_asserts():
     assert err is not None
 
 
+# --- second property must read state the first does not ---
+
+MODULE_REGS = ("module m (input wire clk);\n"
+               "reg [3:0] par; reg [7:0] bin; reg [7:0] gray;\n"
+               "localparam TOTAL = 9;\n"
+               "endmodule")
+
+
+def test_p2_new_ids_empty_when_support_is_a_subset():
+    from extend import p2_new_ids
+    assert p2_new_ids(["bin != 8'd0"], "bin <= 8'd4", MODULE_REGS) == set()
+
+
+def test_p2_new_ids_finds_the_new_register():
+    from extend import p2_new_ids
+    # the g1_026 shape: par is state the first property never reads
+    assert p2_new_ids(["gray == (bin >> 1) ^ bin"], "par == bin[0]",
+                      MODULE_REGS) == {"par"}
+
+
+def test_p2_new_ids_ignores_constants():
+    from extend import p2_new_ids
+    # TOTAL is a localparam: a new NAME but not new STATE
+    assert p2_new_ids(["bin != 8'd0"], "bin <= TOTAL", MODULE_REGS) == set()
+
+
+def test_grade_step4_rejects_second_property_with_same_support():
+    from extend import grade_step4
+    parent = {"verilog": ("module m (input wire clk, output reg a);\n"
+                          "always @(posedge clk)\n"
+                          "    assert (a == 1'b0);\n"
+                          "endmodule"),
+              "property": ["a == 1'b0"], "invariants": []}
+    out = {"patch": ("@@     assert (a == 1'b0); @@\n"
+                     "+ always @(posedge clk)\n"
+                     "+     assert (!a || !a);"),
+           "invariants": [], "dispositions": []}
+    record = {}
+    grade_step4(parent, "second", out, record)
+    assert record["verdict"] == "P2_SAME_SUPPORT", record
+
+
 # --- remove_asserts: blank a specific assertion, keep the file legal ---
 
 def test_remove_asserts_removes_only_the_named_one():

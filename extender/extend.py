@@ -232,6 +232,11 @@ depends on, so that at least one invariant clause is required by both. Two
 properties needing disjoint clauses is two problems in one file, not an
 extension.
 
+The second property must ALSO read at least one register the first
+property never mentions, so the invariant list has to say something new.
+A second property whose signals are a subset of the first's is rejected:
+it rides on the existing invariants and teaches nothing.
+
 You may add new state if the second property needs it, but you do not have
 to. If you do, the rules above about resets, initial values, and observing
 through existing outputs still apply.
@@ -246,6 +251,9 @@ WORK IT OUT BEFORE YOU WRITE THE PATCH
 1. claim: what the second property asserts, in one sentence.
 
 2. shared_state: which registers both properties depend on.
+
+2b. new_state: which register the second property reads that the first
+    does not (required — add state if the design has no candidate).
 
 3. not_inductive_alone: a concrete state that satisfies the second property,
    violates the invariant list, and steps to a violation of the second
@@ -265,9 +273,9 @@ Diff format:
 {diff_format}
 
 Reply with JSON:
-{{"claim": "...", "shared_state": "...", "not_inductive_alone": "...",
-  "shared_clause": "...", "patch": "...", "invariants": ["..."],
-  "dispositions": [...]}}"""
+{{"claim": "...", "shared_state": "...", "new_state": "...",
+  "not_inductive_alone": "...", "shared_clause": "...", "patch": "...",
+  "invariants": ["..."], "dispositions": [...]}}"""
 
 _DISPOSITION_ITEMS = {
     "type": "array",
@@ -459,7 +467,8 @@ REPLICATE_SCHEMA = _replicate_schema()
 STRUCTURAL_SCHEMA = _schema(
     ["new_state", "coupling", "induction_gap", "why_parent_insufficient"])
 SECOND_SCHEMA = _schema(
-    ["claim", "shared_state", "not_inductive_alone", "shared_clause"])
+    ["claim", "shared_state", "new_state", "not_inductive_alone",
+     "shared_clause"])
 
 # One structural move per seed, five diverse seeds. Distractor and second
 # property run on the same five, so the by-hand reading covers 15 results.
@@ -577,6 +586,16 @@ def identifiers(text):
     ids = set(_ID.findall(re.sub(r"\d+'[bodhBODH][0-9a-fA-FxXzZ_?]+", " ",
                                  text)))
     return ids - _VERILOG_NOISE
+
+
+def p2_new_ids(parent_props, new_assert, child_verilog):
+    """REGISTERS the second property reads that no parent property does.
+    Only declared regs count — a new localparam or wire name is a new
+    label, not new state. Empty means P2 rides entirely on the first
+    property's support — the same-invariants, no-new-clause pattern —
+    and is rejected."""
+    new = identifiers(new_assert) - identifiers("\n".join(parent_props))
+    return new & wrapper_regs(child_verilog)
 
 
 def property_copy(invariants, asserts):
@@ -974,6 +993,15 @@ def grade_step4(parent, ext_type, out, record):
             record["error"] = err
             return record
         record["second_property"] = new_assert
+        record["p2_new_ids"] = sorted(p2_new_ids(parent["property"],
+                                                 new_assert, child))
+        if not record["p2_new_ids"]:
+            record["verdict"] = "P2_SAME_SUPPORT"
+            record["error"] = ("second property reads no register the "
+                               "first property does not already read — it "
+                               "rides on the existing invariants and "
+                               "forces no new clause; rejected")
+            return record
         child_props = child_asserts
 
     err = check_dispositions(parent["invariants"], out["invariants"],
