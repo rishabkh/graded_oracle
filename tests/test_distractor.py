@@ -9,8 +9,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "extender"))
 
-import extend_one                              # noqa: E402
-from extend_one import SELFTEST_PATCH, grade_extension   # noqa: E402
+import distractor                              # noqa: E402
+from distractor import SELFTEST_PATCH, grade_extension   # noqa: E402
 from build_corpus import extract_asserts       # noqa: E402
 from tests.test_patch import TOKEN_BUCKET      # noqa: E402
 
@@ -38,7 +38,7 @@ def test_property_change_is_caught_not_graded():
 
 
 def test_unreadable_parent_is_yosys_error(monkeypatch):
-    monkeypatch.setattr(extend_one, "state_bits", lambda *a: None)
+    monkeypatch.setattr(distractor, "state_bits", lambda *a: None)
     rec = grade_extension(make_parent(), SELFTEST_PATCH, {})
     assert rec["verdict"] == "YOSYS_ERROR"
     assert "parent" in rec["error"]      # blamed on machinery, not the model

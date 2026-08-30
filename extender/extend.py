@@ -37,7 +37,7 @@ sys.path.insert(0, str(HERE))
 
 from build_corpus import (_mask_comments, extract_asserts,   # noqa: E402
                           state_bits)
-from extend_one import (DIFF_FORMAT, GRADE_KWARGS, MODEL, EFFORT,   # noqa: E402
+from distractor import (DIFF_FORMAT, GRADE_KWARGS, MODEL, EFFORT,   # noqa: E402
                         Spinner, dump, load_parent)
 from patch import PatchError, apply_patch                 # noqa: E402
 
@@ -1085,7 +1085,7 @@ def main():
     args = p.parse_args()
 
     if args.list_compose:
-        from extend_one import CORPUS
+        from distractor import CORPUS
         for line in CORPUS.read_text().splitlines():
             row = json.loads(line)
             hidden = compose_hidden_signals(row)
@@ -1098,7 +1098,7 @@ def main():
         print("five seeds, one structural move each; distractor and second "
               "property run on the same five (15 reads total):\n")
         for pid, name, move in PLAN:
-            print(f"  venv/bin/python extender/extend_one.py --parent {pid}"
+            print(f"  venv/bin/python extender/distractor.py --parent {pid}"
                   f"            # distractor ({name})")
             print(f"  venv/bin/python extender/extend.py --parent {pid} "
                   f"--type structural --move {move}")

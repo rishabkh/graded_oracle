@@ -34,7 +34,9 @@ from extend import (MOVE_WEIGHTS, SECOND_PROPERTY_RATE,          # noqa: E402
                     COMPOSE_SCHEMA, COMPOSE_TEMPLATE, build_prompt,
                     call_model, compose_hidden_signals, grade_compose,
                     grade_replicate, grade_step4)
-from extend_one import Spinner, dump, OUT_LOG                    # noqa: E402
+from distractor import (Spinner, dump, OUT_LOG,                   # noqa: E402
+                        build_prompt as distractor_prompt,
+                        call_model as distractor_call, grade_extension)
 from promote import promote, route                               # noqa: E402
 
 CORPUS = HERE / "corpus.jsonl"
@@ -46,6 +48,10 @@ BRANCH_FAILS = 3          # branch stop: three consecutive failures
 MAX_GEN = 3               # depth of the ratchet for this phase
 MAX_ATTEMPTS = 3          # per-task retries on format failures
 MULTIPLIER_RATE = 0.15    # replicate/compose share when eligible
+DISTRACTOR_RATE = 1 / 6   # the control: irrelevant logic, invariants verbatim.
+                          # The only move that lowers coi_ratio — without it
+                          # every extension lands inside the cone and the
+                          # metric drifts the wrong way with depth.
 
 
 def without_wall(record):
@@ -69,8 +75,9 @@ def extendable(row, without_s, max_gen=MAX_GEN):
 
 
 def sample_task(rng, parent, corpus_rows):
-    """One weighted task for a parent. GUARD is weight 0; second-property
-    runs at ~1-in-6; multipliers only between eligible parents."""
+    """One weighted task for a parent. GUARD is weight 0; distractor and
+    second-property each run at ~1-in-6; multipliers only between
+    eligible parents."""
     eligible_self = not compose_hidden_signals(parent)
     partners = [r for r in corpus_rows
                 if r["id"] != parent["id"]
@@ -85,6 +92,9 @@ def sample_task(rng, parent, corpus_rows):
         return {"ext_type": "replicate", "parent_id": parent["id"],
                 "parent2_id": None, "move": None,
                 "instances": rng.choice([4, 6])}
+    if rng.random() < DISTRACTOR_RATE:
+        return {"ext_type": "distractor", "parent_id": parent["id"],
+                "parent2_id": None, "move": None}
     if rng.random() < SECOND_PROPERTY_RATE:
         return {"ext_type": "second", "parent_id": parent["id"],
                 "parent2_id": None, "move": None}
@@ -151,6 +161,16 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
     return new_rows
 
 
+def finalize_distractor(record):
+    """A distractor whose logic yosys swept is the parent with dead text:
+    NECESSARY is true and worthless. Route it as a format failure so the
+    loop retries with a fresh call instead of promoting a duplicate."""
+    if record.get("verdict") == "NECESSARY" and not record.get("live"):
+        record["verdict"] = "DEAD_LOGIC"
+        record["error"] = "added logic did not survive yosys opt (state_bits unchanged)"
+    return record
+
+
 def _real_executor(task, corpus_rows):
     by_id = {r["id"]: r for r in corpus_rows}
     parent = by_id[task["parent_id"]]
@@ -160,7 +180,21 @@ def _real_executor(task, corpus_rows):
               "parent2_id": task.get("parent2_id"),
               "batch_task": task["task_id"], "batch_attempt": task["attempt"]}
     try:
-        if task["ext_type"] == "compose":
+        if task["ext_type"] == "distractor":
+            record["invariants"] = parent["invariants"]     # verbatim
+            label = (f"task {task['task_id']}.{task['attempt']} distractor "
+                     f"on {task['parent_id']}")
+            with Spinner(f"{label}: model writing"):
+                out, usage, stop = distractor_call(distractor_prompt(parent))
+            record["usage"] = usage
+            if out is None:
+                record["verdict"] = ("REFUSED" if stop == "refusal"
+                                     else "TRUNCATED" if stop == "length"
+                                     else "UNPARSEABLE")
+            else:
+                record["reasoning"] = out["reasoning"]
+                finalize_distractor(grade_extension(parent, out["patch"], record))
+        elif task["ext_type"] == "compose":
             p2 = by_id[task["parent2_id"]]
             prompt = COMPOSE_TEMPLATE.format(
                 verilog_a=parent["verilog"], verilog_b=p2["verilog"],

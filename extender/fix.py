@@ -37,7 +37,7 @@ sys.path.insert(0, str(HERE))
 
 from build_corpus import extract_asserts                 # noqa: E402
 from extend import property_copy                         # noqa: E402
-from extend_one import GRADE_KWARGS, MODEL, EFFORT, Spinner  # noqa: E402
+from distractor import GRADE_KWARGS, MODEL, EFFORT, Spinner  # noqa: E402
 from promote import child_top                            # noqa: E402
 
 import llm_client                                        # noqa: E402

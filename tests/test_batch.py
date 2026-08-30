@@ -10,7 +10,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "extender"))
 
-from batch import extendable, run_loop, sample_task, without_wall   # noqa: E402
+from batch import (DISTRACTOR_RATE, extendable, finalize_distractor,   # noqa: E402
+                   run_loop, sample_task, without_wall)
 
 
 def row(id="g0_001", gen=0, lines=40, top="m", invs=("a <= 2",)):
@@ -59,6 +60,27 @@ def test_sample_task_never_picks_guard_and_respects_eligibility():
         assert t["move"] != "GUARD"
         if t["ext_type"] == "compose":
             assert t["parent2_id"] != "g0_002"
+
+
+def test_sample_task_draws_distractor_about_one_in_six():
+    rng = random.Random(11)
+    draws = [sample_task(rng, row(), [row()]) for _ in range(3000)]
+    share = sum(t["ext_type"] == "distractor" for t in draws) / len(draws)
+    assert abs(DISTRACTOR_RATE - 1 / 6) < 1e-9
+    assert 0.12 < share < 0.21, share
+    d = next(t for t in draws if t["ext_type"] == "distractor")
+    assert d["move"] is None and d["parent2_id"] is None
+
+
+def test_distractor_dead_logic_is_a_reformat_not_a_promotion():
+    # yosys swept the added logic: the child is the parent with dead text.
+    # NECESSARY is true but meaningless; it must not enter the corpus.
+    dead = finalize_distractor({"verdict": "NECESSARY", "live": False})
+    assert dead["verdict"] == "DEAD_LOGIC"
+    live = finalize_distractor({"verdict": "NECESSARY", "live": True})
+    assert live["verdict"] == "NECESSARY"
+    other = finalize_distractor({"verdict": "PATCH_ERROR"})
+    assert other["verdict"] == "PATCH_ERROR"
 
 
 def test_sample_task_is_reproducible_with_seed():

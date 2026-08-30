@@ -11,11 +11,11 @@ Liveness is measured, not trusted: yosys `opt` sweeps unconsumed logic,
 so the added state must survive into the child's flop count —
 state_bits(child) > state_bits(parent), or the logic was dead.
 
-  venv/bin/python extender/extend_one.py --dry       # print the prompt, no calls
-  venv/bin/python extender/extend_one.py --selftest  # hand patch through the full
+  venv/bin/python extender/distractor.py --dry       # print the prompt, no calls
+  venv/bin/python extender/distractor.py --selftest  # hand patch through the full
                                                      # apply->liveness->grade path,
                                                      # no API (needs hwtools)
-  venv/bin/python extender/extend_one.py             # ONE API call
+  venv/bin/python extender/distractor.py             # ONE API call
                                                      # (needs ANTHROPIC_API_KEY + hwtools)
 """
 import argparse

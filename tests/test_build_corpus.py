@@ -189,7 +189,7 @@ def test_coi_ratio_drops_when_irrelevant_logic_is_added():
     from extender.coi import coi_ratio
     from tests.test_patch import TOKEN_BUCKET
     from extender.patch import apply_patch
-    from extender.extend_one import SELFTEST_PATCH
+    from extender.distractor import SELFTEST_PATCH
     parent = coi_ratio(TOKEN_BUCKET, "token_bucket")
     child = coi_ratio(apply_patch(TOKEN_BUCKET, SELFTEST_PATCH),
                       "token_bucket")
