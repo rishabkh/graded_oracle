@@ -255,6 +255,7 @@ def test_decorative_tautology_invariant_is_rejected(tmp_path):
 # under idle restores it, because the glue state is new territory no
 # parent invariant covers ---
 
+@requires_sby
 def test_compose_plain_wire_is_decorative():
     r = grade_triple(TRIPLES / "compose_wire.sv",
                      PropertyInfo(top_module="compose_wire",
@@ -263,6 +264,7 @@ def test_compose_plain_wire_is_decorative():
     assert r.verdict is NecessityVerdict.DECORATIVE
 
 
+@requires_sby
 def test_compose_stateful_glue_is_necessary():
     r = grade_triple(
         TRIPLES / "compose_buffer.sv",

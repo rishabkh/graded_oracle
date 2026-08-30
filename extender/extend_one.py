@@ -144,8 +144,11 @@ SELFTEST_PATCH = """\
 
 
 class Spinner:
-    """Same spinner as initiator/run.py, copied to keep workers standalone."""
-    FRAMES = "|/-\\"
+    """Braille-dot spinner with colour and a mm:ss clock. Silent when
+    stderr is not a TTY (logs and pipes stay clean). Copied rather than
+    imported so each worker stays standalone."""
+    FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    CYAN, DIM, RESET = "\033[36m", "\033[2m", "\033[0m"
 
     def __init__(self, label):
         self.label = label
@@ -157,10 +160,12 @@ class Spinner:
         for frame in itertools.cycle(self.FRAMES):
             if self._stop.is_set():
                 break
-            elapsed = time.monotonic() - start
-            sys.stderr.write(f"\r{frame} {self.label} ({elapsed:.0f}s) ")
+            elapsed = int(time.monotonic() - start)
+            clock = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
+            sys.stderr.write(f"\r{self.CYAN}{frame}{self.RESET} {self.label} "
+                             f"{self.DIM}{clock}{self.RESET} ")
             sys.stderr.flush()
-            self._stop.wait(0.2)
+            self._stop.wait(0.08)
         sys.stderr.write("\r" + " " * (len(self.label) + 12) + "\r")
         sys.stderr.flush()
 

@@ -34,7 +34,7 @@ from extend import (MOVE_WEIGHTS, SECOND_PROPERTY_RATE,          # noqa: E402
                     COMPOSE_SCHEMA, COMPOSE_TEMPLATE, build_prompt,
                     call_model, compose_hidden_signals, grade_compose,
                     grade_replicate, grade_step4)
-from extend_one import dump, OUT_LOG                             # noqa: E402
+from extend_one import Spinner, dump, OUT_LOG                    # noqa: E402
 from promote import promote, route                               # noqa: E402
 
 CORPUS = HERE / "corpus.jsonl"
@@ -102,7 +102,9 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
     injectable so tests run without API or sby. Returns promoted rows."""
     rng = rng or random.Random()
     corpus_rows = list(corpus_rows)
-    frontier = deque(r for r in corpus_rows if extendable(r, None, max_gen))
+    start = [r for r in corpus_rows if extendable(r, None, max_gen)]
+    rng.shuffle(start)   # sample the whole corpus, not the oldest rows first
+    frontier = deque(start)
     branch_fails = Counter()
     dead_branches = set()
     new_rows, calls, task_seq = [], 0, 0
@@ -166,7 +168,10 @@ def _real_executor(task, corpus_rows):
                 property_b="; ".join(p2["property"]),
                 invariants_a="; ".join(parent["invariants"]) or "(none)",
                 invariants_b="; ".join(p2["invariants"]) or "(none)")
-            out, usage, stop = call_model(prompt, COMPOSE_SCHEMA)
+            label = (f"task {task['task_id']}.{task['attempt']} compose "
+                     f"{task['parent_id']}+{task['parent2_id']}")
+            with Spinner(f"{label}: model writing"):
+                out, usage, stop = call_model(prompt, COMPOSE_SCHEMA)
             record["usage"] = usage
             if out is None:
                 record["verdict"] = ("REFUSED" if stop == "refusal"
@@ -181,7 +186,11 @@ def _real_executor(task, corpus_rows):
             schema = {"structural": STRUCTURAL_SCHEMA,
                       "second": SECOND_SCHEMA,
                       "replicate": REPLICATE_SCHEMA}[task["ext_type"]]
-            out, usage, stop = call_model(prompt, schema)
+            label = (f"task {task['task_id']}.{task['attempt']} "
+                     f"{task['ext_type']} {task.get('move') or ''} "
+                     f"on {task['parent_id']}")
+            with Spinner(f"{label}: model writing"):
+                out, usage, stop = call_model(prompt, schema)
             record["usage"] = usage
             if out is None:
                 record["verdict"] = ("REFUSED" if stop == "refusal"
@@ -219,6 +228,7 @@ def main():
     if args.dry:
         frontier = [r for r in corpus_rows
                     if extendable(r, None, args.max_gen)]
+        rng.shuffle(frontier)
         print(f"frontier: {len(frontier)} extendable rows; "
               f"first {min(args.max_calls, 15)} planned tasks:")
         for parent in frontier[:min(args.max_calls, 15)]:
