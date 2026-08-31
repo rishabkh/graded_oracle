@@ -145,3 +145,15 @@ def test_loop_promotes_and_extends_children_recursively():
     assert len(new_rows) == 6
     assert max(generations) >= 1      # some call extended a promoted child
     assert all(r["generation"] >= 1 for r in new_rows)
+
+
+def test_loop_hands_fixer_verdicts_to_the_sink():
+    # NOT_PROVEN routes to the fixer queue, not silently to branch death
+    got = []
+    def failing(task, corpus):
+        return {"verdict": "NOT_PROVEN", "extension_id": f"e{task['task_id']}",
+                "parent_id": task["parent_id"], "result": {}}
+    run_loop([row()], failing, max_calls=3, rng=random.Random(0),
+             on_fixer=got.append)
+    assert len(got) == 3
+    assert all(g["verdict"] == "NOT_PROVEN" for g in got)

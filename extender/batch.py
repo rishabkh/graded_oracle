@@ -37,7 +37,7 @@ from extend import (MOVE_WEIGHTS, SECOND_PROPERTY_RATE,          # noqa: E402
 from distractor import (Spinner, dump, OUT_LOG,                   # noqa: E402
                         build_prompt as distractor_prompt,
                         call_model as distractor_call, grade_extension)
-from promote import promote, route                               # noqa: E402
+from promote import FIXER_QUEUE, promote, route                  # noqa: E402
 
 CORPUS = HERE / "corpus.jsonl"
 QUEUE_LOG = HERE / "logs" / "batch_queue.jsonl"
@@ -107,7 +107,7 @@ def sample_task(rng, parent, corpus_rows):
 
 
 def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
-             rng=None, on_task=None):
+             rng=None, on_task=None, on_fixer=None):
     """The while loop. `executor(task, corpus_rows) -> record` is
     injectable so tests run without API or sby. Returns promoted rows."""
     rng = rng or random.Random()
@@ -148,6 +148,8 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
                         frontier.append(child)
                 frontier.append(parent)      # a healthy parent stays live
                 break
+            if action == "fixer" and on_fixer:
+                on_fixer(record)      # the branch still counts the failure
             if action == "reformat" and task["attempt"] < MAX_ATTEMPTS:
                 task["attempt"] += 1
                 continue
@@ -277,9 +279,22 @@ def main():
         with QUEUE_LOG.open("a") as f:
             f.write(json.dumps(task) + "\n")
 
+    queued = set()
+    if FIXER_QUEUE.exists():
+        queued = {json.loads(l).get("extension_id")
+                  for l in FIXER_QUEUE.read_text().splitlines()}
+
+    def to_fixer_queue(record):
+        if record.get("extension_id") in queued:
+            return
+        queued.add(record.get("extension_id"))
+        FIXER_QUEUE.parent.mkdir(exist_ok=True)
+        with FIXER_QUEUE.open("a") as f:
+            f.write(json.dumps(record, default=str) + "\n")
+
     new_rows = run_loop(corpus_rows, _real_executor,
                         max_calls=args.max_calls, max_gen=args.max_gen,
-                        rng=rng, on_task=log_task)
+                        rng=rng, on_task=log_task, on_fixer=to_fixer_queue)
     with CORPUS.open("a") as f:
         for r in new_rows:
             f.write(json.dumps(r) + "\n")
