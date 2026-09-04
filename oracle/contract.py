@@ -65,14 +65,14 @@ def _string_list(obj: dict, key: str) -> list[str]:
                                     f"strings, got {item!r}")
         if _HIER_REF.search(item):
             raise ContractViolation(
-                f"'{key}' contains a hierarchical reference: {item!r} — "
+                f"'{key}' contains a hierarchical reference: {item!r} - "
                 "the open toolchain silently turns inst.signal into a "
                 "dangling wire; expose instance state through a top-level "
                 "wire and reference that instead")
         if _PROSE.search(item):
             raise ContractViolation(
                 f"'{key}' looks like prose, not a Verilog expression: "
-                f"{item!r} — each entry must be a boolean expression over "
+                f"{item!r} - each entry must be a boolean expression over "
                 "top-level signals (e.g. \"pool == 4'd0\")")
     return value
 

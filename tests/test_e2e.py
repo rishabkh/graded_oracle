@@ -14,7 +14,7 @@ from oracle.sby import sby_available
 TRIPLES = Path(__file__).parent / "triples"
 
 requires_sby = pytest.mark.skipif(
-    not sby_available(), reason="sby not on PATH — activate hwtools first")
+    not sby_available(), reason="sby not on PATH - activate hwtools first")
 
 
 def run_triple(name: str, tmp_path: Path):

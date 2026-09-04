@@ -7,7 +7,7 @@ from oracle.sby import (DEFAULT_ENGINE, PDR_ENGINE, SbyOutcome, make_sby_text,
                         run_sby, sby_available)
 
 requires_sby = pytest.mark.skipif(
-    not sby_available(), reason="sby not on PATH — activate hwtools first")
+    not sby_available(), reason="sby not on PATH - activate hwtools first")
 
 
 def test_make_sby_text_golden():

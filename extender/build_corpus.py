@@ -224,7 +224,7 @@ def main():
 
     if not args.no_yosys:
         if shutil.which("yosys") is None:
-            sys.exit("yosys not on PATH — run `hwtools` first, "
+            sys.exit("yosys not on PATH - run `hwtools` first, "
                      "or pass --no-yosys")
         from coi import coi_ratio
         for row in rows:

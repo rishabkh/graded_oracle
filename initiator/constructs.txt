@@ -1,0 +1,32 @@
+a FIFO with separate write and read pointers plus an occupancy counter; full and empty are derived, and occupancy always equals the pointer difference
+a credit counter: a producer spends credits, a consumer returns them; credits outstanding plus credits held always equals the configured total
+a four-phase req/ack handshake with a busy register; req may not drop until ack rises, and the busy flag mirrors the phase
+a valid/ready pipeline stage with a skid buffer; the buffered word is only meaningful while the stall flag is up
+a two-flop synchronizer carrying a gray-coded pointer across clock domains; consecutive pointer samples differ in at most one bit
+a round-robin arbiter over N requesters with a last-grant register; the grant is always one-hot and never lands on a non-requesting line
+a fixed-priority arbiter with a lock bit that freezes the current winner until it releases
+a one-hot FSM; exactly one state bit is ever set, and some transitions are only legal from specific states
+a binary-encoded FSM whose state register has unreachable encodings; the design never enters them
+a saturating up-counter that clamps at a maximum below what its register width admits
+an up counter and a down counter stepped by the same enable; their sum is constant
+a gray-code counter alongside its binary shadow; the gray value always equals binary XOR binary-shifted-right
+a shift register tracking in-flight requests with a separate count of set bits
+a token bucket that refills on a timer tick and drains on grants, capped at a burst size
+a linear-feedback shift register that never reaches the all-zeros lockup state
+a watchdog timer that must be kicked before a timeout; the expired flag implies the counter reached its limit
+a debouncer requiring K identical consecutive samples before the clean output flips; a stability counter never exceeds K
+a PWM generator with a period counter and duty register; the output is high exactly while the counter is below the duty value
+a scoreboard counting issued vs retired transactions; retired never exceeds issued and the difference is bounded by the window
+a ping-pong double buffer with a select bit; the writer and reader never address the same half
+an elastic (two-entry) buffer with head/tail flags; the occupancy encoded by the flags matches the count register
+a priority encoder with a registered valid flag; the encoded index is only meaningful while valid is set
+an accumulator split into two carry-save halves; the halves always sum to the true total
+a sequence detector for a fixed pattern with a match-progress register; progress never exceeds the pattern length
+a triple-modular-redundancy voter with three shadow registers; the voted output always equals the majority
+a sliding-window rate limiter: a shift register of recent grants plus a count of ones that mirrors it
+a register slice protected by a parity bit; stored parity always matches the stored data
+a stack pointer with a high-water-mark register; the mark never falls below the pointer and only ratchets upward
+a DMA burst engine with a beats-remaining counter; the busy flag is up exactly while beats remain
+a clock divider built from a phase counter; a divided-enable pulse fires exactly when the phase wraps
+a histogram of N bin counters incremented one at a time; the bins always sum to the total-samples register
+an in-flight tracker for a pipelined unit: issue increments, a fixed-latency shift register drains; occupancy equals the ones in the shift register

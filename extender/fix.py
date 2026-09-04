@@ -204,7 +204,7 @@ def run_task(record, corpus_rows, call=None, max_attempts=MAX_ATTEMPTS):
     cti, leg = failing_cti(record)
     task_id = record.get("extension_id")
     current_invs = ctx["invariants"]
-    current_cti = cti or "(no trace captured — reason: " + \
+    current_cti = cti or "(no trace captured - reason: " + \
         str((record.get("result") or {}).get("with_invariants", {})
             .get("reason", "unknown")) + ")"
 
@@ -256,7 +256,7 @@ def run_task(record, corpus_rows, call=None, max_attempts=MAX_ATTEMPTS):
         log["reason"] = result.reason
         log["result"] = asdict(result)
         _log(log)
-        print(f"  attempt {attempt}: {result.verdict.name} — {result.reason[:80]}")
+        print(f"  attempt {attempt}: {result.verdict.name} - {result.reason[:80]}")
 
         if result.verdict.name == "NECESSARY":
             return log
@@ -307,7 +307,7 @@ def main():
     queue = [json.loads(l) for l in QUEUE.read_text().splitlines()] \
         if QUEUE.exists() else []
     if not queue:
-        sys.exit("fixer queue is empty — nothing to repair")
+        sys.exit("fixer queue is empty - nothing to repair")
     attempted = set()
     if ATTEMPT_LOG.exists():
         attempted = {json.loads(l).get("task_id")
@@ -320,7 +320,7 @@ def main():
     else:
         tasks = pending_tasks(queue, attempted)
         if not tasks:
-            sys.exit("every queued task already has attempts logged — "
+            sys.exit("every queued task already has attempts logged - "
                      "rerun one explicitly with --task <extension_id>")
 
     if args.dry:

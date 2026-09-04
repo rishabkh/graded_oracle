@@ -85,11 +85,12 @@ class Spinner:
 
 def load_pools():
     exemplars = json.loads((HERE / "exemplars.json").read_text())
-    shapes = [s.strip() for s in (HERE / "shapes.txt").read_text().splitlines()
-              if s.strip()]
+    constructs = [s.strip() for s in
+                  (HERE / "constructs.txt").read_text().splitlines()
+                  if s.strip()]
     readmes = [json.loads(line) for line in
                (HERE / "readmes.jsonl").read_text().splitlines() if line.strip()]
-    return exemplars, shapes, readmes
+    return exemplars, constructs, readmes
 
 
 def check_contract():
@@ -114,9 +115,9 @@ def assert_exemplar_pool(exemplars):
     print(f"exemplar pool ok ({len(exemplars)})")
 
 
-def build_user_msg(readme, shapes2, exemplar):
+def build_user_msg(readme, construct, exemplar):
     return USER_TEMPLATE.format(
-        readme=readme["readme"], shape_1=shapes2[0], shape_2=shapes2[1],
+        readme=readme["readme"], construct=construct,
         exemplar=json.dumps(exemplar, indent=2))
 
 
@@ -163,20 +164,20 @@ class BalancedSampler:
         return [a, b]
 
 
-def make_samplers(exemplars, shapes, readmes):
-    return (BalancedSampler(readmes), BalancedSampler(shapes),
+def make_samplers(exemplars, constructs, readmes):
+    return (BalancedSampler(readmes), BalancedSampler(constructs),
             BalancedSampler(list(exemplars.items())))
 
 
-def sample_seeds(readme_s, shape_s, exemplar_s):
+def sample_seeds(readme_s, construct_s, exemplar_s):
     readme = readme_s.draw()
-    shapes2 = shape_s.draw2()
+    construct = construct_s.draw()
     ex_id, exemplar = exemplar_s.draw()
-    return readme, shapes2, ex_id, exemplar
+    return readme, construct, ex_id, exemplar
 
 
 def run_attempts(n, grade=True, show_raw=False, cmd=""):
-    exemplars, shapes, readmes = load_pools()
+    exemplars, constructs, readmes = load_pools()
     if grade:
         assert_exemplar_pool(exemplars)
 
@@ -186,10 +187,10 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
     run_id = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
     print(f"run_id: {run_id}")
 
-    samplers = make_samplers(exemplars, shapes, readmes)
+    samplers = make_samplers(exemplars, constructs, readmes)
     tally = {}
     for i in range(n):
-        readme, shapes2, ex_id, exemplar = sample_seeds(*samplers)
+        readme, construct, ex_id, exemplar = sample_seeds(*samplers)
         record = {
             "run_id": run_id,
             "cmd": cmd,
@@ -199,16 +200,17 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
             "model": llm_client.model_label(MODEL), "effort": EFFORT,
             "temperature": "n/a: removed from the API on this model; "
                            "effort + seed rotation are the diversity knobs",
-            "readme_id": readme["repo"], "shape_ids": shapes2, "exemplar_id": ex_id,
+            "readme_id": readme["repo"], "construct": construct,
+            "exemplar_id": ex_id,
         }
         try:
             with Spinner(f"[{i}] {MODEL} writing a triple"):
                 raw_json, usage, stop = call_model(
-                    build_user_msg(readme, shapes2, exemplar))
+                    build_user_msg(readme, construct, exemplar))
         except Exception as exc:
             record["error"] = f"{type(exc).__name__}: {exc}"
             dump(record)
-            print(f"[{i}] API error: {type(exc).__name__} — logged, continuing")
+            print(f"[{i}] API error: {type(exc).__name__} - logged, continuing")
             time.sleep(5)
             continue
 
@@ -218,7 +220,7 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
                                  "length": "TRUNCATED"}.get(stop, "UNPARSEABLE")
             record["raw_text"] = llm_client.LAST_RAW
             dump(record)
-            print(f"[{i}] refusal — logged, continuing")
+            print(f"[{i}] refusal - logged, continuing")
             continue
         record["raw_json"] = raw_json
         if show_raw:
@@ -233,7 +235,7 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
             record["result"] = asdict(result)
             tally[result.verdict.name] = tally.get(result.verdict.name, 0) + 1
             print(f"[{i}] {result.verdict.name:12s} ({record['grade_wall_s']}s) "
-                  f"— {result.reason[:100]}")
+                  f"- {result.reason[:100]}")
         dump(record)
 
     if grade and tally:

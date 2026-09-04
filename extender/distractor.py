@@ -232,7 +232,7 @@ def grade_extension(parent, patch_text, record):
     record["parent_state_bits"] = parent_bits
     if parent_bits is None:
         record["verdict"] = "YOSYS_ERROR"
-        record["error"] = ("parent does not read in yosys — machinery "
+        record["error"] = ("parent does not read in yosys - machinery "
                            "fault, not the model's patch")
         return record
     child_bits = state_bits(child_verilog, parent["top_module"])
@@ -269,7 +269,7 @@ def report(record):
     print(f"live: {record.get('live')} "
           f"(state_bits {record.get('parent_state_bits')} -> "
           f"{record.get('child_state_bits')})")
-    print(f"verdict: {record['verdict']} — {record.get('reason', record.get('error'))}")
+    print(f"verdict: {record['verdict']} - {record.get('reason', record.get('error'))}")
     expected = (record["verdict"] == "NECESSARY" and record.get("live"))
     print("CONTROL " + ("PASSED: invariants unchanged, still NECESSARY, logic live"
                         if expected else
@@ -311,7 +311,7 @@ def main():
                                  "length": "TRUNCATED"}.get(stop, "UNPARSEABLE")
             record["raw_text"] = llm_client.LAST_RAW
             dump(record)
-            print(f"{record['verdict'].lower()} — logged (raw text kept)")
+            print(f"{record['verdict'].lower()} - logged (raw text kept)")
             return
         record["reasoning"] = out["reasoning"]
         grade_extension(parent, out["patch"], record)

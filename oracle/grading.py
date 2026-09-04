@@ -157,12 +157,12 @@ def grade_triple(verilog_file: Path | str, prop: PropertyInfo, *,
                        if l in inj.line_map]
         failed_other = sorted(failed - set(inj.line_map))
         if failed_invs and not failed_other:
-            detail = (f"falsified invariant(s): {', '.join(failed_invs)} — "
+            detail = (f"falsified invariant(s): {', '.join(failed_invs)} - "
                       "fix or drop the invariant; the property was not "
                       "shown false")
         elif failed_other and not failed_invs:
             detail = ("the property itself is false (assert at line "
-                      f"{', '.join(map(str, failed_other))}) — rewrite the "
+                      f"{', '.join(map(str, failed_other))}) - rewrite the "
                       "property, leave the invariants alone")
         elif failed_invs and failed_other:
             detail = (f"both falsified: invariant(s) {', '.join(failed_invs)} "
@@ -217,7 +217,7 @@ def grade_triple(verilog_file: Path | str, prop: PropertyInfo, *,
             with_invariants=with_res, without_invariants=without_res)
     return TripleResult(
         NecessityVerdict.INCONCLUSIVE,
-        f"without-invariants grade is {without_res.tier.name} — necessity "
+        f"without-invariants grade is {without_res.tier.name} - necessity "
         "not established",
         with_invariants=with_res, without_invariants=without_res)
 
@@ -295,7 +295,7 @@ def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
                 "not falsity")
         else:
             pdr_ev.notes.append(
-                f"pdr_second_opinion: inconclusive (rc={pdr.rc}) — "
+                f"pdr_second_opinion: inconclusive (rc={pdr.rc}) - "
                 "NOT_INDUCTIVE retained; safe error direction is yield, "
                 "not contamination")
 
@@ -327,7 +327,7 @@ def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
     if cover.rc == 8:
         runs.append(_evidence("cover", cover, depth, timeout_source="sby"))
         return GradeResult(Tier.TIMEOUT,
-                           f"cover run hit sby timeout ({timeout_s}s) — no "
+                           f"cover run hit sby timeout ({timeout_s}s) - no "
                            "verdict without completed vacuity evidence", runs)
     if cover.rc not in (0, 2):  # rc=2 just means some cover unreached
         runs.append(_evidence("cover", cover, depth))
@@ -376,7 +376,7 @@ def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
         if pdr.rc == 2:
             pdr_ev.notes.append(
                 f"sanity_reachability: cover '{s}' reachable beyond depth "
-                f"{depth} (witness in evidence) — warning cleared")
+                f"{depth} (witness in evidence) - warning cleared")
         elif pdr.rc == 0:
             pdr_ev.notes.append(
                 f"sanity_reachability: cover '{s}' proven unreachable for "
@@ -385,7 +385,7 @@ def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
         else:
             pdr_ev.notes.append(
                 f"sanity_reachability: undecided (rc={pdr.rc}) for cover "
-                f"'{s}' — warning retained")
+                f"'{s}' - warning retained")
             sanity_suspect = True
 
     if sanity_suspect:
@@ -395,7 +395,7 @@ def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
         return GradeResult(
             Tier.ERROR,
             "cover result missing from log for antecedent(s): "
-            f"{', '.join(missing_antecedents)} — instrument integrity "
+            f"{', '.join(missing_antecedents)} - instrument integrity "
             "failure, no verdict without complete evidence", runs)
 
     # Fix A: "unreached at depth D" is not "unreachable". The bounded

@@ -157,3 +157,48 @@ def test_loop_hands_fixer_verdicts_to_the_sink():
              on_fixer=got.append)
     assert len(got) == 3
     assert all(g["verdict"] == "NOT_PROVEN" for g in got)
+
+
+# --- parallel workers ---
+
+def test_parallel_loop_respects_hard_call_cap():
+    import threading
+    calls = []
+    lock = threading.Lock()
+    def exe(task, corpus):
+        with lock:
+            calls.append(task["task_id"])
+        return {"verdict": "DECORATIVE", "extension_id": f"e{task['task_id']}",
+                "parent_id": task["parent_id"], "result": {}}
+    pool = [row(id=f"g0_{i:03d}") for i in range(20)]
+    run_loop(pool, exe, max_calls=7, rng=random.Random(0), workers=4)
+    assert len(calls) == 7
+
+
+def test_parallel_loop_actually_overlaps():
+    import threading, time
+    active, peak = [0], [0]
+    lock = threading.Lock()
+    def exe(task, corpus):
+        with lock:
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+        time.sleep(0.05)
+        with lock:
+            active[0] -= 1
+        return {"verdict": "DECORATIVE", "extension_id": f"e{task['task_id']}",
+                "parent_id": task["parent_id"], "result": {}}
+    pool = [row(id=f"g0_{i:03d}") for i in range(8)]
+    run_loop(pool, exe, max_calls=8, rng=random.Random(0), workers=4)
+    assert peak[0] > 1
+
+
+def test_parallel_loop_checkpoints_each_promotion():
+    saved = []
+    def exe(task, corpus):
+        return necessary(task, corpus)
+    pool = [row(id=f"g0_{i:03d}", top=f"m{i}") for i in range(4)]
+    out = run_loop(pool, exe, max_calls=4, rng=random.Random(0),
+                   workers=2, on_promote=saved.append)
+    assert len(saved) == len(out) > 0
+    assert {r["id"] for r in saved} == {r["id"] for r in out}

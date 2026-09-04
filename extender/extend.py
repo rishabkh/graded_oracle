@@ -799,7 +799,7 @@ def grade_compose(pa, pb, out, record):
     if bad:
         record["verdict"] = "HIERARCHICAL_REF"
         record["error"] = (
-            f"expression fields contain hierarchical references {bad} — "
+            f"expression fields contain hierarchical references {bad} - "
             "the toolchain silently turns inst.signal into a dangling "
             "wire. State a wrapper invariant can mention must be exposed "
             "through the instance's PORTS onto a named wrapper wire; if "
@@ -836,14 +836,14 @@ def grade_compose(pa, pb, out, record):
     record["glue_identifiers"] = sorted(glue_ids)
     if not glue_ids:
         record["verdict"] = "NO_GLUE_CLAUSE"
-        record["error"] = ("wrapper declares no registers — plain-wire "
+        record["error"] = ("wrapper declares no registers - plain-wire "
                            "composition, the DECORATIVE trap")
         return record
     glue = glue_clause(out["invariants"], glue_ids)
     if glue is None:
         record["verdict"] = "NO_GLUE_CLAUSE"
         record["error"] = ("no invariant clause mentions the glue "
-                           f"register(s) {sorted(glue_ids)} — glue state "
+                           f"register(s) {sorted(glue_ids)} - glue state "
                            "left undescribed")
         return record
     record["glue_clause"] = glue
@@ -895,7 +895,7 @@ def grade_replicate(parent, out, record, n):
     if bad:
         record["verdict"] = "HIERARCHICAL_REF"
         record["error"] = (
-            f"expression fields contain hierarchical references {bad} — "
+            f"expression fields contain hierarchical references {bad} - "
             "the toolchain silently turns inst.signal into a dangling "
             "wire. State a wrapper invariant can mention must be exposed "
             "through the instance's PORTS onto a named wrapper wire; if "
@@ -1015,7 +1015,7 @@ def grade_step4(parent, ext_type, out, record):
     if copied:
         record["verdict"] = "PROPERTY_COPY"
         record["error"] = (f"invariant clause is a verbatim copy of a "
-                           f"property: {copied!r} — sound but teaches the "
+                           f"property: {copied!r} - sound but teaches the "
                            "wrong lesson; rejected")
         return record
 
@@ -1090,7 +1090,7 @@ def report(record, ext_type):
     if ext_type == "second":
         print(f"second property: {record.get('second_property')}")
         print(f"P2 unaided tier: {record.get('p2_unaided_tier')}")
-    print(f"verdict: {record['verdict']} — "
+    print(f"verdict: {record['verdict']} - "
           f"{record.get('reason', record.get('error'))}")
 
 
@@ -1189,7 +1189,7 @@ def main():
                              "length": "TRUNCATED"}.get(stop, "UNPARSEABLE")
         record["raw_text"] = llm_client.LAST_RAW
         dump(record)
-        print(f"{record['verdict'].lower()} — logged (raw text kept)")
+        print(f"{record['verdict'].lower()} - logged (raw text kept)")
         return
     for k in ("new_state", "coupling", "induction_gap",
               "why_parent_insufficient", "claim", "shared_state",

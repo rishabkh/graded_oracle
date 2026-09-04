@@ -40,7 +40,7 @@ NECESSITY_DEMOS = [
 
 def main() -> int:
     if not sby_available():
-        print("sby not on PATH — activate hwtools first")
+        print("sby not on PATH - activate hwtools first")
         return 1
     mismatches = 0
     for jf in sorted(TRIPLES.glob("*.json")):

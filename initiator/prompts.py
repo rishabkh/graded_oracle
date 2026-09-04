@@ -125,14 +125,17 @@ models. Do not implement the project. Do not mention it in the output.
 
 {readme}
 
-## Property-form seed
+## Structure seed
 
-Property shapes that appear in real hardware assertions. Use them as a guide to how
-properties get shaped — guard conditions, signal relationships, the kinds of facts
-that get asserted. Do not copy them verbatim.
+Build the module around this hardware construct:
 
-{shape_1}
-{shape_2}
+{construct}
+
+The construct decides the state registers and the relation R that holds by
+construction; the property and invariants FOLLOW from the structure. Do not
+pick an invariant first and decorate a module around it. You may scale the
+construct, specialise it, or embed it in a small surrounding mechanism, but
+the named structure must genuinely be there.
 
 ## Worked example
 
@@ -142,5 +145,6 @@ that get asserted. Do not copy them verbatim.
 
 Write one new planted triple. It must be structurally different from the worked
 example — a different kind of design, a different sort of relation, a different
-property shape. Fill in every field of the schema.
+property shape — and it must actually contain the seeded construct. Fill in
+every field of the schema.
 """
