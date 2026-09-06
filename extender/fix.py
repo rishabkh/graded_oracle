@@ -39,7 +39,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
 from build_corpus import extract_asserts                 # noqa: E402
-from extend import property_copy                         # noqa: E402
+from extend import out_of_scope, property_copy           # noqa: E402
 from distractor import GRADE_KWARGS, MODEL, EFFORT, Spinner  # noqa: E402
 from promote import child_top, promote                   # noqa: E402
 
@@ -237,7 +237,10 @@ def run_task(record, corpus_rows, call=None, max_attempts=MAX_ATTEMPTS):
         log["diagnosis"] = out.get("diagnosis")
         log["invariants"] = candidate
 
-        err = pre_gate(candidate, current_invs, ctx["property"])
+        bad = out_of_scope(candidate, ctx["verilog"], ctx["top_module"])
+        err = (f"out-of-scope identifiers {sorted(bad)}: sub-module "
+               "namespace - grading would score a fake FALSE") if bad \
+            else pre_gate(candidate, current_invs, ctx["property"])
         if err:
             log["verdict"] = "PRE_GATE"
             log["error"] = err

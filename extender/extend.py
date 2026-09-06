@@ -607,6 +607,21 @@ def identifiers(text):
     return ids - _VERILOG_NOISE
 
 
+_TOP_MODULE_RE = r"\bmodule\s+%s\b(.*?)\bendmodule\b"
+
+
+def out_of_scope(invariants, verilog, top_module):
+    """Identifiers in the invariants that are not signals of the TOP
+    module. Yosys fabricates a free wire for an unknown name, so such a
+    clause grades as a fake FALSE; catch it as a naming error instead.
+    Port names in instantiations (.name(...)) are masked - they belong
+    to the sub-module."""
+    m = re.search(_TOP_MODULE_RE % re.escape(top_module), verilog, re.S)
+    text = m.group(1) if m else verilog
+    text = re.sub(r"\.\s*[A-Za-z_]\w*", " ", text)
+    return identifiers("\n".join(invariants)) - identifiers(text)
+
+
 def p2_new_ids(parent_props, new_assert, child_verilog):
     """REGISTERS the second property reads that no parent property does.
     Only declared regs count — a new localparam or wire name is a new

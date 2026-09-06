@@ -47,15 +47,19 @@ OPUS_MODEL = "claude-opus-5"
 # The bare prompt — the hard direction, no planting scaffold, no
 # exemplars. Byte-identical for both solver models.
 SOLVER_PROMPT = """\
-Here is a SystemVerilog module. It contains exactly one property, written as an
-immediate assertion. The property is true of the design but is NOT provable by
-k-induction on its own: a prover starting from an arbitrary state can violate it.
+Here is a SystemVerilog design. It contains ONE OR MORE properties, written as
+immediate assertions - count them; a design with sub-modules may carry an
+assertion inside a sub-module as well as one at the top. Every assertion is
+true of the design but the set is NOT provable by k-induction on its own: a
+prover starting from an arbitrary state can violate at least one of them.
 
 {verilog}
 
 Find strengthening invariant(s): facts about the design's reachable states that
-(a) hold in every reachable state, and (b) together with the property make the
-set inductive, closing the proof by k-induction.
+(a) hold in every reachable state, and (b) together with the properties make
+the set inductive, closing the proof by k-induction for EVERY assertion - an
+invariant list that proves one assertion but leaves another failing is not a
+solution.
 
 Reply with JSON: {{"invariants": ["<expr>", ...]}} where each entry is a single
 Verilog boolean expression over the module's signals. No other output.
@@ -64,7 +68,10 @@ Format rules for each expression - violations make the answer ungradeable:
 - plain synthesizable Verilog only: no `->` (write `!a || b` for implication),
   no `$past` or other system functions, no SVA operators, no prose
 - complete expressions only, with sized constants (`4'd8`, not `8`)
-- signals of this module only, no hierarchical references
+- TOP-LEVEL signal names only: every expression is evaluated in the top
+  module. State inside a sub-module is visible only through the wires its
+  instance drives - use those names. A sub-module-internal name (even
+  without a dot) does not exist at the top level and voids the answer.
 """
 
 INV_SCHEMA = {
@@ -203,6 +210,14 @@ def load_triples(run_id=None, limit=None):
             "planted_invariants": t.get("invariants", []),
         })
     return triples[-limit:] if limit else triples
+
+
+def out_of_scope(invariants, verilog, top_module):
+    """Delegates to extend.out_of_scope - see there. Kept as a name here
+    so the harness and its tests read naturally."""
+    sys.path.insert(0, str(HERE.parent / "extender"))
+    from extend import out_of_scope as _oos
+    return _oos(invariants, verilog, top_module)
 
 
 def parse_invariants(text):
@@ -383,6 +398,15 @@ def main():
         if invariants is None:
             record["error"] = err
             record["raw_text"] = getattr(solve, "last_raw", None)
+            record["verdict"] = "NO_ANSWER"
+        elif out_of_scope(invariants, t["verilog"], t["top_module"]):
+            bad = sorted(out_of_scope(invariants, t["verilog"],
+                                      t["top_module"]))
+            record["solver_invariants"] = invariants
+            record["error"] = (f"out-of-scope identifiers {bad}: not "
+                               "signals of the top module (sub-module "
+                               "namespace?) - grading would fabricate "
+                               "free wires and score a fake FALSE")
             record["verdict"] = "NO_ANSWER"
         else:
             record["solver_invariants"] = invariants

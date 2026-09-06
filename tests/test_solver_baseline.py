@@ -10,8 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "initiator"))
 
 import random
 
-from solver_baseline import (parse_invariants, rates, replay_slate,   # noqa: E402
-                             stratify)
+from solver_baseline import (out_of_scope, parse_invariants, rates,   # noqa: E402
+                             replay_slate, stratify)
 
 
 def row(id, gen, ext=None):
@@ -94,3 +94,22 @@ def test_replay_slate_missing_pair_fails_loudly():
     with pytest.raises(SystemExit):
         replay_slate([{"baseline_id": "B1", "source_run_id": "rX",
                        "source_attempt": 0}], [], "B1")
+
+
+TWO_MOD = """module inner (input wire clk, output reg [2:0] on_events);
+reg heat_on;
+endmodule
+module outer (input wire clk, output wire [2:0] on0);
+inner u0 (.clk(clk), .on_events(on0));
+endmodule"""
+
+
+def test_out_of_scope_catches_submodule_names():
+    # the right fact in the wrong namespace: graded at top level these
+    # names become free wires and the clause is trivially "falsified"
+    bad = out_of_scope(["heat_on || (on_events == 3'd0)"], TWO_MOD, "outer")
+    assert "heat_on" in bad and "on_events" in bad
+
+
+def test_out_of_scope_accepts_top_level_names():
+    assert out_of_scope(["on0 == 3'd1"], TWO_MOD, "outer") == set()
