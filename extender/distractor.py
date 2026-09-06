@@ -162,7 +162,10 @@ class Spinner:
                 break
             elapsed = int(time.monotonic() - start)
             clock = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
-            sys.stderr.write(f"\r{self.CYAN}{frame}{self.RESET} {self.label} "
+            import shutil as _sh
+            width = _sh.get_terminal_size().columns
+            label = self.label[:max(10, width - 12)]
+            sys.stderr.write(f"\r{self.CYAN}{frame}{self.RESET} {label} "
                              f"{self.DIM}{clock}{self.RESET} ")
             sys.stderr.flush()
             self._stop.wait(0.08)

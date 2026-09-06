@@ -220,7 +220,7 @@ def run_task(record, corpus_rows, call=None, max_attempts=MAX_ATTEMPTS):
                "model": llm_client.model_label(MODEL), "cti_leg": leg}
 
         if call is None:
-            with Spinner(f"[{task_id} #{attempt}] {MODEL} repairing invariants"):
+            with Spinner(f"repair try {attempt}/3: model writing"):
                 text, usage, stop = llm_client.call_claude(
                     model=MODEL, max_tokens=MAX_TOKENS, user=prompt,
                     schema=FIX_SCHEMA, effort=EFFORT)
@@ -249,7 +249,7 @@ def run_task(record, corpus_rows, call=None, max_attempts=MAX_ATTEMPTS):
                    "sanity_covers": ctx["sanity_covers"],
                    "invariants": candidate}
         t0 = time.monotonic()
-        with Spinner(f"[{task_id} #{attempt}] oracle grading repair"):
+        with Spinner(f"repair try {attempt}/3: oracle checking"):
             result = grade_triple_generated(json.dumps(payload), **GRADE_KWARGS)
         log["grade_wall_s"] = round(time.monotonic() - t0, 2)
         log["verdict"] = result.verdict.name
