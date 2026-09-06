@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "extender"))
 
-from promote import child_top, promote, route   # noqa: E402
+from promote import fixable, child_top, promote, route   # noqa: E402
 
 
 def test_route_covers_the_spec():
@@ -98,3 +98,12 @@ def test_child_top_wrapper_types_use_last_module():
                           "module glue_top; endmodule")
     assert child_top(r, PARENT) == "glue_top"
     assert child_top(rec(), PARENT) == "token_bucket"
+
+
+def test_fixable_excludes_machinery_failures():
+    # a NOT_PROVEN whose with-leg never really ran (sby missing, cover
+    # rc=16) has no CTI - nothing for the Fixer to work with
+    assert not fixable({"verdict": "NOT_PROVEN",
+                        "reason": "with-invariants grade is ERROR, not PROVEN"})
+    assert fixable({"verdict": "NOT_PROVEN",
+                    "reason": "with-invariants grade is NOT_INDUCTIVE, not PROVEN"})

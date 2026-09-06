@@ -93,13 +93,32 @@ MOVES = {
     "BOUND": ("Replace a constant limit with a register that can change, "
               "so the existing comparison is against state rather than a "
               "literal."),
+    "LEDGER": ("Add a PAIR of event counters that log the two sides of an "
+               "existing transition: issued/returned, pushed/popped, "
+               "acquired/released, on/off. The counters are free-running "
+               "and wrap at their width (do NOT guard the increments). "
+               "Their difference is not stored in any register - it is an "
+               "emergent fact - yet it must exactly track an existing "
+               "piece of state (an occupancy, a pointer difference, a "
+               "level flag), modulo the counter width. The invariant list "
+               "MUST contain that difference relation, e.g. "
+               "(n_in - n_out) == occupancy. Do not add a register that "
+               "holds the difference; the relation must live only in the "
+               "invariant. EVERY new register you add - the counters and "
+               "any flag - must be an output port: a future wrapper must "
+               "be able to state every invariant from outside the module, "
+               "and a hidden register makes the child a dead end."),
 }
 
 # Batch-runner sampling policy, from measured state-bit returns per call:
 # STAGE +9, SPLIT +9, PEER +7, BOUND +4, GUARD +1. GUARD is dead weight;
 # second-property rarely grows the invariant list (kept for the shared-
 # clause coupling case only).
-MOVE_WEIGHTS = {"STAGE": 3, "SPLIT": 3, "PEER": 2, "BOUND": 1, "GUARD": 0}
+# LEDGER back on (Rishab, 2026-09-06): the bookkeeping family is where
+# a single model call struggles but our oracle+fixer loop still wins -
+# so these rows are exactly the ones worth making.
+MOVE_WEIGHTS = {"STAGE": 3, "SPLIT": 3, "PEER": 2, "BOUND": 1, "GUARD": 0,
+                "LEDGER": 2}
 SECOND_PROPERTY_RATE = 1 / 6
 
 STAGE_K_TEXT = """
@@ -1143,6 +1162,15 @@ def main():
     print(f"parent {parent['id']} {parent['top_module']} "
           f"invariants={parent['invariants']}")
     parent2 = None
+    if args.type == "replicate":
+        hidden = compose_hidden_signals(parent)
+        if hidden:
+            p.error(
+                f"{parent['id']} ({parent['top_module']}) is not "
+                f"replicate-eligible: invariants mention non-port "
+                f"signal(s) {sorted(hidden)} a wrapper cannot reach - no "
+                "legal invariant list could close the wrapper proof. Pick "
+                "another parent (see --list-compose).")
     if args.type == "compose":
         if not args.parent2:
             p.error("--parent2 required for compose")

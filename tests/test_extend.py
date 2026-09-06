@@ -437,3 +437,28 @@ def test_strip_diff_decoration_leaves_plain_verilog_alone():
     from extend import strip_diff_decoration
     plain = "module m (\n    input wire clk\n);\n    reg r;\nendmodule\n"
     assert strip_diff_decoration(plain) == plain
+
+
+# --- LEDGER: the move that manufactures the failure mode opus showed ---
+
+def test_ledger_move_exists_and_is_weighted():
+    from extend import MOVES, MOVE_WEIGHTS
+    assert "LEDGER" in MOVES
+    assert MOVE_WEIGHTS["LEDGER"] >= 2          # the family our plumbing wins at
+    text = MOVES["LEDGER"].lower()
+    # the three ingredients of the thermo_farm miss
+    assert "difference" in text
+    assert "wrap" in text
+    assert "nowhere" in text or "not stored" in text
+    # every piece of added state must be visible from outside, or the
+    # child is ineligible for replication (the g1_059 lesson)
+    assert "every new register" in text and "output" in text
+
+
+def test_build_prompt_accepts_ledger():
+    from extend import build_prompt
+    parent = {"verilog": "module m; endmodule", "property": ["a"],
+              "invariants": ["b <= 1"], "antecedents": [],
+              "sanity_covers": [], "top_module": "m"}
+    msg = build_prompt(parent, "structural", "LEDGER")
+    assert "LEDGER" in msg or "difference" in msg

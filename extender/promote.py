@@ -54,6 +54,13 @@ _ACTIONS = {
 }
 
 
+def fixable(rec):
+    """A proof failure the Fixer can act on. A with-leg that ended in
+    ERROR (toolchain missing, cover run crashed) carries no CTI - there
+    is nothing to repair, so it never enters the queue."""
+    return "grade is ERROR" not in str(rec.get("reason", ""))
+
+
 def route(verdict):
     """Everything not in the oracle's vocabulary is a machinery/format
     verdict: retry with the lesson, not Fixer food."""
@@ -189,7 +196,7 @@ def main():
     added = 0
     with FIXER_QUEUE.open("a") as f:
         for rec in buckets["fixer"]:
-            if rec.get("extension_id") in queued_ids:
+            if rec.get("extension_id") in queued_ids or not fixable(rec):
                 continue
             f.write(json.dumps(rec, default=str) + "\n")
             added += 1
