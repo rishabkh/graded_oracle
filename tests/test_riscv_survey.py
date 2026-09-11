@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "initiator"))
 
-from riscv_survey import classify, prove_variant
+from riscv_survey import classify, prove_variant, survey_files
 
 SBY = """[options]
 mode bmc
@@ -35,3 +35,11 @@ def test_classify_reads_sby_outcomes():
     assert classify(2, "returned FAIL for basecase") == "BASECASE_FAIL"
     assert classify(None, "") == "TIMEOUT"
     assert classify(16, "ERROR: something") == "ERROR"
+
+
+def test_survey_files_skips_leftovers(tmp_path):
+    for name in ["reg_ch0", "reg_ch0_induct", "reg_ch0_prove10",
+                 "cover", "insn_add_ch0"]:
+        (tmp_path / f"{name}.sby").write_text("")
+    assert [f.stem for f in survey_files(tmp_path)] == ["insn_add_ch0",
+                                                        "reg_ch0"]

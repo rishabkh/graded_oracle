@@ -116,6 +116,14 @@ class Progress:
             self._thread.join()
 
 
+def survey_files(d):
+    """The generated bmc checks only: skip our own *_prove variants,
+    old *_induct leftovers, and the cover check."""
+    return sorted(f for f in d.glob("*.sby")
+                  if "_prove" not in f.stem and "_induct" not in f.stem
+                  and "cover" not in f.stem)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--checks-dir", required=True)
@@ -126,9 +134,7 @@ def main():
                         "a problem-set candidate anyway")
     args = p.parse_args()
 
-    d = Path(args.checks_dir).expanduser()
-    files = sorted(f for f in d.glob("*.sby")
-                   if "_prove" not in f.stem and "cover" not in f.stem)
+    files = survey_files(Path(args.checks_dir).expanduser())
     print(f"{len(files)} checks, k={args.k}, {args.workers} workers, "
           f"{args.timeout}s each")
     run_id = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
