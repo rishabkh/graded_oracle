@@ -150,8 +150,11 @@ class Spinner:
     FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
     CYAN, DIM, RESET = "\033[36m", "\033[2m", "\033[0m"
 
-    def __init__(self, label):
+    quiet = False   # batch sets this with --workers > 1
+
+    def __init__(self, label, always=False):
         self.label = label
+        self.always = always   # draw even when quiet (the pool spinner)
         self._stop = threading.Event()
         self._thread = None
 
@@ -173,7 +176,7 @@ class Spinner:
         sys.stderr.flush()
 
     def __enter__(self):
-        if sys.stderr.isatty():
+        if sys.stderr.isatty() and (self.always or not Spinner.quiet):
             self._thread = threading.Thread(target=self._spin, daemon=True)
             self._thread.start()
         return self

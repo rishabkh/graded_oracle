@@ -42,11 +42,10 @@ from promote import FIXER_QUEUE, promote, route                  # noqa: E402
 
 import contextlib
 
-SPIN = {"on": True}   # main() turns this off when --workers > 1
-
-
-def spin(label):
-    return Spinner(label) if SPIN["on"] else contextlib.nullcontext()
+# with --workers > 1, main() sets Spinner.quiet (per-step spinners would
+# draw over each other) and runs one pool-wide spinner fed by PROGRESS
+PROGRESS = {"done": 0, "total": 0, "spinner": None}
+_progress_lock = threading.Lock()
 
 CORPUS = HERE / "corpus.jsonl"
 QUEUE_LOG = HERE / "logs" / "batch_queue.jsonl"
@@ -241,7 +240,7 @@ def _real_executor(task, corpus_rows):
             record["invariants"] = parent["invariants"]     # verbatim
             label = (f"task {task['task_id']}.{task['attempt']} distractor "
                      f"on {task['parent_id']}")
-            with spin(f"{label}: model writing"):
+            with Spinner(f"{label}: model writing"):
                 out, usage, stop = distractor_call(distractor_prompt(parent))
             record["usage"] = usage
             if out is None:
@@ -261,7 +260,7 @@ def _real_executor(task, corpus_rows):
                 invariants_b="; ".join(p2["invariants"]) or "(none)")
             label = (f"task {task['task_id']}.{task['attempt']} compose "
                      f"{task['parent_id']}+{task['parent2_id']}")
-            with spin(f"{label}: model writing"):
+            with Spinner(f"{label}: model writing"):
                 out, usage, stop = call_model(prompt, COMPOSE_SCHEMA)
             record["usage"] = usage
             if out is None:
@@ -280,7 +279,7 @@ def _real_executor(task, corpus_rows):
             label = (f"task {task['task_id']}.{task['attempt']} "
                      f"{task['ext_type']} {task.get('move') or ''} "
                      f"on {task['parent_id']}")
-            with spin(f"{label}: model writing"):
+            with Spinner(f"{label}: model writing"):
                 out, usage, stop = call_model(prompt, schema)
             record["usage"] = usage
             if out is None:
@@ -296,7 +295,13 @@ def _real_executor(task, corpus_rows):
         record["verdict"] = "ERROR"
         record["error"] = f"{type(exc).__name__}: {exc}"
     dump(record)
-    print(f"  task {task['task_id']}.{task['attempt']} "
+    with _progress_lock:
+        PROGRESS["done"] += 1
+        if PROGRESS["spinner"]:
+            PROGRESS["spinner"].label = (f"batch: {PROGRESS['done']}/"
+                                         f"{PROGRESS['total']} calls done")
+    clear = "\r\033[K" if sys.stdout.isatty() else ""
+    print(f"{clear}  task {task['task_id']}.{task['attempt']} "
           f"{task['ext_type']:10s} on {task['parent_id']}"
           + (f"+{task['parent2_id']}" if task.get("parent2_id") else "")
           + f" -> {record.get('verdict')}")
@@ -352,7 +357,10 @@ def main():
             f.write(json.dumps(record, default=str) + "\n")
 
     if args.workers > 1:
-        SPIN["on"] = False
+        Spinner.quiet = True
+        PROGRESS["total"] = args.max_calls
+        PROGRESS["spinner"] = Spinner(f"batch: 0/{args.max_calls} calls done",
+                                      always=True)
 
     def checkpoint(row):
         # append immediately, under run_loop's lock: a killed run keeps
@@ -360,10 +368,12 @@ def main():
         with CORPUS.open("a") as f:
             f.write(json.dumps(row) + "\n")
 
-    new_rows = run_loop(corpus_rows, _real_executor,
-                        max_calls=args.max_calls, max_gen=args.max_gen,
-                        rng=rng, on_task=log_task, on_fixer=to_fixer_queue,
-                        workers=args.workers, on_promote=checkpoint)
+    with PROGRESS["spinner"] or contextlib.nullcontext():
+        new_rows = run_loop(corpus_rows, _real_executor,
+                            max_calls=args.max_calls, max_gen=args.max_gen,
+                            rng=rng, on_task=log_task,
+                            on_fixer=to_fixer_queue,
+                            workers=args.workers, on_promote=checkpoint)
     print(f"\nrun complete: {len(new_rows)} promoted "
           f"(corpus now {len(corpus_rows) + len(new_rows)} rows); "
           f"log: {OUT_LOG.name}")
