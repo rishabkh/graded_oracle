@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "initiator"))
 
 from ebmc_eval import (build_variant, clocking_prefix, ebmc_command,
+                       top_module,
                        insert_index, parse_verdict, wrap_lemmas)
 
 BENCH = """module main(input clk, input rst);
@@ -79,3 +80,22 @@ def test_parse_verdict_ported_semantics():
                          "timing_with_lemmas") == "TIMEOUT"
     # correctness mode demands the strict Results-line match
     assert parse_verdict("some PROVED text", "", "correctness") == "TIMEOUT"
+
+
+TWO_MODULES = """module fifo (input clk, input rst);
+endmodule
+module inv_80 (input clk, input rst);
+  property prop; @(posedge clk) x <= 4; endproperty
+  assert property (prop);
+endmodule
+"""
+
+
+def test_top_module_is_main_when_present_else_the_last_one():
+    assert top_module("module main (input clk, input rst);\nendmodule\n") == "main"
+    assert top_module(TWO_MODULES) == "inv_80"
+
+
+def test_reset_flag_names_the_files_own_top_module():
+    cmd = ebmc_command("f.sv", "k_induction", rst=True, source=TWO_MODULES)
+    assert "--reset inv_80.rst" in cmd

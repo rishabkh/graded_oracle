@@ -33,6 +33,7 @@ K_INDUCTION_BOUND = 5  # their EBMC_K_FOR_INDUCTION
 BMC_BOUND = 30         # their EBMC_BMC_BOUND
 
 _ENDPROPERTY = re.compile(r"^.*endproperty\s*(//.*)?$")
+_MODULE = re.compile(r"^\s*module\s+([A-Za-z_]\w*)", re.M)
 _RST = re.compile(r"\binput(?:\s+(?:reg|logic|wire))?\s+rst\b", re.M)
 
 
@@ -92,7 +93,18 @@ def build_variant(source, lemma_exprs, mode):
     return "".join(lines)
 
 
-def ebmc_command(path, mode, rst, ebmc="ebmc"):
+def top_module(source):
+    """The reset has to be scoped to the file's own top module. Most of
+    their files declare `module main`, but the hard set names the module
+    after the design, and `--reset main.rst` there dies with "failed to
+    parse reset constraint" - which we were scoring as the model's miss."""
+    mods = _MODULE.findall(source)
+    if "main" in mods:
+        return "main"
+    return mods[-1] if mods else "main"
+
+
+def ebmc_command(path, mode, rst, ebmc="ebmc", source=""):
     cmd = {
         "correctness": f"{ebmc} {path}",
         "one_induction": f"{ebmc} {path} --k-induction --bound 1",
@@ -105,7 +117,7 @@ def ebmc_command(path, mode, rst, ebmc="ebmc"):
     if rst:
         # ebmc 6.0 wants the module-scoped name; every benchmark file in
         # large_lemma_miners declares `module main`
-        cmd += " --reset main.rst"
+        cmd += f" --reset {top_module(source)}.rst"
     return cmd + " --trace"
 
 
@@ -134,7 +146,8 @@ def run(bench_path, lemma_exprs, mode, workdir):
     variant = build_variant(source, lemma_exprs, mode)
     out = Path(workdir) / f"{Path(bench_path).stem}_{mode}.sv"
     out.write_text(variant)
-    cmd = ebmc_command(out, mode, rst=bool(_RST.search(source)), ebmc=EBMC)
+    cmd = ebmc_command(out, mode, rst=bool(_RST.search(source)), ebmc=EBMC,
+                       source=source)
     t0 = time.perf_counter()
     try:
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
@@ -164,7 +177,7 @@ def main():
         print(build_variant(source, args.lemmas, args.mode))
         print("# command:", ebmc_command(args.file, args.mode,
                                          rst=bool(_RST.search(source)),
-                                         ebmc=EBMC))
+                                         ebmc=EBMC, source=source))
         return
     import tempfile
     with tempfile.TemporaryDirectory() as d:
