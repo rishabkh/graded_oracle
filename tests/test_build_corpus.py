@@ -197,3 +197,19 @@ def test_coi_ratio_drops_when_irrelevant_logic_is_added():
     # the distractor's spent_total counter is OUTSIDE the property's cone:
     # same cone, more total lines, so the ratio must fall
     assert child < parent
+
+
+def test_since_run_keeps_only_the_newer_runs():
+    from extender.build_corpus import since_run
+    rows = [{"run_id": "2026-08-14_22h31m36s", "attempt": 0},
+            {"run_id": "2026-09-15_09h00m00s", "attempt": 0},
+            {"run_id": "2026-09-16_10h00m00s", "attempt": 1}]
+    kept = since_run(rows, "2026-09-15_00h00m00s")
+    assert [r["run_id"] for r in kept] == ["2026-09-15_09h00m00s",
+                                           "2026-09-16_10h00m00s"]
+
+
+def test_since_run_without_a_cutoff_keeps_everything():
+    from extender.build_corpus import since_run
+    rows = [{"run_id": "2026-08-14_22h31m36s"}]
+    assert since_run(rows, None) == rows

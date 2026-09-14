@@ -187,6 +187,15 @@ def _spread(name, values):
           f"median={statistics.median(vals):.2f} max={max(vals):.2f}")
 
 
+def since_run(records, cutoff):
+    """The old starting designs were seeded from placeholder readmes. A
+    fresh corpus takes only the runs after the cutoff; the run ids are
+    timestamps, so a plain string compare is the whole test."""
+    if not cutoff:
+        return records
+    return [r for r in records if (r.get("run_id") or "") >= cutoff]
+
+
 def merge_corpus(g0_rows, existing_rows):
     """A rebuild regenerates generation zero from the run log; promoted
     later generations live only in corpus.jsonl and must survive."""
@@ -214,9 +223,14 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--no-yosys", action="store_true",
                    help="skip the state_bits metric")
+    p.add_argument("--since", default=None, metavar="RUN_ID",
+                   help="keep only initiator runs at or after this run id, "
+                        "e.g. 2026-09-15_00h00m00s - the fresh corpus "
+                        "leaves the placeholder-readme designs behind")
     args = p.parse_args()
 
     records = [json.loads(line) for line in SOURCE_LOG.read_text().splitlines()]
+    records = since_run(records, args.since)
     necessary = [r for r in records if r.get("verdict") == "NECESSARY"]
     print(f"{len(necessary)} NECESSARY triples from {SOURCE_LOG.name}")
 
