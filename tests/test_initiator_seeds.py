@@ -81,3 +81,28 @@ def test_scope_gate_lets_a_global_property_through_without_one():
     from run import scope_gate
     assert scope_gate("globally: the property applies in every state",
                       {"antecedents": []}) is None
+
+
+ARMED_VERILOG = ("module m (input wire clk);\n"
+                 "  reg armed = 0;\n"
+                 "  always @(posedge clk) if (armed) assert (occ <= 3'd2);\n"
+                 "endmodule\n")
+UNARMED_VERILOG = ("module m (input wire clk);\n"
+                   "  reg armed = 0;\n"
+                   "  always @(posedge clk) assert (occ <= 3'd2);\n"
+                   "endmodule\n")
+IMPLIES_VERILOG = ("module m (input wire clk);\n"
+                   "  reg armed = 0;\n"
+                   "  always @(*) assert (!armed || occ <= 3'd2);\n"
+                   "endmodule\n")
+
+
+def test_scope_gate_rejects_an_arm_register_the_property_ignores():
+    from run import scope_gate
+    armed = "after Q: a sticky arm register"
+    assert scope_gate(armed, {"antecedents": ["armed"],
+                              "verilog": UNARMED_VERILOG}) is not None
+    assert scope_gate(armed, {"antecedents": ["armed"],
+                              "verilog": ARMED_VERILOG}) is None
+    assert scope_gate(armed, {"antecedents": ["armed"],
+                              "verilog": IMPLIES_VERILOG}) is None

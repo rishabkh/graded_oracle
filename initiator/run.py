@@ -20,6 +20,7 @@ import argparse
 import itertools
 import json
 import random
+import re
 import sys
 import threading
 import time
@@ -106,18 +107,37 @@ def load_pools():
     return exemplars, constructs, readmes, styles, patterns, scopes
 
 
+def _property_is_conditional(verilog):
+    """Does any assertion actually depend on something? Either guarded by
+    an `if` within the three lines above it, or written as an implication
+    (`!armed || ...`, or a ternary)."""
+    lines = verilog.splitlines()
+    for i, line in enumerate(lines):
+        if "assert" not in line:
+            continue
+        window = " ".join(lines[max(0, i - 3):i + 1])
+        if re.search(r"if\s*\(", window) or "||" in line or "?" in line:
+            return True
+    return False
+
+
 def scope_gate(scope, triple):
-    """An armed property that is never armed is vacuously true, and a
-    vacuous triple is worthless. The oracle already proves antecedents
-    reachable with a cover run, so the rule is simply that a scoped
-    design must declare its arm register as an antecedent. Returns a
-    reason to reject, or None."""
+    """An armed property that is never armed is vacuously true, and an arm
+    register the property ignores is decoration. Two conditions for a
+    scoped seed: the arm register is declared as an antecedent, so the
+    oracle's cover run proves the armed state reachable, and the property
+    is actually conditional on something. Returns a reason to reject, or
+    None."""
     if scope.lower().startswith("globally"):
         return None
     if not (triple.get("antecedents") or []):
         return ("scope is armed but antecedents is empty - the arm "
                 "register must be listed so the cover run can prove the "
                 "property is ever required")
+    verilog = triple.get("verilog")
+    if verilog and not _property_is_conditional(verilog):
+        return ("scope is armed but every assertion is unconditional - the "
+                "arm register is decoration, not a scope")
     return None
 
 

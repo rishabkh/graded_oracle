@@ -47,3 +47,44 @@ def test_extract_json_nested_braces():
 def test_extract_json_none_when_absent():
     assert extract_json("no json here") is None
     assert extract_json("{broken") is None
+
+
+def test_anthropic_call_streams_so_a_long_generation_is_allowed(monkeypatch):
+    """The SDK refuses a plain create() whose max_tokens could run past ten
+    minutes, which is every initiator call at a 32k budget."""
+    import types
+    import llm_client
+
+    seen = {}
+
+    class FakeMessage:
+        stop_reason = "end_turn"
+        usage = types.SimpleNamespace(input_tokens=1, output_tokens=2)
+        content = [types.SimpleNamespace(type="text", text='{"ok": 1}')]
+
+    class FakeStream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get_final_message(self):
+            return FakeMessage()
+
+    class FakeMessages:
+        def create(self, **kw):
+            raise AssertionError("must not call create(): use stream()")
+
+        def stream(self, **kw):
+            seen.update(kw)
+            return FakeStream()
+
+    monkeypatch.setattr(llm_client, "_an_client",
+                        types.SimpleNamespace(messages=FakeMessages()))
+    text, usage, stop = llm_client._call_anthropic(
+        model="m", max_tokens=32000, user="u", system=None, schema=None,
+        effort=None)
+    assert stop == "ok" and text == '{"ok": 1}'
+    assert usage == {"input": 1, "output": 2}
+    assert seen["max_tokens"] == 32000

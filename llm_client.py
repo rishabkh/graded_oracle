@@ -106,7 +106,10 @@ def _call_anthropic(*, model, max_tokens, user, system, schema, effort):
         kwargs["output_config"] = output_config
     if system:
         kwargs["system"] = system
-    resp = _an_client.messages.create(**kwargs)
+    # stream, not create: the SDK refuses a plain create() whose max_tokens
+    # could run past ten minutes, which is every call at our 32k budget
+    with _an_client.messages.stream(**kwargs) as s:
+        resp = s.get_final_message()
     usage = {"input": resp.usage.input_tokens,
              "output": resp.usage.output_tokens}
     if resp.stop_reason == "refusal":
