@@ -44,6 +44,11 @@ sized constants; complete expressions only. NO system functions at all
 ($past, $countones, $onehot, ...) - the checker does not implement
 them; write a popcount as an explicit sum instead:
 busy[0] + busy[1] + ... + busy[N].
+
+Scope: your lemmas are inserted next to the file's own property, so use
+only names visible THERE. A signal inside another module is not visible
+by a dotted path from that scope - if the property's module sees the
+value through a port, use the port name.
 """
 
 

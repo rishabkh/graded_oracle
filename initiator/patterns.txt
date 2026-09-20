@@ -1,0 +1,35 @@
+# WHAT the property says, from Dwyer, Avrunen and Corbett, "Patterns in
+# Property Specifications for Finite-State Verification" (ICSE 1999).
+#
+# Only the safety half is here. Existence, unbounded Response and Chain
+# Response are excluded because k-induction cannot prove liveness; that is
+# a scope decision, stated, not an oversight.
+#
+# Weights are chosen, not inherited. Universality plus Absence come to 40%
+# because a census of the two evaluation sets (34 riscv-formal checks, 109
+# large_lemma_miners files) found both dominated by them. Precedence is
+# raised because it is the riscv-formal reg-check shape, and Bounded
+# Existence because 64% of the Technion hard files carry a counter bound.
+# A guarded assertion is NOT a separate pattern: `if (g) assert (e)` is
+# `assert (!g || e)`, which is still Universality. Repeated lines weight.
+#
+Universality: a relation between the design's registers holds in every reachable state
+Universality: a relation between the design's registers holds in every reachable state
+Universality: a relation between the design's registers holds in every reachable state
+Universality: a relation between the design's registers holds in every reachable state
+Universality: a relation between the design's registers holds in every reachable state
+Absence: two conditions are never true at the same time - two grants, two owners, a full flag and an empty flag together
+Absence: two conditions are never true at the same time - two grants, two owners, a full flag and an empty flag together
+Absence: two conditions are never true at the same time - two grants, two owners, a full flag and an empty flag together
+Bounded Existence, at most k: a counter or an occupancy never exceeds a bound SMALLER than its width allows, so the bound is a real fact about reachable states and not a width truism
+Bounded Existence, at most k: a counter or an occupancy never exceeds a bound SMALLER than its width allows, so the bound is a real fact about reachable states and not a width truism
+Bounded Existence, at most k: a counter or an occupancy never exceeds a bound SMALLER than its width allows, so the bound is a real fact about reachable states and not a width truism
+Bounded Existence, at most k: a counter or an occupancy never exceeds a bound SMALLER than its width allows, so the bound is a real fact about reachable states and not a width truism
+Precedence: if something is observed now, something else must have happened earlier - keep a shadow register recording the earlier event or value, and assert the relation between the shadow and the present state
+Precedence: if something is observed now, something else must have happened earlier - keep a shadow register recording the earlier event or value, and assert the relation between the shadow and the present state
+Precedence: if something is observed now, something else must have happened earlier - keep a shadow register recording the earlier event or value, and assert the relation between the shadow and the present state
+Precedence: if something is observed now, something else must have happened earlier - keep a shadow register recording the earlier event or value, and assert the relation between the shadow and the present state
+Bounded Response, safety form: once a request is accepted a countdown register guarantees completion within k cycles; assert that the countdown never expires while the request is still outstanding
+Bounded Response, safety form: once a request is accepted a countdown register guarantees completion within k cycles; assert that the countdown never expires while the request is still outstanding
+Chain Precedence: a three-step order - arm, then start, then finish - enforced by a small state machine, so a later step can never be observed unless the earlier ones happened
+Chain Precedence: a three-step order - arm, then start, then finish - enforced by a small state machine, so a later step can never be observed unless the earlier ones happened

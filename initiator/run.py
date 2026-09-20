@@ -86,6 +86,13 @@ class Spinner:
             self._thread.join()
 
 
+def _pool(path):
+    """One seed per line. A repeated line is how a pool is weighted, and
+    lines starting with # carry the provenance of the weights."""
+    return [s.strip() for s in path.read_text().splitlines()
+            if s.strip() and not s.startswith("#")]
+
+
 def load_pools():
     exemplars = json.loads((HERE / "exemplars.json").read_text())
     constructs = [s.strip() for s in
@@ -93,7 +100,25 @@ def load_pools():
                   if s.strip()]
     readmes = [json.loads(line) for line in
                (HERE / "readmes.jsonl").read_text().splitlines() if line.strip()]
-    return exemplars, constructs, readmes
+    styles = _pool(HERE / "styles.txt")
+    patterns = _pool(HERE / "patterns.txt")
+    scopes = _pool(HERE / "scopes.txt")
+    return exemplars, constructs, readmes, styles, patterns, scopes
+
+
+def scope_gate(scope, triple):
+    """An armed property that is never armed is vacuously true, and a
+    vacuous triple is worthless. The oracle already proves antecedents
+    reachable with a cover run, so the rule is simply that a scoped
+    design must declare its arm register as an antecedent. Returns a
+    reason to reject, or None."""
+    if scope.lower().startswith("globally"):
+        return None
+    if not (triple.get("antecedents") or []):
+        return ("scope is armed but antecedents is empty - the arm "
+                "register must be listed so the cover run can prove the "
+                "property is ever required")
+    return None
 
 
 def check_contract():
@@ -118,10 +143,10 @@ def assert_exemplar_pool(exemplars):
     print(f"exemplar pool ok ({len(exemplars)})")
 
 
-def build_user_msg(readme, construct, exemplar):
+def build_user_msg(readme, construct, style, pattern, scope, exemplar):
     return USER_TEMPLATE.format(
-        readme=readme["readme"], construct=construct,
-        exemplar=json.dumps(exemplar, indent=2))
+        readme=readme["readme"], construct=construct, style=style,
+        pattern=pattern, scope=scope, exemplar=json.dumps(exemplar, indent=2))
 
 
 def call_model(user_msg):
@@ -167,20 +192,25 @@ class BalancedSampler:
         return [a, b]
 
 
-def make_samplers(exemplars, constructs, readmes):
+def make_samplers(exemplars, constructs, readmes, styles, patterns, scopes):
     return (BalancedSampler(readmes), BalancedSampler(constructs),
-            BalancedSampler(list(exemplars.items())))
+            BalancedSampler(styles), BalancedSampler(patterns),
+            BalancedSampler(scopes), BalancedSampler(list(exemplars.items())))
 
 
-def sample_seeds(readme_s, construct_s, exemplar_s):
+def sample_seeds(readme_s, construct_s, style_s, pattern_s, scope_s,
+                 exemplar_s):
     readme = readme_s.draw()
     construct = construct_s.draw()
+    style = style_s.draw()
+    pattern = pattern_s.draw()
+    scope = scope_s.draw()
     ex_id, exemplar = exemplar_s.draw()
-    return readme, construct, ex_id, exemplar
+    return readme, construct, style, pattern, scope, ex_id, exemplar
 
 
 def run_attempts(n, grade=True, show_raw=False, cmd=""):
-    exemplars, constructs, readmes = load_pools()
+    exemplars, constructs, readmes, styles, patterns, scopes = load_pools()
     if grade:
         assert_exemplar_pool(exemplars)
 
@@ -190,10 +220,12 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
     run_id = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
     print(f"run_id: {run_id}")
 
-    samplers = make_samplers(exemplars, constructs, readmes)
+    samplers = make_samplers(exemplars, constructs, readmes, styles,
+                             patterns, scopes)
     tally = {}
     for i in range(n):
-        readme, construct, ex_id, exemplar = sample_seeds(*samplers)
+        (readme, construct, style, pattern, scope, ex_id,
+         exemplar) = sample_seeds(*samplers)
         record = {
             "run_id": run_id,
             "cmd": cmd,
@@ -204,12 +236,14 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
             "temperature": "n/a: removed from the API on this model; "
                            "effort + seed rotation are the diversity knobs",
             "readme_id": readme["repo"], "construct": construct,
+            "style": style, "pattern": pattern, "scope": scope,
             "exemplar_id": ex_id,
         }
         try:
             with Spinner(f"[{i}] {MODEL} writing a triple"):
                 raw_json, usage, stop = call_model(
-                    build_user_msg(readme, construct, exemplar))
+                    build_user_msg(readme, construct, style, pattern, scope,
+                                   exemplar))
         except Exception as exc:
             record["error"] = f"{type(exc).__name__}: {exc}"
             dump(record)
@@ -228,6 +262,15 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
         record["raw_json"] = raw_json
         if show_raw:
             print(json.dumps(json.loads(raw_json), indent=2))
+
+        reason = scope_gate(scope, json.loads(raw_json))
+        if reason:
+            record["verdict"] = "SCOPE_UNARMED"
+            record["reason"] = reason
+            tally["SCOPE_UNARMED"] = tally.get("SCOPE_UNARMED", 0) + 1
+            dump(record)
+            print(f"[{i}] SCOPE_UNARMED - {reason[:70]}")
+            continue
 
         if grade:
             t0 = time.monotonic()

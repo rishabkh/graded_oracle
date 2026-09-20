@@ -1,0 +1,34 @@
+# Dwyer's scopes: WHEN the property is required to hold. Each non-global
+# scope costs one register, and each one changes the invariant too - an
+# armed property is unprovable until the invariant ties the arm bit to the
+# state it implies. That is exactly the shape of riscv-formal's reg check
+# (register_written latches once, register_shadow holds the value, and the
+# property only then compares them), which is in the problem set for all
+# three cores and which our old corpus produced only by accident, in 9 of
+# 173 designs.
+#
+# A guard is NOT a scope: `if (g) assert (e)` is `assert (!g || e)`, the
+# same property with a stronger antecedent, evaluated fresh every cycle.
+# A scope latches. Weights: global half the time, "after Q" the largest
+# share of the rest because it is the riscv-formal shape.
+#
+globally: the property applies in every reachable state, with no arming register
+globally: the property applies in every reachable state, with no arming register
+globally: the property applies in every reachable state, with no arming register
+globally: the property applies in every reachable state, with no arming register
+globally: the property applies in every reachable state, with no arming register
+globally: the property applies in every reachable state, with no arming register
+globally: the property applies in every reachable state, with no arming register
+globally: the property applies in every reachable state, with no arming register
+globally: the property applies in every reachable state, with no arming register
+globally: the property applies in every reachable state, with no arming register
+after Q: keep a sticky arm register set the first time an event Q happens and never cleared afterwards; the property is required only while that register is high. List the arm register in antecedents.
+after Q: keep a sticky arm register set the first time an event Q happens and never cleared afterwards; the property is required only while that register is high. List the arm register in antecedents.
+after Q: keep a sticky arm register set the first time an event Q happens and never cleared afterwards; the property is required only while that register is high. List the arm register in antecedents.
+after Q: keep a sticky arm register set the first time an event Q happens and never cleared afterwards; the property is required only while that register is high. List the arm register in antecedents.
+after Q: keep a sticky arm register set the first time an event Q happens and never cleared afterwards; the property is required only while that register is high. List the arm register in antecedents.
+before R: keep a register that starts high and is cleared the first time an event R happens; the property is required only while it is still high, that is, before R has ever occurred. List it in antecedents.
+before R: keep a register that starts high and is cleared the first time an event R happens; the property is required only while it is still high, that is, before R has ever occurred. List it in antecedents.
+between Q and R: keep a window register, set by Q and cleared by R, and require the property only inside the window; the design must be able to open and close the window more than once. List the window register in antecedents.
+between Q and R: keep a window register, set by Q and cleared by R, and require the property only inside the window; the design must be able to open and close the window more than once. List the window register in antecedents.
+after Q until R: keep a window register set by Q and cleared by R, where R may never arrive, so the property must hold from Q onwards whether or not the window ever closes. List the window register in antecedents.

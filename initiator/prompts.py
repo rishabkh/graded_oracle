@@ -52,22 +52,27 @@ Three conditions, all required.
 
 ## Hard constraints on the Verilog
 
-- IMMEDIATE assertions only, inside `always` blocks:
+- These assertion forms are supported and all of them are welcome:
       always @(posedge clk) assert (expr);
       always @(*)           assert (expr);
-- Do NOT use concurrent SVA. `assert property (@(posedge clk) ...)`, `|->`, `|=>`,
-  `##N`, `s_eventually`, sequences, and `bind` are REJECTED by the toolchain — the
-  module fails to parse and is never graded.
-- For temporal behaviour, hand-roll a register:
-      reg past_rst = 0;
-      always @(posedge clk) past_rst <= rst;
-      always @(posedge clk) if (past_rst) assert (count == 0);
+      assert property (expr);                    // module level, NO clock inside
+      always @(posedge clk) assert property (expr);
+  `$past`, `$rose`, `$fell` and `$stable` work inside a clocked always block.
+  Gate any `$past` check with a past-valid register so cycle zero is not judged:
+      reg pv = 0;
+      always @(posedge clk) pv <= 1;
+      always @(posedge clk) if (pv) assert (out == $past(in));
+- Do NOT put a clock inside the property: `assert property (@(posedge clk) ...)`,
+  `disable iff`, `|->`, `|=>`, `##N`, `property ... endproperty`, `s_eventually`,
+  sequences and `bind` are REJECTED by the toolchain — the module fails to parse
+  and is never graded. Do not nest these functions either: `$past($rose(x))`
+  fails to elaborate.
 - Give every state register an `initial` value, so counterexamples are genuine
   from-reset traces rather than artifacts of an unconstrained start state.
 - The design MUST have an enable or idle condition — an input that, when low, leaves
   all state unchanged (e.g. `i_ce`, `step`, or push and pop both low). Condition (2)
   depends on it: the state S must be one the design can sit in indefinitely.
-- Exactly one property per module.
+- One property per module, unless the property style below asks for two.
 - Never write `assume`. Assumptions are not checked and would let a false premise
   carry the proof.
 - Never write `->` as logical implication in an expression — the toolchain rejects
@@ -136,6 +141,40 @@ construction; the property and invariants FOLLOW from the structure. Do not
 pick an invariant first and decorate a module around it. You may scale the
 construct, specialise it, or embed it in a small surrounding mechanism, but
 the named structure must genuinely be there.
+
+## Property pattern seed
+
+The property must be an instance of this pattern (Dwyer et al., ICSE 1999):
+
+{pattern}
+
+The pattern decides WHAT the property says. Pick the design's state so that
+this pattern is natural for it, rather than bolting the pattern onto a design
+that does not support it.
+
+## Property scope seed
+
+The property is required in this scope (same paper):
+
+{scope}
+
+A scope is not a guard. `if (g) assert (e)` is the same as `assert (!g || e)`
+and is evaluated fresh every cycle; a scope LATCHES, so the arming register
+records that something has already happened and keeps that memory. If the
+scope is anything other than global, the arming register must appear in
+`antecedents`, and `sanity_covers` must show the armed state is reachable.
+A property that can never be armed is vacuously true and is rejected.
+
+## Property style seed
+
+Write the property in this style:
+
+{style}
+
+The style decides the SHAPE of the assertion, not what it is about. The
+criterion is unchanged: the property must still be true, still fail induction
+on its own, and still close with R. If the style names a system function, use
+it in the property, not in the invariants.
 
 ## Worked example
 

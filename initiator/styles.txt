@@ -1,0 +1,26 @@
+# How the assertion is WRITTEN, as opposed to what it means (patterns.txt).
+# Only forms the open-source yosys frontend actually parses and proves are
+# here: each was tested with a true version that must pass and a false
+# version that must fail.
+#
+# Weighted by the same census: the evaluation sets are dominated by bare and
+# guarded assertions. $past, $rose and $stable appear in neither set, so they
+# are a small minority here - enough to teach reading, not enough to crowd
+# out the forms that matter. The clocked property-block syntax that the
+# Technion files use cannot be generated at all (yosys rejects it); those
+# prompts are produced later by rewriting a proven design and re-checking it
+# with EBMC.
+#
+state the property as a plain right-now fact in a combinational block: always @(*) assert (expr);
+state the property as a plain right-now fact in a combinational block: always @(*) assert (expr);
+state the property as a fact checked on the clock edge: always @(posedge clk) assert (expr);
+state the property as a fact checked on the clock edge: always @(posedge clk) assert (expr);
+state the property as a guarded check: always @(posedge clk) if (guard) assert (expr); where the guard is a real design condition, not a constant
+state the property as a guarded check: always @(posedge clk) if (guard) assert (expr); where the guard is a real design condition, not a constant
+state the property as a guarded check: always @(posedge clk) if (guard) assert (expr); where the guard is a real design condition, not a constant
+state the property with the property keyword, unclocked, at module level: assert property (expr); - no @(posedge clk) inside the parentheses, the toolchain rejects that form
+give the module TWO assertions that both need the same relation R: neither is inductive alone, and R closes both
+give the module TWO assertions that both need the same relation R: neither is inductive alone, and R closes both
+state the property about the PREVIOUS cycle using $past, gated by a past-valid register so cycle zero is not judged: reg pv = 0; always @(posedge clk) pv <= 1; always @(posedge clk) if (pv) assert (out == $past(in));
+state the property as a no-change check using $stable: when a guard signal did not change, some other state must not have changed either
+state the property as an edge check using $rose or $fell: when a signal rises, something about the state must hold that cycle

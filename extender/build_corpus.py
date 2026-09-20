@@ -159,6 +159,13 @@ def flatten_record(record, idx):
         "parent": None,
         "source_run_id": record.get("run_id"),
         "source_attempt": record.get("attempt"),
+        # which seeds made it: the variety measurement needs these on the
+        # row, not only in the run log
+        "readme_id": record.get("readme_id"),
+        "construct": record.get("construct"),
+        "style": record.get("style"),
+        "pattern": record.get("pattern"),
+        "scope": record.get("scope"),
         "top_module": t["top_module"],
         "clock": t.get("clock", "clk"),
         "antecedents": t.get("antecedents", []),
