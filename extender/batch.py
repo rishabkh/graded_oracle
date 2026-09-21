@@ -248,7 +248,7 @@ def _real_executor(task, corpus_rows):
                                      else "TRUNCATED" if stop == "length"
                                      else "UNPARSEABLE")
             else:
-                record["reasoning"] = out["reasoning"]
+                record["reasoning"] = out["note"]   # kept under the old key
                 finalize_distractor(grade_extension(parent, out["patch"], record))
         elif task["ext_type"] == "compose":
             p2 = by_id[task["parent2_id"]]

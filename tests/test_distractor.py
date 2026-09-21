@@ -48,3 +48,15 @@ def test_malformed_patch_is_patch_error():
     rec = grade_extension(make_parent(), "@@ nowhere @@\n+ x", {})
     assert rec["verdict"] == "PATCH_ERROR"
     assert "child_verilog" not in rec
+
+
+def test_schema_avoids_the_field_name_that_trips_the_output_filter():
+    """A strict schema demanding a field literally named "reasoning" is
+    blocked before it reaches the model: probed 21 Sep 2026, blocked with
+    that name, accepted with any other, same prompt and same route. The
+    field is a rationale string on a patch record, so the name is free."""
+    from distractor import EXT_SCHEMA, DISTRACTOR_PROMPT
+    assert "reasoning" not in EXT_SCHEMA["properties"]
+    assert "note" in EXT_SCHEMA["properties"]
+    assert "reasoning" not in EXT_SCHEMA["required"]
+    assert '"note"' in DISTRACTOR_PROMPT

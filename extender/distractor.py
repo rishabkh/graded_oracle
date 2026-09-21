@@ -110,16 +110,22 @@ Rules:
 Diff format:
 {diff_format}
 
-Reply with JSON: {{"reasoning": "<why this logic is irrelevant to the \
+Reply with JSON: {{"note": "<why this logic is irrelevant to the \
 property and how it stays live>", "patch": "<the diff>"}}"""
 
+# The rationale field is called "note", not "reasoning": a strict schema
+# demanding a field of that exact name is refused before it reaches the
+# model (probed 21 Sep 2026 - blocked with "reasoning", accepted with
+# "note", same prompt, same route, thinking on or off). The initiator's
+# "cti_reasoning" has never been refused in 105 calls, so it is the exact
+# name that matters.
 EXT_SCHEMA = {
     "type": "object",
     "properties": {
-        "reasoning": {"type": "string"},
+        "note": {"type": "string"},
         "patch": {"type": "string"},
     },
-    "required": ["reasoning", "patch"],
+    "required": ["note", "patch"],
     "additionalProperties": False,
 }
 
@@ -319,7 +325,7 @@ def main():
             dump(record)
             print(f"{record['verdict'].lower()} - logged (raw text kept)")
             return
-        record["reasoning"] = out["reasoning"]
+        record["reasoning"] = out["note"]      # kept under the old key
         grade_extension(parent, out["patch"], record)
 
     dump(record)
