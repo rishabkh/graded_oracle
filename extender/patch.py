@@ -39,15 +39,23 @@ def apply_patch(text, diff):
     def content(i):
         return lines[i].rstrip("\n")
 
+    def key(line):
+        """What a line has to match on: the code, without any trailing
+        comment. Models quote the code and drop the commentary, and a
+        whole-line compare then misses every anchor in a commented file.
+        The file's own line keeps its comment; only the compare ignores
+        it."""
+        return line.split("//")[0].strip() or line.strip()
+
     def find_forward(target, start):
         for idx in range(start, len(lines)):
-            if content(idx).strip() == target.strip():
+            if key(content(idx)) == key(target):
                 return idx
         return None
 
     def find_sequence(anchors, start):
         for idx in range(start, len(lines) - len(anchors) + 1):
-            if all(content(idx + j).strip() == anchors[j].strip()
+            if all(key(content(idx + j)) == key(anchors[j])
                    for j in range(len(anchors))):
                 return idx
         return None

@@ -88,3 +88,30 @@ def test_anthropic_call_streams_so_a_long_generation_is_allowed(monkeypatch):
     assert stop == "ok" and text == '{"ok": 1}'
     assert usage == {"input": 1, "output": 2}
     assert seen["max_tokens"] == 32000
+
+
+def test_openrouter_reply_without_a_usage_block_does_not_crash(monkeypatch):
+    """Four calls in the last batch died on this: some provider routes
+    return a response with usage=None, and a paid call became an ERROR
+    that the retry path could not rescue."""
+    import types
+    import llm_client
+
+    choice = types.SimpleNamespace(
+        finish_reason="stop",
+        message=types.SimpleNamespace(content=None))
+    reply = types.SimpleNamespace(choices=[choice], usage=None)
+
+    class FakeCompletions:
+        def create(self, **kw):
+            return reply
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "x")
+    monkeypatch.setattr(llm_client, "_or_client", types.SimpleNamespace(
+        chat=types.SimpleNamespace(completions=FakeCompletions())))
+    text, usage, stop = llm_client._call_openrouter(
+        model="m", max_tokens=100, user="u", system=None, schema=None,
+        effort=None)
+    assert text is None
+    assert usage == {"input": 0, "output": 0}
+    assert stop == "ok"        # retryable, not a dead ERROR

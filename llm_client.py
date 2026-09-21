@@ -150,8 +150,11 @@ def _call_openrouter(*, model, max_tokens, user, system, schema, effort):
         kwargs.pop("response_format", None)
         resp = _or_client.chat.completions.create(**kwargs)
     choice = resp.choices[0]
-    usage = {"input": resp.usage.prompt_tokens,
-             "output": resp.usage.completion_tokens}
+    # some provider routes answer with no usage block at all; that must
+    # not turn a paid call into an ERROR the retry path cannot rescue
+    u = getattr(resp, "usage", None)
+    usage = {"input": getattr(u, "prompt_tokens", 0) or 0,
+             "output": getattr(u, "completion_tokens", 0) or 0}
     if choice.finish_reason == "content_filter":
         return None, usage, "refusal"
     global LAST_RAW

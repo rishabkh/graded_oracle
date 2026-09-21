@@ -210,3 +210,22 @@ def test_anchor_then_delete_only_reaches_back_one_line():
     # still fails loudly
     with pytest.raises(PatchError, match="delete"):
         apply_patch("a\nb\nc\n", "@@ c @@\n- a")
+
+
+def test_anchor_matches_a_line_carrying_a_trailing_comment():
+    """From the batch run: the file's port line ends in a comment, the
+    model quoted the code part only, and every anchor missed. Matching
+    should compare the code, not the commentary."""
+    text = ("module m (\n"
+            "  input  wire       clk,\n"
+            "  input  wire       r_stop,   // closes the monitoring window\n"
+            "  output reg        done\n"
+            ");\n"
+            "endmodule\n")
+    diff = ("@@ input  wire       r_stop, @@\n"
+            "- output reg        done\n"
+            "+ output reg        done,\n"
+            "+ output reg [3:0]  spent_total\n")
+    out = apply_patch(text, diff)
+    assert "output reg [3:0]  spent_total" in out
+    assert "// closes the monitoring window" in out   # comment survives
