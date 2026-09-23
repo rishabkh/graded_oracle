@@ -202,3 +202,25 @@ def test_parallel_loop_checkpoints_each_promotion():
                    workers=2, on_promote=saved.append)
     assert len(saved) == len(out) > 0
     assert {r["id"] for r in saved} == {r["id"] for r in out}
+
+
+def test_loop_can_start_from_the_deepest_rows_first():
+    """With a shuffled frontier, a run of 60 calls over 100 generation-zero
+    rows never reaches a child, which is why generation 2 only ever
+    appeared in later runs. Depth order draws the deep rows first."""
+    corpus = [
+        dict(row(), id="g0_a", generation=0, parent=None),
+        dict(row(), id="g1_a", generation=1, parent="g0_a"),
+        dict(row(), id="g2_a", generation=2, parent="g1_a"),
+        dict(row(), id="g0_b", generation=0, parent=None),
+    ]
+    seen = []
+
+    def executor(task, rows):
+        seen.append(task["parent_id"])
+        return {"verdict": "NOT_PROVEN", "parent_id": task["parent_id"],
+                "extension_id": f"e{task['task_id']}", "result": {}}
+
+    run_loop(corpus, executor, max_calls=2, rng=random.Random(0),
+             order="depth")
+    assert seen[0] == "g2_a"

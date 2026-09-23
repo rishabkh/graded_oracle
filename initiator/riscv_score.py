@@ -95,6 +95,17 @@ def usable(exprs):
     return [e for e in exprs if not malformed([e])]
 
 
+def endpoint_ready(probe):
+    """Is the model actually answering? A run started against a server
+    that is still loading writes NO_ANSWER rows indistinguishable from
+    real failures, which is how a results file gets poisoned."""
+    try:
+        probe()
+        return True, "ready"
+    except Exception as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+
+
 def summarise(rows, run_id):
     """One run's result, in the form a paper table wants: what was
     solved, out of how many, and how the rest failed."""
@@ -227,6 +238,19 @@ def main():
             print(f"\n  prompt for {problems[0]}: {len(prompt)} chars "
                   f"(~{len(prompt) * 10 // 36} tokens)")
         return
+
+    def probe():
+        from openai import OpenAI
+        OpenAI(base_url=os.environ["QWEN_BASE_URL"],
+               api_key=os.environ.get("QWEN_API_KEY", "none")
+               ).models.list()
+
+    ok, why = endpoint_ready(probe)
+    if not ok:
+        sys.exit(f"the model endpoint is not answering ({why}).\n"
+                 "Nothing was run and nothing was logged. Check the server "
+                 "has printed 'Application startup complete', and that the "
+                 "tunnel points at the right node.")
 
     run_id = time.strftime("%Y-%m-%d_%Hh%Mm%Ss")
     tally = Counter()

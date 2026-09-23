@@ -89,3 +89,19 @@ def test_summarise_groups_a_run_and_counts_what_matters():
     assert s["counts"]["BASECASE_FAIL"] == 1
     assert s["core"] == "serv" and s["model"] == "llm"
     assert s["condition"] == "native"
+
+
+def test_a_dead_endpoint_stops_the_run_before_it_writes_anything():
+    """22 Sep: a run started while the server was still loading and wrote
+    NO_ANSWER rows that looked like model failures. A score file must
+    never contain rows produced by a connection error."""
+    import riscv_score
+
+    def refuses():
+        raise ConnectionError("connection refused")
+
+    ok, why = riscv_score.endpoint_ready(refuses)
+    assert ok is False and "refused" in why
+
+    ok, why = riscv_score.endpoint_ready(lambda: ["llm"])
+    assert ok is True

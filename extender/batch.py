@@ -116,7 +116,7 @@ def sample_task(rng, parent, corpus_rows):
 
 def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
              rng=None, on_task=None, on_fixer=None, workers=1,
-             on_promote=None):
+             on_promote=None, order="shuffle"):
     """The while loop, now a worker pool. `executor(task, corpus_rows) ->
     record` is injectable so tests run without API or sby. `workers`
     threads share one frontier under one lock; the executor runs
@@ -129,7 +129,13 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
     rng = rng or random.Random()
     corpus_rows = list(corpus_rows)
     start = [r for r in corpus_rows if extendable(r, None, max_gen)]
-    rng.shuffle(start)   # sample the whole corpus, not the oldest rows first
+    if order == "depth":
+        # deepest and rarest first, round-robin across families so one
+        # lineage cannot absorb the run (see frontier.py)
+        from frontier import order_frontier
+        start = order_frontier(start, {r["id"]: r for r in corpus_rows})
+    else:
+        rng.shuffle(start)   # sample the corpus, not the oldest rows first
     frontier = deque(start)
     branch_fails = Counter()
     dead_branches = set()
@@ -318,6 +324,10 @@ def main():
                    help="parallel workers (threads); model calls are "
                         "network-bound and grading is subprocesses, so "
                         "N workers is close to N-fold")
+    p.add_argument("--order", default="shuffle", choices=["shuffle", "depth"],
+                   help="shuffle samples the whole corpus; depth draws the "
+                        "deepest and rarest rows first, round-robin across "
+                        "families, which is what grows generation 2 and 3")
     p.add_argument("--dry", action="store_true",
                    help="print the planned first tasks, call nothing")
     args = p.parse_args()
@@ -373,7 +383,8 @@ def main():
                             max_calls=args.max_calls, max_gen=args.max_gen,
                             rng=rng, on_task=log_task,
                             on_fixer=to_fixer_queue,
-                            workers=args.workers, on_promote=checkpoint)
+                                workers=args.workers, on_promote=checkpoint,
+                            order=args.order)
     print(f"\nrun complete: {len(new_rows)} promoted "
           f"(corpus now {len(corpus_rows) + len(new_rows)} rows); "
           f"log: {OUT_LOG.name}")
