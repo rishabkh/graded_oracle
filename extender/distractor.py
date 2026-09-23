@@ -315,7 +315,7 @@ def main():
     else:
         record["model"] = llm_client.model_label(MODEL)
         record["effort"] = EFFORT
-        with Spinner(f"{MODEL} writing a distractor patch"):
+        with Spinner(f"{llm_client.model_label(MODEL)} writing a distractor patch"):
             out, usage, stop = call_model(build_prompt(parent))
         record["usage"] = usage
         if out is None:

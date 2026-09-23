@@ -106,3 +106,19 @@ def test_scope_gate_rejects_an_arm_register_the_property_ignores():
                               "verilog": ARMED_VERILOG}) is None
     assert scope_gate(armed, {"antecedents": ["armed"],
                               "verilog": IMPLIES_VERILOG}) is None
+
+
+def test_output_budget_can_be_lowered_for_a_local_server(monkeypatch):
+    """The initiator asks for 32000 output tokens, which is the whole
+    window of a locally served 32k model: prompt plus budget is then one
+    token over and every call is refused."""
+    import importlib
+    import run as R
+    monkeypatch.setenv("INITIATOR_MAX_TOKENS", "8000")
+    importlib.reload(R)
+    try:
+        assert R.MAX_TOKENS == 8000
+    finally:
+        monkeypatch.delenv("INITIATOR_MAX_TOKENS")
+        importlib.reload(R)
+    assert R.MAX_TOKENS == 32000

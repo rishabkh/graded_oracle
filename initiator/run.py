@@ -19,6 +19,7 @@ silently rerouted to another model.
 import argparse
 import itertools
 import json
+import os
 import random
 import re
 import sys
@@ -41,7 +42,10 @@ from oracle.contract import parse_generator_output           # noqa: E402
 
 MODEL = "claude-opus-5"
 EFFORT = "high"
-MAX_TOKENS = 32000
+# 32000 suits a frontier model with a huge window. A locally served 32k
+# model has no room for it: prompt plus budget is then over the limit and
+# every call is refused, so lower it when generating on the cluster.
+MAX_TOKENS = int(os.getenv("INITIATOR_MAX_TOKENS", "32000"))
 GRADE_KWARGS = dict(timeout_s=120)
 LOG_PATH = HERE / "logs" / "attempts.jsonl"
 
@@ -260,7 +264,7 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
             "exemplar_id": ex_id,
         }
         try:
-            with Spinner(f"[{i}] {MODEL} writing a triple"):
+            with Spinner(f"[{i}] {llm_client.model_label(MODEL)} writing a triple"):
                 raw_json, usage, stop = call_model(
                     build_user_msg(readme, construct, style, pattern, scope,
                                    exemplar))

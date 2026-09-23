@@ -1224,7 +1224,7 @@ def main():
               "parent_id": parent["id"],
               "parent2_id": parent2["id"] if parent2 else None,
               "model": llm_client.model_label(MODEL), "effort": EFFORT}
-    with Spinner(f"{MODEL} writing a {args.type} extension"):
+    with Spinner(f"{llm_client.model_label(MODEL)} writing a {args.type} extension"):
         out, usage, stop = call_model(prompt, schema)
     record["usage"] = usage
     if out is None:

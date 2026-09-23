@@ -35,7 +35,8 @@ from extend import (MOVE_WEIGHTS, SECOND_PROPERTY_RATE,          # noqa: E402
                     COMPOSE_SCHEMA, COMPOSE_TEMPLATE, build_prompt,
                     call_model, compose_hidden_signals, grade_compose,
                     grade_replicate, grade_step4)
-from distractor import (Spinner, dump, OUT_LOG,                   # noqa: E402
+import llm_client                                                 # noqa: E402
+from distractor import (Spinner, dump, OUT_LOG, MODEL, EFFORT,    # noqa: E402
                         build_prompt as distractor_prompt,
                         call_model as distractor_call, grade_extension)
 from promote import FIXER_QUEUE, promote, route                  # noqa: E402
@@ -240,7 +241,10 @@ def _real_executor(task, corpus_rows):
               "ext_type": task["ext_type"], "move": task.get("move"),
               "k": task.get("k", 1), "parent_id": task["parent_id"],
               "parent2_id": task.get("parent2_id"),
-              "batch_task": task["task_id"], "batch_attempt": task["attempt"]}
+              "batch_task": task["task_id"], "batch_attempt": task["attempt"],
+              # who wrote this row: a corpus grown by two different models
+              # is training data that cannot be reasoned about otherwise
+              "model": llm_client.model_label(MODEL), "effort": EFFORT}
     try:
         if task["ext_type"] == "distractor":
             record["invariants"] = parent["invariants"]     # verbatim
