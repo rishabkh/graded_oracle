@@ -105,3 +105,67 @@ def test_a_dead_endpoint_stops_the_run_before_it_writes_anything():
 
     ok, why = riscv_score.endpoint_ready(lambda: ["llm"])
     assert ok is True
+
+
+def test_an_empty_api_key_is_caught_before_the_run(monkeypatch):
+    """OpenRouter lists models without a key, so a models.list() probe
+    passes and every question then comes back 401. Ten rows of NO_ANSWER
+    looked exactly like a model scoring zero."""
+    import riscv_score
+    monkeypatch.setenv("QWEN_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("QWEN_API_KEY", "")
+    ok, why = riscv_score.credentials_ready()
+    assert ok is False and "QWEN_API_KEY" in why
+
+    monkeypatch.setenv("QWEN_API_KEY", "sk-or-v1-something")
+    assert riscv_score.credentials_ready()[0] is True
+
+
+def test_a_local_endpoint_needs_no_key(monkeypatch):
+    import riscv_score
+    monkeypatch.setenv("QWEN_BASE_URL", "http://localhost:8000/v1")
+    monkeypatch.setenv("QWEN_API_KEY", "none")
+    assert riscv_score.credentials_ready()[0] is True
+
+
+def test_solve_records_why_an_answer_was_empty():
+    """Twice now an empty answer was logged as NO_ANSWER with no way to
+    tell whether the model refused, ran out of budget, or spent it all on
+    thinking. The reply's own fields say which."""
+    import types
+    import riscv_score
+
+    msg = types.SimpleNamespace(content="", refusal=None,
+                                reasoning="thinking and thinking")
+    usage = types.SimpleNamespace(
+        completion_tokens=16000, prompt_tokens=10660,
+        completion_tokens_details=types.SimpleNamespace(
+            reasoning_tokens=16000))
+    reply = types.SimpleNamespace(
+        choices=[types.SimpleNamespace(message=msg, finish_reason="length")],
+        usage=usage, provider="Claude Platform on AWS")
+
+    meta = riscv_score.reply_meta(reply)
+    assert meta["finish_reason"] == "length"
+    assert meta["reasoning_tokens"] == 16000
+    assert meta["completion_tokens"] == 16000
+    assert meta["provider"] == "Claude Platform on AWS"
+    assert meta["had_reasoning_text"] is True
+
+
+def test_the_served_model_is_recorded_not_just_its_alias():
+    """Both the untrained model and the fine-tuned one are served under
+    the alias 'llm', so the log could not say which produced a run. The
+    server reports the real path; record it."""
+    import types
+    import riscv_score
+    listing = types.SimpleNamespace(data=[
+        types.SimpleNamespace(id="llm",
+                              root="/n/home01/x/graded_oracle/runs/v1/merged")])
+    assert riscv_score.served_model(listing).endswith("runs/v1/merged")
+
+    listing = types.SimpleNamespace(data=[
+        types.SimpleNamespace(id="llm", root="Qwen/Qwen2.5-Coder-32B-Instruct")])
+    assert riscv_score.served_model(listing) == "Qwen/Qwen2.5-Coder-32B-Instruct"
+
+    assert riscv_score.served_model(types.SimpleNamespace(data=[])) is None

@@ -95,6 +95,32 @@ def usable(exprs):
     return [e for e in exprs if not malformed([e])]
 
 
+def served_model(listing):
+    """What the endpoint is really serving. Both the base model and the
+    fine-tuned one get served under the alias 'llm', so the alias alone
+    cannot tell a before-run from an after-run. vLLM reports the real
+    path or repo id in `root`."""
+    data = getattr(listing, "data", None) or []
+    if not data:
+        return None
+    first = data[0]
+    return getattr(first, "root", None) or getattr(first, "id", None)
+
+
+def credentials_ready():
+    """A remote endpoint needs a real key. OpenRouter serves its model
+    list to anyone, so the readiness probe passes and then every question
+    comes back 401 - ten rows of NO_ANSWER that read exactly like a model
+    scoring zero. A local server needs no key at all."""
+    url = os.environ.get("QWEN_BASE_URL", "")
+    key = os.environ.get("QWEN_API_KEY", "")
+    local = any(h in url for h in ("localhost", "127.0.0.1", ".rc.fas."))
+    if not local and not key.strip():
+        return False, ("QWEN_API_KEY is empty and the endpoint is remote; "
+                       "every request would be refused")
+    return True, "ok"
+
+
 def endpoint_ready(probe):
     """Is the model actually answering? A run started against a server
     that is still loading writes NO_ANSWER rows indistinguishable from
@@ -170,16 +196,41 @@ def check_property_text(core, check):
     return "(check source not unpacked; run the survey first)"
 
 
-def solve(prompt, max_tokens=4000):
-    """One call to whatever OpenAI-compatible endpoint is configured."""
+def reply_meta(reply):
+    """Why the answer looks the way it does. An empty answer whose
+    finish_reason is 'length' and whose reasoning_tokens equal the whole
+    budget is a budget problem, not a refusal and not ignorance."""
+    choice = reply.choices[0]
+    usage = getattr(reply, "usage", None)
+    details = getattr(usage, "completion_tokens_details", None)
+    message = choice.message
+    return {
+        "finish_reason": choice.finish_reason,
+        "provider": getattr(reply, "provider", None),
+        "completion_tokens": getattr(usage, "completion_tokens", None),
+        "prompt_tokens": getattr(usage, "prompt_tokens", None),
+        "reasoning_tokens": getattr(details, "reasoning_tokens", None),
+        "had_reasoning_text": bool(getattr(message, "reasoning", None)),
+        "refusal": str(getattr(message, "refusal", None) or "")[:200] or None,
+    }
+
+
+def solve(prompt, max_tokens=4000, reasoning=None):
+    """One call to whatever OpenAI-compatible endpoint is configured.
+
+    A thinking model spends output tokens on thought before it writes
+    anything: measured 23 Sep 2026, Opus used all 4000 on reasoning and
+    returned an empty answer, logged as NO_ANSWER and read as failure."""
     from openai import OpenAI
     client = OpenAI(base_url=os.environ["QWEN_BASE_URL"],
                     api_key=os.environ.get("QWEN_API_KEY", "none"))
-    r = client.chat.completions.create(
-        model=os.environ["QWEN_MODEL"], max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}])
+    kwargs = dict(model=os.environ["QWEN_MODEL"], max_tokens=max_tokens,
+                  messages=[{"role": "user", "content": prompt}])
+    if reasoning:
+        kwargs["extra_body"] = {"reasoning": reasoning}
+    r = client.chat.completions.create(**kwargs)
     text = r.choices[0].message.content or ""
-    return parse_invariants(text), text
+    return parse_invariants(text), text, reply_meta(r)
 
 
 def main():
@@ -190,6 +241,13 @@ def main():
     p.add_argument("--condition", default="native",
                    choices=["native", "focused", "cut"])
     p.add_argument("--timeout", type=int, default=900)
+    p.add_argument("--max-tokens", type=int, default=4000,
+                   help="output budget; a thinking model needs far more "
+                        "than the answer itself, 16000 for Opus")
+    p.add_argument("--reasoning-effort", default=None,
+                   choices=["none", "low", "medium", "high"],
+                   help="bound the thinking so some budget is left for "
+                        "the answer; 'none' turns it off entirely")
     p.add_argument("--dry", action="store_true",
                    help="print the problem set and one prompt, call nothing")
     p.add_argument("--report", action="store_true",
@@ -239,11 +297,17 @@ def main():
                   f"(~{len(prompt) * 10 // 36} tokens)")
         return
 
+    listing = {}
+
     def probe():
         from openai import OpenAI
-        OpenAI(base_url=os.environ["QWEN_BASE_URL"],
-               api_key=os.environ.get("QWEN_API_KEY", "none")
-               ).models.list()
+        listing["models"] = OpenAI(
+            base_url=os.environ["QWEN_BASE_URL"],
+            api_key=os.environ.get("QWEN_API_KEY", "none")).models.list()
+
+    ok, why = credentials_ready()
+    if not ok:
+        sys.exit(f"{why}.\nNothing was run and nothing was logged.")
 
     ok, why = endpoint_ready(probe)
     if not ok:
@@ -251,6 +315,15 @@ def main():
                  "Nothing was run and nothing was logged. Check the server "
                  "has printed 'Application startup complete', and that the "
                  "tunnel points at the right node.")
+
+    reasoning = None
+    if args.reasoning_effort == "none":
+        reasoning = {"enabled": False}
+    elif args.reasoning_effort:
+        reasoning = {"effort": args.reasoning_effort}
+
+    serving = served_model(listing.get("models")) if listing else None
+    print(f"  endpoint is serving: {serving or 'unknown'}")
 
     run_id = time.strftime("%Y-%m-%d_%Hh%Mm%Ss")
     tally = Counter()
@@ -260,9 +333,11 @@ def main():
                               check_property_text(args.core, check), module)
         t0 = time.monotonic()
         try:
-            invariants, raw = solve(prompt)
+            invariants, raw, meta = solve(prompt, args.max_tokens,
+                                          reasoning)
         except Exception as exc:
             invariants, raw = None, f"{type(exc).__name__}: {exc}"
+            meta = {"error": type(exc).__name__}
         good = usable(invariants or [])
         if not good:
             rec = {"core": args.core, "check": check, "verdict": "NO_ANSWER",
@@ -273,7 +348,9 @@ def main():
             rec = run_check(args.core, check, good, args.k,
                             args.timeout, args.condition)
             rec["dropped_malformed"] = len(invariants or []) - len(good)
+        rec["reply"] = meta
         rec.update(run_id=run_id, model=os.environ.get("QWEN_MODEL"),
+                   served_model=serving,
                    solve_wall_s=round(time.monotonic() - t0, 1))
         tally[rec["verdict"]] += 1
         with OUT_LOG.open("a") as f:
