@@ -20,7 +20,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
-from ebmc_eval import EBMC, run as ebmc_run
+from ebmc_eval import (EBMC, TIMEOUT_S as ebmc_timeout_s, judgeable,
+                       run as ebmc_run)
+
+
+def ebmc_timeout():
+    return ebmc_timeout_s
 from solver_baseline import INV_SCHEMA, Spinner, solve_opus, solve_qwen
 
 BENCH_ROOT = HERE.parent.parent / "large_lemma_miners" / "benchmarks"
@@ -71,11 +76,25 @@ def main():
         sys.exit("EBMC_PATH not set - export it first, nothing was called")
 
     solve = solve_opus if args.solver == "opus" else solve_qwen
+    # which model actually answered: the base model and the fine-tune are
+    # both served under the alias "llm", so the alias cannot tell a
+    # before-run from an after-run
+    serving = None
+    if args.solver == "qwen":
+        from openai import OpenAI
+        from riscv_score import served_model
+        serving = served_model(OpenAI(
+            base_url=os.environ["QWEN_BASE_URL"],
+            api_key=os.environ.get("QWEN_API_KEY", "none")).models.list())
+        print(f"endpoint is serving: {serving or 'unknown'}")
     run_id = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
     solved = 0
     for i, f in enumerate(files):
         rec = {"run_id": run_id, "solver": args.solver, "bench": f.name,
-               "set": args.set}
+               "set": args.set, "served_model": serving,
+               "ebmc_timeout_s": ebmc_timeout(),
+               # a file that errors with no lemmas is nobody's failure
+               "file_judgeable": judgeable(f)}
         t0 = time.monotonic()
         try:
             with Spinner(f"[{i}] {args.solver} on {f.stem}"):

@@ -1,0 +1,438 @@
+{
+  "Barrel.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "Rrobin_p4.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "am2910_p1.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "am2910_p2.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "am2910_p3.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ar.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "b01.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "b02_p1.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "b02_p2.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "b03.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "bit-vector.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "brs1_1_1.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "brs1_1_2.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "brs1_1_3.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "brs1_1_4.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "brs1_1_5.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "brs1_2_1.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "brs1_2_2.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "brs1_2_3.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "brs1_2_4.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "brs1_2_5.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "bufferAlloc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "buffer_128_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "buffer_32_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "buffer_64_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "counter_66_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "dp_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "edgeDetectors.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ethernet.define.112_vcegar_p5.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex1.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex100.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex15_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex2.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex34.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex34_30.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex3_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex4_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex5.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex51_57_1_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex51_a.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex51_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex6.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex65.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex7.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex8.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex80_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex9.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "ex90.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "fifo_ref_16_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "fifo_ref_64_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "fifo_vis.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "gr2006_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "gulwani_cegar1.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "gulwani_cegar1_2.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "gulwani_cegar1_3.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "gulwani_cegar1_4.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "gulwani_cegar1_5.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "gulwani_cegar2_1_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "gulwani_cegar2_2_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "gulwani_cegar2_3_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "gulwani_cegar2_4_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "gulwani_cegar2_5_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "gulwani_cegar2_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "gulwani_fig1a_2_ebmc.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "gulwani_fig1a_3.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "gulwani_fig1a_4_ebmc.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "gulwani_fig1a_5_ebmc.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "gulwani_fig1a_6_ebmc.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "gulwani_fig1a_ebmc.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "h_Arbiter.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "h_Dekker.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "h_TreeArb.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "h_Vending.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "h_Vsa16_p1.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "h_Vsa16a_p5.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "icctl1_p2.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "icctl1_p3.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "itc99_b13_1.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "itc99_b13_10.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "itc99_b13_11.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "itc99_b13_13.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "itc99_b13_20.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "itc99_b13_21.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "itc99_b13_6.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "itc99_b13_7.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "itc99_b13_9.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "lcd_5-s2.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "load_store_1-s1.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "lrg_arb_lrg_16_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "TIMEOUT"
+  },
+  "lrg_arb_lrg_4_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "lrg_arb_lrg_8_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "mpeg_1.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "s1269b_p5.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "sdlx_control.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "simple_cam_16_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "simple_cam_8_ebmc.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "swap2.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "synabs.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "three_processor_bin_2.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "two_processor_bin_2.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "usb_phy_1.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "vMiim.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "vga_4-s1.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "vga_4-s2.sv": {
+    "judgeable": false,
+    "without_lemmas": "ERROR"
+  },
+  "vsaR_p02.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "vsaR_p06.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "vsaR_p07.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "vsaR_p11.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  },
+  "vsaR_p16.sv": {
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
+  }
+}

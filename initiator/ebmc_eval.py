@@ -20,6 +20,7 @@ Their conventions, ported:
   ... --dry      # print instrumented file + command, run nothing
 """
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -28,7 +29,10 @@ import time
 from pathlib import Path
 
 EBMC = os.getenv("EBMC_PATH", "ebmc")
-TIMEOUT_S = 120        # their EBMC_TIMEOUT
+# their EBMC_TIMEOUT. Raising it is a deviation from their protocol, so
+# it is a setting rather than an edit: both sides of a before/after
+# comparison must use the same value and the runs record which.
+TIMEOUT_S = int(os.getenv("EBMC_TIMEOUT_S", "120"))
 K_INDUCTION_BOUND = 5  # their EBMC_K_FOR_INDUCTION
 BMC_BOUND = 30         # their EBMC_BMC_BOUND
 
@@ -139,6 +143,41 @@ def parse_verdict(stdout, stderr, mode):
     if stderr:
         return "ERROR"
     return "TIMEOUT"
+
+
+JUDGEABLE_CACHE = Path(__file__).resolve().parent.parent / "results" \
+    / "judgeable.json"
+
+
+def judgeable(bench_path, cache=JUDGEABLE_CACHE, _run=None):
+    """Can this benchmark be judged at all in one_inductive_with_prop?
+
+    Some files error with NO lemmas attached, so no answer can ever
+    succeed on them and they are not part of any model's denominator.
+    Two causes, both measured 23 Sep 2026: a property that spans cycles
+    (`|-> ##2`, `s_nexttime`), which EBMC's k-induction mode refuses, and
+    the gulwani_fig1a family, where EBMC crashes on the file itself.
+
+    Measured once per file and cached, because it is a property of the
+    benchmark, not of the model being scored: 9 of 78 in the easy set,
+    5 of 31 in the hard set."""
+    import tempfile
+    runner = _run or run
+    path = Path(bench_path)
+    cache = Path(cache)
+    known = {}
+    if cache.exists():
+        known = json.loads(cache.read_text())
+    if path.name in known:
+        return known[path.name]["judgeable"]
+
+    with tempfile.TemporaryDirectory() as d:
+        res = runner(path, [], "one_inductive_with_prop", d)
+    ok = res["verdict"] != "ERROR"
+    known[path.name] = {"judgeable": ok, "without_lemmas": res["verdict"]}
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(known, indent=2, sort_keys=True))
+    return ok
 
 
 def run(bench_path, lemma_exprs, mode, workdir):

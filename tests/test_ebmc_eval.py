@@ -99,3 +99,41 @@ def test_top_module_is_main_when_present_else_the_last_one():
 def test_reset_flag_names_the_files_own_top_module():
     cmd = ebmc_command("f.sv", "k_induction", rst=True, source=TWO_MODULES)
     assert "--reset inv_80.rst" in cmd
+
+
+def test_timeout_is_a_setting_and_defaults_to_their_protocol(monkeypatch):
+    """Their paper uses 120s. Changing it is allowed but must be visible:
+    both sides of a before/after comparison have to use the same value,
+    and the deviation has to be reportable."""
+    import importlib
+    import ebmc_eval as E
+    monkeypatch.delenv("EBMC_TIMEOUT_S", raising=False)
+    importlib.reload(E)
+    assert E.TIMEOUT_S == 120
+    monkeypatch.setenv("EBMC_TIMEOUT_S", "240")
+    importlib.reload(E)
+    assert E.TIMEOUT_S == 240
+    monkeypatch.delenv("EBMC_TIMEOUT_S")
+    importlib.reload(E)
+
+
+def test_judgeability_is_measured_once_and_cached(tmp_path):
+    """A file whose own property EBMC cannot k-induct errors with no
+    lemmas attached, so no answer can ever succeed on it. That fact
+    belongs in the record, not in somebody's head: 9 of 78 easy files
+    and 5 of 31 hard ones are in this class."""
+    from ebmc_eval import judgeable
+    calls = []
+
+    def fake_run(path, lemmas, mode, workdir):
+        calls.append(path)
+        return {"verdict": "ERROR" if "bad" in str(path) else "INCONCLUSIVE"}
+
+    cache = tmp_path / "judgeable.json"
+    assert judgeable(tmp_path / "good.sv", cache, _run=fake_run) is True
+    assert judgeable(tmp_path / "bad.sv", cache, _run=fake_run) is False
+    assert len(calls) == 2
+    # second time comes from the cache, not from ebmc
+    assert judgeable(tmp_path / "bad.sv", cache, _run=fake_run) is False
+    assert len(calls) == 2
+    assert "bad.sv" in cache.read_text()
