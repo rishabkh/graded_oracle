@@ -122,3 +122,22 @@ def test_output_budget_can_be_lowered_for_a_local_server(monkeypatch):
         monkeypatch.delenv("INITIATOR_MAX_TOKENS")
         importlib.reload(R)
     assert R.MAX_TOKENS == 32000
+
+
+def test_a_generation_run_records_which_model_answered(monkeypatch):
+    """Both models are served under the alias 'llm', so the attempts log
+    could not say whether a yield number came from the base model or the
+    fine-tune. Ask the endpoint what it is really serving."""
+    import types
+    import run as R
+    monkeypatch.setenv("OPENROUTER_BASE_URL", "http://localhost:8000/v1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "none")
+
+    listing = types.SimpleNamespace(data=[
+        types.SimpleNamespace(id="llm", root="/home/x/runs/v1/merged")])
+    assert R.endpoint_model(lambda: listing).endswith("runs/v1/merged")
+
+    def boom():
+        raise ConnectionError("nope")
+
+    assert R.endpoint_model(boom) is None

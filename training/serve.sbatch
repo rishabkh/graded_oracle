@@ -28,6 +28,16 @@ export CUDA_HOME=$(dirname $(dirname $(which nvcc)))
 export VLLM_USE_FLASHINFER_SAMPLER=0
 export HF_HOME="/n/netscratch/amin_lab/Lab/$USER/hardware-formal-disco/models"
 
+# Some nodes (especially in gpu_requeue, which mixes hardware) refuse the
+# direct card-to-card link and vLLM dies with "NCCL error: invalid usage".
+# Falling back to host memory is slower to start and fine for serving.
+export NCCL_P2P_DISABLE=1
+export NCCL_SHM_DISABLE=1
+export NCCL_DEBUG=WARN
+
+echo "GPUs visible to this job:"
+nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
+
 MODEL="${MODEL:-Qwen/Qwen2.5-Coder-32B-Instruct}"
 echo "=================================================="
 echo " serving : $MODEL"

@@ -145,6 +145,27 @@ def scope_gate(scope, triple):
     return None
 
 
+def endpoint_model(list_models=None):
+    """What the server is really serving. Both the base model and the
+    fine-tune answer to the alias "llm", so a yield number is unreadable
+    without this. Returns None if the endpoint cannot be asked."""
+    try:
+        if list_models is None:
+            from openai import OpenAI
+            client = OpenAI(
+                base_url=os.environ["OPENROUTER_BASE_URL"],
+                api_key=os.environ.get("OPENROUTER_API_KEY", "none"))
+            listing = client.models.list()
+        else:
+            listing = list_models()
+        first = (getattr(listing, "data", None) or [None])[0]
+        if first is None:
+            return None
+        return getattr(first, "root", None) or getattr(first, "id", None)
+    except Exception:
+        return None
+
+
 def check_contract():
     """Preflight 0.1: unknown cti_* fields must not trip a violation."""
     out = parse_generator_output(
@@ -242,7 +263,10 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
     # pilot, the 200) all append to the same file and stay separable.
     # e.g. "2026-08-14_15h30m42s" (local wall clock; cmd is its own field).
     run_id = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
-    print(f"run_id: {run_id}")
+    serving = (endpoint_model()
+               if os.environ.get("OPENROUTER_BASE_URL") else None)
+    print(f"run_id: {run_id}"
+          + (f"   serving: {serving}" if serving else ""))
 
     samplers = make_samplers(exemplars, constructs, readmes, styles,
                              patterns, scopes)
@@ -257,6 +281,7 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
             "graded": grade,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "model": llm_client.model_label(MODEL), "effort": EFFORT,
+            "served_model": serving,
             "temperature": "n/a: removed from the API on this model; "
                            "effort + seed rotation are the diversity knobs",
             "readme_id": readme["repo"], "construct": construct,
