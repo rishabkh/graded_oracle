@@ -33,7 +33,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))   # graded_oracle root -> `oracle` package
 sys.path.insert(0, str(HERE))
 
-from prompts import SYSTEM_PROMPT, USER_TEMPLATE   # noqa: E402
+from prompts import (SYSTEM_PROMPT, USER_TEMPLATE,   # noqa: E402
+                     prompt_version)
 from schema import TRIPLE_SCHEMA                   # noqa: E402
 
 import llm_client                                            # noqa: E402
@@ -284,6 +285,7 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
             "served_model": serving,
             "temperature": "n/a: removed from the API on this model; "
                            "effort + seed rotation are the diversity knobs",
+            "prompt_version": prompt_version(),
             "readme_id": readme["repo"], "construct": construct,
             "style": style, "pattern": pattern, "scope": scope,
             "exemplar_id": ex_id,

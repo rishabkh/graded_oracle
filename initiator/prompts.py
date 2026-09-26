@@ -5,6 +5,7 @@ One deviation from the doc: cti_state is an array of {signal, value}
 pairs rather than a free-form dict, because strict structured-output
 schemas require fixed keys on every object. Same information.
 """
+import re
 
 SYSTEM_PROMPT = """\
 You write small SystemVerilog modules for a formal verification dataset.
@@ -187,3 +188,17 @@ example — a different kind of design, a different sort of relation, a differen
 property shape — and it must actually contain the seeded construct. Fill in
 every field of the schema.
 """
+
+
+_CAP = re.compile(r"Keep the module under\s+(\d+)\s+lines")
+
+
+def prompt_version(system_prompt=None):
+    """A short stamp naming the design-size rule this prompt imposes,
+    read off the prompt itself so it cannot drift from the rule it
+    names. Rows carry it because raising the cap splits the corpus into
+    two populations, and a later score change is unreadable unless each
+    row says which prompt wrote it."""
+    m = _CAP.search(system_prompt if system_prompt is not None
+                    else SYSTEM_PROMPT)
+    return f"{m.group(1)}cap" if m else "nocap"

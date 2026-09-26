@@ -161,6 +161,10 @@ def flatten_record(record, idx):
         "source_attempt": record.get("attempt"),
         # which seeds made it: the variety measurement needs these on the
         # row, not only in the run log
+        # which prompt wrote it: the cap on design size changes over
+        # time, and a score move is unreadable without knowing which
+        # population a row came from. None for rows made before the stamp.
+        "prompt_version": record.get("prompt_version"),
         "readme_id": record.get("readme_id"),
         "construct": record.get("construct"),
         "style": record.get("style"),
