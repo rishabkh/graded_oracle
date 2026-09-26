@@ -169,3 +169,34 @@ def test_the_served_model_is_recorded_not_just_its_alias():
     assert riscv_score.served_model(listing) == "Qwen/Qwen2.5-Coder-32B-Instruct"
 
     assert riscv_score.served_model(types.SimpleNamespace(data=[])) is None
+
+
+def test_a_row_records_the_thinking_budget_it_ran_under():
+    """An Opus run with thinking turned down is not Opus at its best, and
+    a score is unreadable without knowing which it was."""
+    import riscv_score
+    rec = {}
+    riscv_score.stamp_settings(rec, max_tokens=32000, reasoning_effort="high")
+    assert rec["max_tokens"] == 32000
+    assert rec["reasoning_effort"] == "high"
+
+    riscv_score.stamp_settings(rec, max_tokens=4000, reasoning_effort=None)
+    assert rec["reasoning_effort"] == "default"
+
+
+def test_a_router_endpoint_records_the_model_we_asked_for(monkeypatch):
+    """A router lists hundreds of models, so the first one in the list is
+    meaningless: a run through OpenRouter logged 'typesafe/jev-router' as
+    the model that answered. Only a single-model server can be trusted to
+    name itself."""
+    import types
+    import riscv_score
+    monkeypatch.setenv("QWEN_MODEL", "anthropic/claude-opus-5")
+    many = types.SimpleNamespace(data=[
+        types.SimpleNamespace(id="typesafe/jev-router", root=None),
+        types.SimpleNamespace(id="anthropic/claude-opus-5", root=None)])
+    assert riscv_score.served_model(many) == "anthropic/claude-opus-5"
+
+    one = types.SimpleNamespace(data=[
+        types.SimpleNamespace(id="llm", root="/home/x/runs/v1/merged")])
+    assert riscv_score.served_model(one).endswith("runs/v1/merged")

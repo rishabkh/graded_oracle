@@ -95,6 +95,16 @@ def usable(exprs):
     return [e for e in exprs if not malformed([e])]
 
 
+def stamp_settings(rec, max_tokens, reasoning_effort):
+    """What the model was allowed to spend. A thinking model scored with
+    its thinking turned down is not that model at its best, and a run
+    that does not say which was used cannot be compared with one that
+    does."""
+    rec["max_tokens"] = max_tokens
+    rec["reasoning_effort"] = reasoning_effort or "default"
+    return rec
+
+
 def served_model(listing):
     """What the endpoint is really serving. Both the base model and the
     fine-tuned one get served under the alias 'llm', so the alias alone
@@ -103,6 +113,10 @@ def served_model(listing):
     data = getattr(listing, "data", None) or []
     if not data:
         return None
+    if len(data) > 1:
+        # a router lists hundreds of models; its first entry says nothing
+        # about who answered, so trust the model we asked for instead
+        return os.environ.get("QWEN_MODEL")
     first = data[0]
     return getattr(first, "root", None) or getattr(first, "id", None)
 
@@ -349,6 +363,7 @@ def main():
                             args.timeout, args.condition)
             rec["dropped_malformed"] = len(invariants or []) - len(good)
         rec["reply"] = meta
+        stamp_settings(rec, args.max_tokens, args.reasoning_effort)
         rec.update(run_id=run_id, model=os.environ.get("QWEN_MODEL"),
                    served_model=serving,
                    solve_wall_s=round(time.monotonic() - t0, 1))

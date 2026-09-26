@@ -117,7 +117,7 @@ def sample_task(rng, parent, corpus_rows):
 
 def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
              rng=None, on_task=None, on_fixer=None, workers=1,
-             on_promote=None, order="shuffle"):
+             on_promote=None, order="shuffle", per_family=3):
     """The while loop, now a worker pool. `executor(task, corpus_rows) ->
     record` is injectable so tests run without API or sby. `workers`
     threads share one frontier under one lock; the executor runs
@@ -134,7 +134,8 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
         # deepest and rarest first, round-robin across families so one
         # lineage cannot absorb the run (see frontier.py)
         from frontier import order_frontier
-        start = order_frontier(start, {r["id"]: r for r in corpus_rows})
+        start = order_frontier(start, {r["id"]: r for r in corpus_rows},
+                               per_family=per_family)
     else:
         rng.shuffle(start)   # sample the corpus, not the oldest rows first
     frontier = deque(start)
@@ -318,7 +319,7 @@ def _real_executor(task, corpus_rows):
     return record
 
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--max-calls", type=int, required=True,
                    help="HARD cap on LLM calls this run")
@@ -332,11 +333,21 @@ def main():
                    help="shuffle samples the whole corpus; depth draws the "
                         "deepest and rarest rows first, round-robin across "
                         "families, which is what grows generation 2 and 3")
+    p.add_argument("--per-family", type=int, default=3,
+                   help="frontier entries one lineage may contribute, with "
+                        "--order depth. Raise it to drive a single lineage "
+                        "deep, which is the only way to see whether size "
+                        "keeps growing past the generations we have")
+    p.add_argument("--corpus", type=Path, default=CORPUS,
+                   help="corpus to read and append to. Point it at a copy "
+                        "to run a probe without writing into the corpus the "
+                        "training file is built from")
     p.add_argument("--dry", action="store_true",
                    help="print the planned first tasks, call nothing")
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
-    corpus_rows = [json.loads(l) for l in CORPUS.read_text().splitlines()]
+    corpus_rows = [json.loads(l)
+                   for l in args.corpus.read_text().splitlines() if l.strip()]
     rng = random.Random(args.seed)
 
     if args.dry:
@@ -379,7 +390,7 @@ def main():
     def checkpoint(row):
         # append immediately, under run_loop's lock: a killed run keeps
         # every row promoted before the kill
-        with CORPUS.open("a") as f:
+        with args.corpus.open("a") as f:
             f.write(json.dumps(row) + "\n")
 
     with PROGRESS["spinner"] or contextlib.nullcontext():
@@ -388,7 +399,7 @@ def main():
                             rng=rng, on_task=log_task,
                             on_fixer=to_fixer_queue,
                                 workers=args.workers, on_promote=checkpoint,
-                            order=args.order)
+                            order=args.order, per_family=args.per_family)
     print(f"\nrun complete: {len(new_rows)} promoted "
           f"(corpus now {len(corpus_rows) + len(new_rows)} rows); "
           f"log: {OUT_LOG.name}")
