@@ -8,9 +8,18 @@ is the result the project exists to produce.
 
 Conditions, carried into every record and never mixed silently:
 
-  native   the whole design, every assertion        the real task
-  focused  the whole design, one assertion          is the target buried?
-  cut      the cone-sliced design (slice_check)     does length hurt?
+  native   the injection module's own file, and the check's top file.
+           Found 28 Sep 2026 to show far less than its old description
+           ("the whole design, every assertion") claimed: for serv the
+           file is serv_top.v, which only wires sub-modules together,
+           and for every core the check's top file is four include
+           lines, so the assertion was never shown. Every result before
+           that date was measured this way, so it stays byte-identical.
+  full     every file the proof tool reads for the check, except the
+           generated macro library.
+
+focused (one assertion) and cut (the cone slice) were planned and never
+built; they are refused rather than run under the wrong label.
 
 The model's invariants are injected INSIDE the core module, so the
 prompt asks for facts about the core's own registers. That differs from
@@ -200,14 +209,59 @@ def build_prompt(core_text, property_text, core_module):
                          core_module=core_module)
 
 
-def check_property_text(core, check):
-    """The check's own source, which is where the assertions live."""
-    src = RISCV / f"cores/{core}/checks/{check}_prove10/src"
-    for name in (f"{check}.sv",):
-        p = src / name
-        if p.exists():
-            return p.read_text()
-    return "(check source not unpacked; run the survey first)"
+MACRO_LIBRARY = "rvfi_macros.vh"       # 12,475 lines of decode macros
+
+
+def design_files(sby_text):
+    """The design a check reads: every absolute path on the sby read
+    line, in order. That is the core's sources plus riscv-formal's
+    wrapper; the one relative path on the line is the check's own
+    generated top file."""
+    for line in sby_text.splitlines():
+        if line.startswith("read"):
+            return [Path(t) for t in line.split()[1:] if t.startswith("/")]
+    return []
+
+
+def _bundle(paths):
+    """Each file under a header naming it, so the model can see where
+    one module ends and the next begins."""
+    return "\n".join(f"// ===== {p.name} =====\n{p.read_text()}"
+                     for p in paths)
+
+
+def prompt_texts(core, check, condition, root=RISCV):
+    """What the model is shown for one problem, as (design, check).
+    See the module docstring for what each condition contains."""
+    checks = root / f"cores/{core}/checks"
+    src = checks / f"{check}_prove10/src"
+    if condition == "native":
+        top = src / f"{check}.sv"
+        return ((root / CORES[core]["file"]).read_text(),
+                top.read_text() if top.exists()
+                else "(check source not unpacked; run the survey first)")
+    if condition == "full":
+        design = _bundle(design_files((checks / f"{check}.sby").read_text()))
+        own = sorted(p for p in src.iterdir()
+                     if p.is_file() and p.name != MACRO_LIBRARY)
+        return design, _bundle(own)
+    raise ValueError(f"condition {condition!r} was never built; "
+                     "use native or full")
+
+
+def names_outside_core(invariants, core, root=RISCV):
+    """Names the invariants use that the injection module never declares.
+
+    The adapter injects into that one module, and yosys turns an unknown
+    name into a free wire, which then fails for a reason unrelated to
+    the model's reasoning (the thermo_farm bug, Sep 2026). Once the
+    model is shown the sub-modules it can see their registers, so this
+    matters for the first time. Measured 28 Sep 2026: none of the 17
+    earlier Opus answers had such a name, so the check changes no past
+    verdict."""
+    from solver_baseline import out_of_scope
+    text = (root / CORES[core]["file"]).read_text()
+    return sorted(out_of_scope(invariants, text, CORES[core]["module"]))
 
 
 def reply_meta(reply):
@@ -253,7 +307,10 @@ def main():
     p.add_argument("--n", type=int, default=0, help="0 means every problem")
     p.add_argument("--k", type=int, default=10)
     p.add_argument("--condition", default="native",
-                   choices=["native", "focused", "cut"])
+                   choices=["native", "full"],
+                   help="native: what every result before 28 Sep 2026 "
+                        "was measured with; full: every file the proof "
+                        "tool reads")
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--max-tokens", type=int, default=4000,
                    help="output budget; a thinking model needs far more "
@@ -295,18 +352,19 @@ def main():
     problems = problem_set(rows, args.core, check_dirs())
     if args.n:
         problems = problems[:args.n]
-    core_text = (RISCV / CORES[args.core]["file"]).read_text()
     module = CORES[args.core]["module"]
+    shown = (len(prompt_texts(args.core, problems[0],
+                              args.condition)[0].splitlines())
+             if problems else 0)
     print(f"{args.core}: {len(problems)} problems, condition "
-          f"{args.condition}, core is {len(core_text.splitlines())} lines")
+          f"{args.condition}, design shown is {shown} lines")
 
     if args.dry:
-        print("  " + ", ".join(problems[:8]) + (" ..." if len(problems) > 8
-                                                else ""))
+        print("  " + ", ".join(problems[:10]) + (" ..." if len(problems) > 10
+                                                 else ""))
         if problems:
-            prompt = build_prompt(core_text,
-                                  check_property_text(args.core, problems[0]),
-                                  module)
+            prompt = build_prompt(*prompt_texts(args.core, problems[0],
+                                                args.condition), module)
             print(f"\n  prompt for {problems[0]}: {len(prompt)} chars "
                   f"(~{len(prompt) * 10 // 36} tokens)")
         return
@@ -343,8 +401,8 @@ def main():
     tally = Counter()
     OUT_LOG.parent.mkdir(exist_ok=True)
     for i, check in enumerate(problems):
-        prompt = build_prompt(core_text,
-                              check_property_text(args.core, check), module)
+        prompt = build_prompt(*prompt_texts(args.core, check,
+                                            args.condition), module)
         t0 = time.monotonic()
         try:
             invariants, raw, meta = solve(prompt, args.max_tokens,
@@ -353,11 +411,18 @@ def main():
             invariants, raw = None, f"{type(exc).__name__}: {exc}"
             meta = {"error": type(exc).__name__}
         good = usable(invariants or [])
+        outside = names_outside_core(good, args.core) if good else []
         if not good:
             rec = {"core": args.core, "check": check, "verdict": "NO_ANSWER",
                    "condition": args.condition, "raw": raw[:400],
                    "n_invariants": 0,
                    "dropped_malformed": len(invariants or [])}
+        elif outside:
+            rec = {"core": args.core, "check": check,
+                   "verdict": "OUT_OF_SCOPE", "condition": args.condition,
+                   "invariants": good, "n_invariants": len(good),
+                   "outside_names": outside,
+                   "dropped_malformed": len(invariants or []) - len(good)}
         else:
             rec = run_check(args.core, check, good, args.k,
                             args.timeout, args.condition)

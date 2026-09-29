@@ -17,7 +17,12 @@ from extender.build_corpus import flatten_record                   # noqa: E402
 
 
 def test_the_current_prompt_stamps_its_line_cap():
-    assert prompt_version(SYSTEM_PROMPT) == "200cap"
+    """Read off the live prompt rather than pinned to a number, so
+    raising the cap does not require editing a test to match."""
+    import re
+    m = re.search(r"under\s+(\d+)\s+lines", SYSTEM_PROMPT)
+    assert m, "the system prompt no longer states a line cap"
+    assert prompt_version(SYSTEM_PROMPT) == f"{m.group(1)}cap"
 
 
 def test_a_prompt_with_no_cap_says_so():
