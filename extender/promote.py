@@ -51,6 +51,9 @@ _ACTIONS = {
     "ERROR": "retire",
     "TIMEOUT": "retire",
     "INCONCLUSIVE": "retire",
+    # proved, but no harder than its parent (see ratchet): correct, so
+    # nothing for the Fixer, and it counts against the parent's branch
+    "NO_NEW_SHAPE": "reject",
 }
 
 
@@ -65,6 +68,43 @@ def route(verdict):
     """Everything not in the oracle's vocabulary is a machinery/format
     verdict: retry with the lesson, not Fixer food."""
     return _ACTIONS.get(verdict, "reformat")
+
+
+# The distractor copies its invariants on purpose, as the control for
+# irrelevant logic, so no shape rule can apply to it.
+RATCHET_EXEMPT = {"distractor"}
+
+
+def new_shapes(child_invariants, parent_invariants):
+    """Clause shapes (identifiers and constants blanked) the child has
+    and no parent clause has. Renamed copies of an old clause are the
+    same idea again and do not count."""
+    return sorted({template(c) for c in child_invariants}
+                  - {template(c) for c in parent_invariants})
+
+
+def ratchet(record, parents):
+    """Keep a proved child only if it needs a kind of claim its
+    parent(s) did not.
+
+    Measured 26 Sep 2026 over 142 parent-to-child pairs: with NECESSARY
+    as the only rule, 56% of children left the signals-per-clause count
+    unchanged and 27 proved faster than their parents, so generation
+    number counted edits, not progress. Under this rule 16 of the 142
+    would have been turned away. It asks for a new shape rather than a
+    higher shape count, so a child that swaps an old idea for a new one
+    still passes. Idempotent; mutates and returns the record."""
+    if (record.get("verdict") != "NECESSARY"
+            or record.get("ext_type") in RATCHET_EXEMPT):
+        return record
+    old = [c for row in parents if row for c in row.get("invariants", [])]
+    fresh = new_shapes(record.get("invariants", []), old)
+    record["new_shapes"] = fresh
+    if not fresh:
+        record["verdict"] = "NO_NEW_SHAPE"
+        record["reason"] = ("proved, but needs no kind of claim its "
+                            "parent did not already have")
+    return record
 
 
 _MODULES = re.compile(r"\bmodule\s+([A-Za-z_]\w*)")
@@ -102,6 +142,8 @@ def promote(corpus_rows, ext_records, compute_metrics=True):
                ("accept", "reject", "fixer", "drop", "retire", "reformat")}
     new_rows = []
     for rec in ext_records:
+        ratchet(rec, [by_id.get(rec.get("parent_id")),
+                      by_id.get(rec.get("parent2_id"))])
         action = route(rec.get("verdict", "ERROR"))
         buckets[action].append(rec)
         if action != "accept":

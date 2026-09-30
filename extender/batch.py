@@ -39,7 +39,7 @@ import llm_client                                                 # noqa: E402
 from distractor import (Spinner, dump, OUT_LOG, MODEL, EFFORT,    # noqa: E402
                         build_prompt as distractor_prompt,
                         call_model as distractor_call, grade_extension)
-from promote import FIXER_QUEUE, promote, route                  # noqa: E402
+from promote import FIXER_QUEUE, promote, ratchet, route         # noqa: E402
 
 import contextlib
 
@@ -54,7 +54,8 @@ QUEUE_LOG = HERE / "logs" / "batch_queue.jsonl"
 MAX_WITHOUT_S = 60.0      # branch stop: grading about to get expensive
 MAX_LINES = 1000          # branch stop: design too big to read
 BRANCH_FAILS = 3          # branch stop: three consecutive failures
-MAX_GEN = 3               # depth of the ratchet for this phase
+MAX_GEN = 6               # was 3: answers grow about x1.45 a generation,
+                          # so 3 stopped two short of real-core size
 MAX_ATTEMPTS = 3          # per-task retries on format failures
 MULTIPLIER_RATE = 0.15    # replicate/compose share when eligible
 DISTRACTOR_RATE = 1 / 6   # the control: irrelevant logic, invariants verbatim.
@@ -165,6 +166,12 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
         when the same task should be retried (reformat)."""
         record["task_id"] = task["task_id"]
         record["attempt"] = task["attempt"]
+        # here as well as in the executor, so a child no harder than its
+        # parent always counts as a failed attempt; otherwise the parent
+        # is put back as healthy and drawn until the budget runs out
+        p2 = next((r for r in corpus_rows
+                   if r["id"] == task.get("parent2_id")), None)
+        ratchet(record, [parent, p2])
         action = route(record.get("verdict", "ERROR"))
         if action == "accept":
             _, promoted = promote(corpus_rows, [record])
@@ -305,6 +312,10 @@ def _real_executor(task, corpus_rows):
     except Exception as exc:
         record["verdict"] = "ERROR"
         record["error"] = f"{type(exc).__name__}: {exc}"
+    # before the log line, so the log and the terminal show the real verdict
+    by_id = {r["id"]: r for r in corpus_rows}
+    ratchet(record, [by_id.get(task["parent_id"]),
+                     by_id.get(task.get("parent2_id"))])
     dump(record)
     with _progress_lock:
         PROGRESS["done"] += 1

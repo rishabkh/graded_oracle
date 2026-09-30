@@ -93,12 +93,34 @@ def test_sample_task_is_reproducible_with_seed():
 
 def necessary(task, corpus):
     # each child unique, or promote's content-hash dedup (correctly)
-    # collapses them and the test would measure dedup, not the loop
+    # collapses them and the test would measure dedup, not the loop;
+    # and each adds a clause of a new shape, or the progress rule
+    # (correctly) turns it away as no harder than its parent
+    parent = next(r for r in corpus if r["id"] == task["parent_id"])
+    fresh = " + ".join(f"v{i}" for i in range(task["task_id"] + 2))
     return {"verdict": "NECESSARY", "extension_id": f"e{task['task_id']}",
             "ext_type": task["ext_type"], "move": task.get("move"),
             "parent_id": task["parent_id"],
             "child_verilog": row()["verilog"] + f"\n// grew {task['task_id']}",
-            "invariants": ["a <= 2", "b <= 1"], "result": {}}
+            "invariants": list(parent["invariants"]) + [f"{fresh} == total"],
+            "result": {}}
+
+
+def test_a_child_no_harder_than_its_parent_counts_against_the_branch():
+    """A proved child that adds no new kind of claim is turned away, and
+    the loop must count that as a failed attempt. If it counted as a
+    success, the parent would be put back and drawn forever."""
+    calls = []
+    def same(task, corpus):
+        calls.append(task["task_id"])
+        parent = next(r for r in corpus if r["id"] == task["parent_id"])
+        return {"verdict": "NECESSARY", "extension_id": f"e{task['task_id']}",
+                "ext_type": "structural", "parent_id": task["parent_id"],
+                "child_verilog": row()["verilog"] + f"\n// {task['task_id']}",
+                "invariants": list(parent["invariants"]), "result": {}}
+    out = run_loop([row()], same, max_calls=50, rng=random.Random(0))
+    assert out == []
+    assert len(calls) == 3            # three failures, then the branch is dead
 
 
 def test_loop_respects_hard_call_cap():
