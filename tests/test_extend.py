@@ -462,3 +462,13 @@ def test_build_prompt_accepts_ledger():
               "sanity_covers": [], "top_module": "m"}
     msg = build_prompt(parent, "structural", "LEDGER")
     assert "LEDGER" in msg or "difference" in msg
+
+
+def test_the_output_budget_leaves_room_for_deep_designs():
+    """Measured 30 Sep 2026: 12 structural and second-property answers
+    stopped at exactly 32,000 output tokens and were thrown away, about
+    $0.80 each and 12 to 13% of a run's spend, rising as parents get
+    deeper and their designs longer. The call streams, so a larger
+    budget cannot time out the request."""
+    from extend import MAX_TOKENS
+    assert MAX_TOKENS >= 64000

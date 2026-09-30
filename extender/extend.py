@@ -44,7 +44,8 @@ from patch import PatchError, apply_patch                 # noqa: E402
 import llm_client                                               # noqa: E402
 from oracle import PropertyInfo, grade, grade_triple_generated  # noqa: E402
 
-MAX_TOKENS = 32000
+MAX_TOKENS = 64000       # was 32000: on 30 Sep 2026, 12 answers on deep parents
+                         # stopped at exactly 32,000 and were thrown away
 
 SYSTEM_PROMPT = """\
 You are extending a formally verified SystemVerilog module.
