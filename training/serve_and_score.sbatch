@@ -21,7 +21,8 @@
 #   sbatch --export=ALL,PASSES=1 training/serve_and_score.sbatch     # untrained model, one pass of each set
 set -euo pipefail
 
-module load python/3.12.8-fasrc01 cuda/12.4.1-fasrc01 gcc
+# gcc pinned to the version build_ebmc.sbatch compiled EBMC with
+module load python/3.12.8-fasrc01 cuda/12.4.1-fasrc01 gcc/13.2.0-fasrc01
 source "$HOME/envs/vllm/bin/activate"
 
 export CUDA_HOME=$(dirname $(dirname $(which nvcc)))

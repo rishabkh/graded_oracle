@@ -20,7 +20,10 @@ set -euo pipefail
 
 COMMIT=0308d417
 SRC="${SRC:-/n/netscratch/amin_lab/Lab/$USER/hardware-formal-disco/hw-cbmc}"
-module load python/3.12.8-fasrc01 gcc
+# GCC pinned: an unversioned load gave GCC 16.2 on 1 Oct 2026, whose new
+# checks break this CBMC version (it treats every warning as an error).
+# serve_and_score.sbatch loads the same version to run the binary.
+module load python/3.12.8-fasrc01 gcc/13.2.0-fasrc01
 echo "compiler: $(g++ --version | head -1)"
 
 cd "$SRC"

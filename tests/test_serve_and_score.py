@@ -68,3 +68,16 @@ def test_the_build_pins_the_laptop_commit_and_proves_the_judge():
     assert "0308d417" in BUILD
     assert "ebmc_calibrate.py" in BUILD and "EBMC_TIMEOUT_S=300" in BUILD
     assert sbatch(BUILD, "gres") is None
+
+
+def gcc_module(text):
+    m = re.search(r"^module load .*?\b(gcc\S*)", text, re.M)
+    return m.group(1) if m else None
+
+
+def test_the_judge_is_built_and_run_with_one_named_compiler():
+    """1 Oct 2026: an unversioned `module load gcc` gave GCC 16.2, whose
+    stricter new checks broke this CBMC version's warnings-are-errors
+    build. Name the version, and run the binary with the same one, since
+    it needs the C++ library of the compiler that built it."""
+    assert gcc_module(BUILD) == gcc_module(SCORE) == "gcc/13.2.0-fasrc01"
