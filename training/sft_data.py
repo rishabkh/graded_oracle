@@ -21,8 +21,10 @@ def load_pairs(path):
         if not row.get("prompt") or not row.get("completion"):
             raise ValueError(f"{path} line {n}: prompt and completion "
                              "must both be non-empty")
-        rows.append({"prompt": row["prompt"],
-                     "completion": row["completion"]})
+        pair = {"prompt": row["prompt"], "completion": row["completion"]}
+        if "holdout" in row:
+            pair["holdout"] = bool(row["holdout"])
+        rows.append(pair)
     return rows
 
 
@@ -33,7 +35,18 @@ def to_messages(pair):
 
 def split(rows, holdout=0.1, seed=0):
     """A small held-out slice for watching the loss only. The real scores
-    come from riscv-formal and the Technion set, never from here."""
+    come from riscv-formal and the Technion set, never from here.
+
+    A file whose rows all carry a `holdout` mark keeps its own choice:
+    v3 dropped 6 rows from v2's and still holds back v2's rows, which a
+    fresh shuffle of the shorter list would not."""
+    marked = [("holdout" in r) for r in rows]
+    if any(marked):
+        if not all(marked):
+            raise ValueError("some rows carry a holdout mark and some do "
+                             "not; mark every row or none")
+        return ([r for r in rows if not r["holdout"]],
+                [r for r in rows if r["holdout"]])
     shuffled = list(rows)
     random.Random(seed).shuffle(shuffled)
     n = int(len(shuffled) * holdout)

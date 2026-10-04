@@ -11,8 +11,22 @@ out, nothing else. Run 2 adds reasoning, and the repair pairs written by
 counterexample that refuted it, and the fix that closed the proof, all
 produced by the pipeline rather than narrated after the fact.
 
+Run v3 is v2 with reasoning: the same rows and the same question, and
+only the answer differs. The reasoning goes INSIDE the answer object,
+first: {"reasoning": ..., "invariants": [...]}. The scorer's reader
+(`solver_baseline.parse_invariants`) takes everything from the first
+"{" to the last "}" and reads "invariants"; reasoning written as prose
+before the JSON would often carry Verilog braces like {2'b00, x} and
+make the answer unreadable. Inside a JSON string those braces are
+harmless. Only reasoning from the regeneration prompt is accepted, so
+the generator's original notes cannot leak into this file, and every
+pair is read back through the real scorer before anything is written.
+
   venv/bin/python training/build_sft.py --out extender/sft_train.jsonl
   venv/bin/python training/build_sft.py --repairs extender/sft_repairs.jsonl
+  venv/bin/python training/build_sft.py \\
+      --reasoning extender/logs/reasoning_regen.jsonl \\
+      --out extender/sft_train_v3.jsonl
 """
 import argparse
 import json
@@ -23,10 +37,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parent / "initiator"))
 
-from solver_baseline import SOLVER_PROMPT                    # noqa: E402
+from solver_baseline import SOLVER_PROMPT, parse_invariants  # noqa: E402
+from sft_data import split                                   # noqa: E402
 
 CORPUS = HERE.parent / "extender" / "corpus.jsonl"
 FIXER_LOG = HERE.parent / "extender" / "logs" / "fixer_attempts.jsonl"
+REGEN_KIND = "regen"
 
 REPAIR_PROMPT = """\
 {base}
@@ -96,13 +112,148 @@ def repair_pairs(attempts, rows_by_task):
     return out
 
 
-def main():
+def load_reasoning(path):
+    """id -> the last accepted record, in file order, so a rerun that
+    restarts its attempt count still wins. Any line not written by the
+    regeneration prompt stops the build: the generator's original notes
+    cover only some rows and were written differently, and mixing the
+    two would blur the one thing v3 changes."""
+    out = {}
+    for n, line in enumerate(Path(path).read_text().splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{path} line {n}: not JSON ({exc})")
+        if rec.get("prompt_kind") != REGEN_KIND:
+            raise ValueError(
+                f"{path} line {n}: prompt_kind {rec.get('prompt_kind')!r}, "
+                f"expected {REGEN_KIND!r}; only regenerated reasoning may "
+                "enter the training file")
+        if rec.get("accepted") is not True:
+            continue
+        state = rec.get("cti_state")
+        if (not rec.get("id") or not isinstance(rec.get("cti_reasoning"), str)
+                or not rec["cti_reasoning"].strip()
+                or not isinstance(state, list) or not state
+                or not all(isinstance(s, dict) and "signal" in s
+                           and "value" in s for s in state)):
+            raise ValueError(f"{path} line {n}: accepted but missing an id, "
+                             "the reasoning or the fake state")
+        out[rec["id"]] = rec
+    return out
+
+
+def reasoning_text(record):
+    state = ", ".join(f"{s['signal']} = {s['value']}"
+                      for s in record["cti_state"])
+    return f"Fake state: {state}. " + record["cti_reasoning"]
+
+
+def build_reasoning_pairs(rows, reasoning, missing="fail"):
+    """The v2 pairs with reasoning added to each answer. Returns the
+    pairs and the ids that had no accepted reasoning; `missing` says
+    what happens to those: fail, drop, or keep them answers-only.
+
+    Each pair carries v2's own held-back choice (`holdout`), made on the
+    full v2 list, so dropping rows leaves the held-back set unchanged."""
+    base = build_pairs(rows)
+    held = {p["prompt"] for p in split(base)[1]}
+    pairs, absent = [], []
+    for pair in base:
+        pair = dict(pair, holdout=pair["prompt"] in held)
+        rec = reasoning.get(pair["id"])
+        if rec is None:
+            absent.append(pair["id"])
+            if missing == "answers":
+                pairs.append(dict(pair, reasoning=False))
+            continue
+        invariants = json.loads(pair["completion"])["invariants"]
+        pairs.append(dict(pair, reasoning=True, completion=json.dumps(
+            {"reasoning": reasoning_text(rec), "invariants": invariants})))
+    if absent and missing == "fail":
+        raise ValueError(f"{len(absent)} rows have no accepted reasoning: "
+                         + ", ".join(map(str, absent)))
+    return pairs, absent
+
+
+def check_parity(pairs, rows):
+    """Every answer must read back, through the scorer's own reader, to
+    exactly its row's invariants, and every question must be the v2
+    question for that row. Returns the problems; empty means fine."""
+    by_id = {r.get("id"): r for r in rows}
+    problems = []
+    for pair in pairs:
+        row = by_id.get(pair["id"])
+        if row is None:
+            problems.append(f"{pair['id']}: not in the corpus")
+            continue
+        if parse_invariants(pair["completion"]) != row["invariants"]:
+            problems.append(f"{pair['id']}: the scorer does not read back "
+                            "this row's invariants")
+        if pair["prompt"] != build_pair(row)["prompt"]:
+            problems.append(f"{pair['id']}: question differs from v2")
+    return problems
+
+
+def write_reasoning_file(args, rows):
+    """Build, check, and only then write: a file that fails the parity
+    check is never left on disk."""
+    if not Path(args.reasoning).exists():
+        sys.exit(f"no reasoning file at {args.reasoning}")
+    try:
+        reasoning = load_reasoning(args.reasoning)
+        pairs, absent = build_reasoning_pairs(rows, reasoning, args.missing)
+    except ValueError as exc:
+        sys.exit(f"refused: {exc}")
+    problems = check_parity(pairs, rows)
+    if problems:
+        sys.exit(f"parity check failed on {len(problems)} pairs, nothing "
+                 "written:\n  " + "\n  ".join(problems))
+
+    kept = sum(1 for p in pairs if p["reasoning"])
+    unused = set(reasoning) - {r.get("id") for r in rows}
+    print(f"reasoning from {args.reasoning}")
+    print(f"  rows {kept + len(absent)}, with reasoning {kept}, "
+          f"missing {len(absent)}, policy {args.missing} "
+          f"-> {len(pairs)} pairs")
+    if unused:
+        print(f"  {len(unused)} reasoning ids not in the corpus, ignored")
+    if pairs:
+        chars = sorted(len(p["prompt"]) + len(p["completion"])
+                       for p in pairs)
+        print(f"  median {chars[len(chars)//2]} chars, longest {chars[-1]} "
+              f"(~{chars[-1] * 10 // 36} tokens)")
+    print("  parity: every answer reads back to its row's invariants, "
+          "every question matches v2")
+    if args.out:
+        Path(args.out).write_text(
+            "".join(json.dumps({"prompt": p["prompt"],
+                                "completion": p["completion"],
+                                "holdout": p["holdout"]}) + "\n"
+                    for p in pairs))
+        print(f"  output {args.out}")
+    else:
+        print("  output: none (no --out given)")
+
+
+def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--corpus", default=str(CORPUS))
-    p.add_argument("--out", default=None, help="answers-only pairs, run 1")
+    p.add_argument("--out", default=None,
+                   help="pairs file: answers only (run 1, v2), or with "
+                        "reasoning when --reasoning is given (v3)")
     p.add_argument("--repairs", default=None,
                    help="failed-then-fixed pairs, run 2")
-    args = p.parse_args()
+    p.add_argument("--reasoning", default=None,
+                   help="regenerated reasoning log "
+                        "(extender/logs/reasoning_regen.jsonl)")
+    p.add_argument("--missing", choices=["fail", "drop", "answers"],
+                   default="fail",
+                   help="rows with no accepted reasoning: stop, leave "
+                        "them out, or keep them answers-only")
+    args = p.parse_args(argv)
 
     rows = [json.loads(l) for l in
             Path(args.corpus).read_text().splitlines() if l.strip()]
@@ -116,7 +267,9 @@ def main():
         by_gen[pair["generation"]] = by_gen.get(pair["generation"], 0) + 1
     print("  by generation:", dict(sorted(by_gen.items())))
 
-    if args.out:
+    if args.reasoning:
+        write_reasoning_file(args, rows)
+    elif args.out:
         Path(args.out).write_text(
             "".join(json.dumps({"prompt": p["prompt"],
                                 "completion": p["completion"]}) + "\n"

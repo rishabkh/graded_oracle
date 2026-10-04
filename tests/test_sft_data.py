@@ -53,3 +53,27 @@ def test_mask_labels_hides_the_question_from_the_loss():
 def test_mask_labels_refuses_a_prompt_longer_than_the_row():
     with pytest.raises(ValueError):
         mask_labels([5, 6], prompt_len=3)
+
+
+def test_split_follows_holdout_marks_when_every_row_has_one():
+    """A file can carry its own held-back choice. v3 drops 6 refused rows
+    and must still hold back exactly v2's rows; a fresh shuffle of a
+    shorter list would hold back a different tenth."""
+    rows = [{"prompt": f"q{i}", "completion": "a", "holdout": i in (2, 5)}
+            for i in range(8)]
+    tr, ev = split(rows, holdout=0.5, seed=7)
+    assert [r["prompt"] for r in ev] == ["q2", "q5"]
+    assert [r["prompt"] for r in tr] == ["q0", "q1", "q3", "q4", "q6", "q7"]
+
+
+def test_split_refuses_marks_on_only_some_rows():
+    rows = [{"prompt": "q0", "completion": "a", "holdout": True},
+            {"prompt": "q1", "completion": "a"}]
+    with pytest.raises(ValueError):
+        split(rows)
+
+
+def test_load_pairs_keeps_the_holdout_mark(tmp_path):
+    p = write(tmp_path, [{"prompt": "q", "completion": "a", "holdout": True}])
+    assert load_pairs(p) == [{"prompt": "q", "completion": "a",
+                              "holdout": True}]
