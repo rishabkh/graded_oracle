@@ -264,3 +264,47 @@ def test_every_record_names_the_model_that_made_it(monkeypatch):
               "property": [], "invariants": []}
     batch._real_executor(task, [parent])
     assert rec["model"] and rec["effort"]
+
+
+import pytest                                                    # noqa: E402
+
+# Each extension type's reasoning fields, as its schema requires them.
+REASONING = {
+    "structural": {"new_state": "s", "coupling": "c",
+                   "induction_gap": "fake state g", "why_parent_insufficient": "w"},
+    "second": {"claim": "c", "shared_state": "s", "new_state": "n",
+               "not_inductive_alone": "fake state g", "shared_clause": "x"},
+    "replicate": {"pool_scheme": "p", "induction_gap": "fake state g",
+                  "why_aggregate_needed": "w"},
+    "compose": {"glue_scheme": "g", "induction_gap": "fake state g",
+                "why_parents_insufficient": "w"},
+}
+
+
+@pytest.mark.parametrize("ext_type", sorted(REASONING))
+def test_batch_record_keeps_the_models_reasoning(monkeypatch, ext_type):
+    """The prompts ask for the fake state that fools the proof
+    (induction_gap / not_inductive_alone) and the model pays to write
+    it. Found 4 Oct 2026: the batch runner dropped it, so 372 corpus
+    rows lost the reasoning a second training run needs."""
+    import batch
+    rec = {}
+    reply = dict(REASONING[ext_type], patch="", invariants=[])
+    monkeypatch.setattr(batch, "call_model",
+                        lambda p, s: (reply, {"input": 1, "output": 2}, "end"))
+    for grader in ("grade_step4", "grade_replicate", "grade_compose"):
+        monkeypatch.setattr(batch, grader, lambda *a, **k: None)
+    monkeypatch.setattr(batch, "dump", lambda r: rec.update(r))
+    task = {"task_id": 1, "attempt": 1, "ext_type": ext_type,
+            "move": "STAGE" if ext_type == "structural" else None,
+            "parent_id": "g0_000", "k": 1, "instances": 2}
+    parent = {"id": "g0_000", "top_module": "m", "verilog": "",
+              "property": [], "invariants": []}
+    if ext_type == "compose":
+        task["parent2_id"] = "g0_001"
+        corpus = [parent, dict(parent, id="g0_001")]
+    else:
+        corpus = [parent]
+    batch._real_executor(task, corpus)
+    for field, text in REASONING[ext_type].items():
+        assert rec.get(field) == text, f"{field} not saved"

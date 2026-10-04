@@ -34,7 +34,7 @@ from extend import (MOVE_WEIGHTS, SECOND_PROPERTY_RATE,          # noqa: E402
                     REPLICATE_SCHEMA, SECOND_SCHEMA, STRUCTURAL_SCHEMA,
                     COMPOSE_SCHEMA, COMPOSE_TEMPLATE, build_prompt,
                     call_model, compose_hidden_signals, grade_compose,
-                    grade_replicate, grade_step4)
+                    grade_replicate, grade_step4, keep_reasoning)
 import llm_client                                                 # noqa: E402
 from distractor import (Spinner, dump, OUT_LOG, MODEL, EFFORT,    # noqa: E402
                         build_prompt as distractor_prompt,
@@ -286,6 +286,7 @@ def _real_executor(task, corpus_rows):
                                      else "TRUNCATED" if stop == "length"
                                      else "UNPARSEABLE")
             else:
+                keep_reasoning(out, record)
                 grade_compose(parent, p2, out, record)
         else:
             prompt = build_prompt(parent, task["ext_type"], task.get("move"),
@@ -304,11 +305,13 @@ def _real_executor(task, corpus_rows):
                 record["verdict"] = ("REFUSED" if stop == "refusal"
                                      else "TRUNCATED" if stop == "length"
                                      else "UNPARSEABLE")
-            elif task["ext_type"] == "replicate":
-                grade_replicate(parent, out, record,
-                                task.get("instances", 6))
             else:
-                grade_step4(parent, task["ext_type"], out, record)
+                keep_reasoning(out, record)
+                if task["ext_type"] == "replicate":
+                    grade_replicate(parent, out, record,
+                                    task.get("instances", 6))
+                else:
+                    grade_step4(parent, task["ext_type"], out, record)
     except Exception as exc:
         record["verdict"] = "ERROR"
         record["error"] = f"{type(exc).__name__}: {exc}"

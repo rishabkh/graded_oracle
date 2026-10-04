@@ -490,6 +490,23 @@ SECOND_SCHEMA = _schema(
     ["claim", "shared_state", "new_state", "not_inductive_alone",
      "shared_clause"])
 
+# The model's account of each extension, above all the fake state that
+# fools the proof (induction_gap, not_inductive_alone): the reasoning a
+# second training run learns from. Both runners save it through
+# keep_reasoning; until 4 Oct 2026 batch.py did not, and 372 rows lost it.
+REASONING_FIELDS = ("new_state", "coupling", "induction_gap",
+                    "why_parent_insufficient", "claim", "shared_state",
+                    "not_inductive_alone", "shared_clause", "pool_scheme",
+                    "why_aggregate_needed", "glue_scheme",
+                    "why_parents_insufficient")
+
+
+def keep_reasoning(out, record):
+    for k in REASONING_FIELDS:
+        if k in out:
+            record[k] = out[k]
+    return record
+
 # One structural move per seed, five diverse seeds. Distractor and second
 # property run on the same five, so the by-hand reading covers 15 results.
 PLAN = [
@@ -1235,13 +1252,7 @@ def main():
         dump(record)
         print(f"{record['verdict'].lower()} - logged (raw text kept)")
         return
-    for k in ("new_state", "coupling", "induction_gap",
-              "why_parent_insufficient", "claim", "shared_state",
-              "not_inductive_alone", "shared_clause", "pool_scheme",
-              "why_aggregate_needed", "glue_scheme",
-              "why_parents_insufficient"):
-        if k in out:
-            record[k] = out[k]
+    keep_reasoning(out, record)
     if args.type == "compose":
         grade_compose(parent, parent2, out, record)
     elif args.type == "replicate":
