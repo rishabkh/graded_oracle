@@ -68,7 +68,7 @@ echo "server ready"
 export QWEN_BASE_URL=http://localhost:8000/v1 QWEN_API_KEY=none QWEN_MODEL=llm
 export EBMC_PATH="$EBMC_BIN" EBMC_TIMEOUT_S=300
 REPAIR=""
-if [ "$ROUNDS" != "0" ]; then REPAIR="--rounds $ROUNDS"
+if [ "$ROUNDS" != "0" ]; then REPAIR="--rounds $ROUNDS --ebmc-workers $(( ${SLURM_CPUS_PER_TASK:-8} - 2 ))"
     if [ "$SHOW_CEX" = "1" ]; then REPAIR="$REPAIR --show-cex"; fi
 fi
 for i in $(seq 1 "$PASSES"); do

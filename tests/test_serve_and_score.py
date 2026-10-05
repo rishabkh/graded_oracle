@@ -90,9 +90,15 @@ def test_repair_is_off_unless_asked_for():
     assert 'SHOW_CEX="${SHOW_CEX:-0}"' in SCORE
     assert "--n 31 $REPAIR" in SCORE and "--n 78 $REPAIR" in SCORE
     assert 'REPAIR=""' in SCORE
-    assert 'if [ "$ROUNDS" != "0" ]; then REPAIR="--rounds $ROUNDS"' in SCORE
+    assert 'if [ "$ROUNDS" != "0" ]; then REPAIR="--rounds $ROUNDS' in SCORE
     assert 'if [ "$SHOW_CEX" = "1" ]; then REPAIR="$REPAIR --show-cex"; fi' in SCORE
 
 
 def test_the_job_says_what_it_is_running():
     assert "ROUNDS=$ROUNDS SHOW_CEX=$SHOW_CEX" in SCORE
+
+
+def test_repair_checks_use_the_cores_the_job_was_given():
+    """6 Oct 2026: 4 checks at once left most of the allocation idle while
+    EBMC ran; use all but two cores (the server keeps two)."""
+    assert 'REPAIR="--rounds $ROUNDS --ebmc-workers $(( ${SLURM_CPUS_PER_TASK:-8} - 2 ))"' in SCORE

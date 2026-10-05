@@ -32,8 +32,11 @@ Differences, each on purpose:
   - The reset is scoped to the file's own module (ebmc_eval.top_module),
     as our one-shot scorer already does; their `--reset rst` fails on the
     hard set.
-  - The EBMC limit is ours (EBMC_TIMEOUT_S, 300 s on the cluster), the
-    one our one-shot scores used; their agent defaults to 120 s.
+  - None on the EBMC limit: the per-lemma checks use theirs, 120 s
+    (scripts/experiment_agentic.py:30). Only round 0's one-shot grade, in
+    benchmark_solve, keeps our 300 s, so it still matches the earlier
+    one-shot scores. (300 s here made a single answer of 16 lemmas take
+    an hour on lrg_arb_lrg_16, 6 Oct 2026.)
   - Counterexample traces are capped at TRACE_CAP characters so five
     answers fit the 32,768-token window, and the loop stops cleanly
     ("context_full") when they no longer would.
@@ -59,6 +62,7 @@ TRACE_CAP = 4000            # characters of counterexample shown per lemma
 WINDOW = 32768              # the server's max model length
 MAX_TOKENS = 16000          # our one-shot reply budget
 MIN_REPLY = 1000            # below this, stop rather than ask for a stub
+FACT_TIMEOUT_S = 120        # their EBMC limit per check (experiment_agentic.py:30)
 
 # repair_template.txt, verbatim up to its Output Format section
 REMINDER_HEAD = ("You are given feedback for your lemmas below. Read it "
@@ -129,9 +133,9 @@ def run_mode(bench_path, lemmas, mode, workdir, buechi=False):
     try:
         import subprocess
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
-                           errors="replace", timeout=ebmc_eval.TIMEOUT_S)
+                           errors="replace", timeout=FACT_TIMEOUT_S)
     except subprocess.TimeoutExpired:
-        return {"verdict": "TIMEOUT", "time": ebmc_eval.TIMEOUT_S}
+        return {"verdict": "TIMEOUT", "time": FACT_TIMEOUT_S}
     finally:
         out.unlink(missing_ok=True)
     res = ebmc_result(r.stdout, r.stderr, mode)

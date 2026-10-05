@@ -317,3 +317,20 @@ def test_each_row_keeps_the_feedback_the_model_was_sent(tmp_path):
               rounds=2, show_cex=False, workdir=tmp_path, run=fake_run({}),
               log=rows.append)
     assert rows[0]["feedback"] == ask.seen[0][-1]["content"]
+
+
+def test_per_lemma_checks_use_the_authors_120_seconds(tmp_path, monkeypatch):
+    """Their repair experiments run EBMC with 120 s per check
+    (scripts/experiment_agentic.py:30). Round 0's one-shot grade keeps our
+    300 s so it still matches the earlier one-shot scores."""
+    import subprocess
+    import types
+    seen = []
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: (
+        seen.append(k.get("timeout")),
+        types.SimpleNamespace(stdout="PROVED", stderr=""))[1])
+    bench = tmp_path / "f.sv"
+    bench.write_text("module main(input clk);\nproperty prop; @(posedge clk) 1; "
+                     "endproperty\nendmodule\n")
+    rl.run_mode(bench, ["1"], "one_induction", tmp_path)
+    assert seen == [120] and rl.FACT_TIMEOUT_S == 120
