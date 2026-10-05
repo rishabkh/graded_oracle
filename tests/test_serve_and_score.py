@@ -81,3 +81,18 @@ def test_the_judge_is_built_and_run_with_one_named_compiler():
     build. Name the version, and run the binary with the same one, since
     it needs the C++ library of the compiler that built it."""
     assert gcc_module(BUILD) == gcc_module(SCORE) == "gcc/13.2.0-fasrc01"
+
+
+def test_repair_is_off_unless_asked_for():
+    """ROUNDS and SHOW_CEX unset must give exactly the one-shot command
+    the earlier scores were made with."""
+    assert 'ROUNDS="${ROUNDS:-0}"' in SCORE
+    assert 'SHOW_CEX="${SHOW_CEX:-0}"' in SCORE
+    assert "--n 31 $REPAIR" in SCORE and "--n 78 $REPAIR" in SCORE
+    assert 'REPAIR=""' in SCORE
+    assert 'if [ "$ROUNDS" != "0" ]; then REPAIR="--rounds $ROUNDS"' in SCORE
+    assert 'if [ "$SHOW_CEX" = "1" ]; then REPAIR="$REPAIR --show-cex"; fi' in SCORE
+
+
+def test_the_job_says_what_it_is_running():
+    assert "ROUNDS=$ROUNDS SHOW_CEX=$SHOW_CEX" in SCORE

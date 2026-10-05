@@ -64,7 +64,19 @@ def main():
                    choices=["hard", "main_experiment"])
     p.add_argument("--n", type=int, default=5, help="how many files")
     p.add_argument("--dry", action="store_true")
+    p.add_argument("--rounds", type=int, default=0,
+                   help="0: one answer, as always. N: the benchmark "
+                        "authors' repair loop, up to N answers in all "
+                        "(theirs is 5); see repair_loop.py")
+    p.add_argument("--show-cex", action="store_true",
+                   help="repair feedback shows the run that breaks an "
+                        "incorrect lemma (their show_cex option)")
+    p.add_argument("--ebmc-workers", type=int, default=4,
+                   help="EBMC checks run at once during repair")
     args = p.parse_args()
+    if args.rounds and args.solver != "qwen":
+        sys.exit("--rounds needs --solver qwen (a served model); nothing "
+                 "was run")
 
     files = sorted((BENCH_ROOT / args.set).glob("*.sv"))[:args.n]
     print(f"{len(files)} benchmark file(s) from {args.set}/")
@@ -88,7 +100,7 @@ def main():
             api_key=os.environ.get("QWEN_API_KEY", "none")).models.list())
         print(f"endpoint is serving: {serving or 'unknown'}")
     run_id = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
-    solved = 0
+    solved = repaired = 0
     for i, f in enumerate(files):
         rec = {"run_id": run_id, "solver": args.solver, "bench": f.name,
                "set": args.set, "served_model": serving,
@@ -123,11 +135,80 @@ def main():
             solved += res["verdict"] == "PROVEN"
         print(f"[{i}] {f.stem:28s} {rec['verdict']:10s} "
               f"({rec['solve_wall_s']}s)")
-        OUT_LOG.parent.mkdir(exist_ok=True)
-        with OUT_LOG.open("a") as out:
-            out.write(json.dumps(rec) + "\n")
+        if not args.rounds:
+            write_row(rec)
+            continue
+        repaired += repair_file(f, rec, lemmas, args, i)
     print(f"\nsolved {solved}/{len(files)} "
           f"({100 * solved / max(len(files), 1):.0f}%)")
+    if args.rounds:
+        print(f"after the repair loop (up to {args.rounds} answers): "
+              f"{repaired}/{len(files)} "
+              f"({100 * repaired / max(len(files), 1):.0f}%)")
+
+
+def write_row(row):
+    OUT_LOG.parent.mkdir(exist_ok=True)
+    with OUT_LOG.open("a") as out:
+        out.write(json.dumps(row) + "\n")
+
+
+def make_ask():
+    """The served model, asked with a whole conversation: solve_qwen's
+    client and model, a reply budget that fits the window."""
+    from openai import OpenAI
+    client = OpenAI(base_url=os.environ["QWEN_BASE_URL"],
+                    api_key=os.environ.get("QWEN_API_KEY", "none"))
+
+    def ask(messages, max_tokens):
+        for _ in range(3):
+            resp = client.chat.completions.create(
+                model=os.environ["QWEN_MODEL"], max_tokens=max_tokens,
+                messages=messages)
+            text = resp.choices[0].message.content or ""
+            fin = resp.choices[0].finish_reason
+            if fin != "error":
+                break
+            time.sleep(2)
+        return text, fin
+    return ask
+
+
+def repair_file(f, rec, lemmas, args, i):
+    """Round 0 is the row above; the authors' loop takes it from there.
+    Returns 1 if the file ends solved, by one shot or by repair."""
+    import repair_loop
+    if rec["verdict"] == "PROVEN":
+        write_row(dict(rec, round=0, solved=True, final=True,
+                       stop_reason="solved", solved_round=0))
+        return 1
+    if rec.get("raw") is None:            # the call itself failed
+        write_row(dict(rec, round=0, solved=False, final=True,
+                       stop_reason="prompt_error", solved_round=None))
+        return 0
+    fields = {k: rec[k] for k in ("run_id", "solver", "bench", "set",
+                                  "served_model", "ebmc_timeout_s",
+                                  "file_judgeable")}
+
+    def log(row):
+        if row["round"] == 0:
+            extra = {k: v for k, v in row.items()
+                     if k not in ("raw", "finish", "lemmas", "solve_wall_s")}
+            write_row(dict(rec, **extra))
+        else:
+            write_row(dict(fields, **row,
+                           verdict="PROVEN" if row["solved"] else "NOT_SOLVED"))
+    with tempfile.TemporaryDirectory() as d:
+        with Spinner(f"[{i}] repairing {f.stem}"):
+            out = repair_loop.repair(
+                f, PROMPT.format(verilog=f.read_text()), rec["raw"], lemmas,
+                make_ask(), rounds=args.rounds, show_cex=args.show_cex,
+                workdir=d, log=log, workers=args.ebmc_workers)
+    print(f"[{i}] {f.stem:28s} repair: {out['stop_reason']} after "
+          f"{out['answers']} answer(s)"
+          + (f", solved at round {out['solved_round']}" if out["solved"]
+             else ""))
+    return int(out["solved"])
 
 
 if __name__ == "__main__":

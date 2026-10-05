@@ -36,11 +36,14 @@ cd "$HOME/graded_oracle"
 mkdir -p runs
 MODEL="${MODEL:-Qwen/Qwen2.5-Coder-32B-Instruct}"
 PASSES="${PASSES:-5}"
+# the benchmark authors' repair loop (initiator/repair_loop.py); 0 = one answer
+ROUNDS="${ROUNDS:-0}"
+SHOW_CEX="${SHOW_CEX:-0}"
 EBMC_BIN="$HOME/bin/ebmc"
 if [ ! -x "$EBMC_BIN" ]; then
     echo "no $EBMC_BIN - run build_ebmc.sbatch first"; exit 1
 fi
-echo "serving $MODEL on $(hostname); $PASSES pass(es) of each set"
+echo "serving $MODEL on $(hostname); $PASSES pass(es) of each set; ROUNDS=$ROUNDS SHOW_CEX=$SHOW_CEX"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
 
 VLOG="runs/score_${SLURM_JOB_ID}_vllm.log"
@@ -64,9 +67,13 @@ echo "server ready"
 
 export QWEN_BASE_URL=http://localhost:8000/v1 QWEN_API_KEY=none QWEN_MODEL=llm
 export EBMC_PATH="$EBMC_BIN" EBMC_TIMEOUT_S=300
+REPAIR=""
+if [ "$ROUNDS" != "0" ]; then REPAIR="--rounds $ROUNDS"
+    if [ "$SHOW_CEX" = "1" ]; then REPAIR="$REPAIR --show-cex"; fi
+fi
 for i in $(seq 1 "$PASSES"); do
     echo "=== pass $i of $PASSES ==="
-    python initiator/benchmark_solve.py --solver qwen --set hard --n 31
-    python initiator/benchmark_solve.py --solver qwen --set main_experiment --n 78
+    python initiator/benchmark_solve.py --solver qwen --set hard --n 31 $REPAIR
+    python initiator/benchmark_solve.py --solver qwen --set main_experiment --n 78 $REPAIR
 done
 echo "done: $PASSES pass(es) of each set scored; stopping the server"
