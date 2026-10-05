@@ -96,12 +96,20 @@ def main():
                # a file that errors with no lemmas is nobody's failure
                "file_judgeable": judgeable(f)}
         t0 = time.monotonic()
+        # cleared first, so a call that dies early cannot leave the
+        # previous file's reply recorded against this one
+        solve.last_raw = solve.last_finish = None
         try:
             with Spinner(f"[{i}] {args.solver} on {f.stem}"):
                 lemmas, err = solve(PROMPT.format(verilog=f.read_text()))
         except Exception as exc:
             lemmas, err = None, f"{type(exc).__name__}: {exc}"
         rec["solve_wall_s"] = round(time.monotonic() - t0, 2)
+        # the whole reply, not just the invariants pulled out of it: v3's
+        # answers carry reasoning, and a score nobody can read back to
+        # what the model wrote cannot be diagnosed
+        rec["raw"] = getattr(solve, "last_raw", None)
+        rec["finish"] = getattr(solve, "last_finish", None)
         if lemmas is None:
             rec["verdict"] = "NO_ANSWER"
             rec["error"] = str(err)[:300]

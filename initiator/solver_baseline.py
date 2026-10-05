@@ -272,6 +272,7 @@ def solve_qwen(prompt_text):
         # failure, not an answer; retry like a timeout
         time.sleep(2)
     solve_qwen.last_raw = text
+    solve_qwen.last_finish = fin
     if fin == "length":
         return None, f"truncated at 16000 tokens: {text[-120:]!r}"
     inv = parse_invariants(text)
@@ -282,6 +283,7 @@ def solve_qwen(prompt_text):
 
 
 solve_qwen.client = None
+solve_qwen.last_raw = solve_qwen.last_finish = None
 
 
 def classify(record):
