@@ -307,3 +307,77 @@ def test_the_written_file_carries_the_holdout_mark(tmp_path):
     out = _run_main(tmp_path, missing="drop")
     assert all(set(line) == {"prompt", "completion", "holdout"}
                for line in out)
+
+
+# --- run v4: answers that pass the 1-step rule, and preference pairs ----
+
+def _one_step_log(tmp_path, passing=("g0_000",), needed=None):
+    """A fake one_step.jsonl: ROW passes with clause 0 needed, ROW2 fails
+    the 1-step rule."""
+    needed = needed if needed is not None else {"g0_000": [0]}
+    lines = []
+    for r in (ROW, ROW2):
+        ok = r["id"] in passing
+        lines.append({"id": r["id"], "dropped": -1, "tier": "INDUCTIVE"})
+        lines.append({"id": r["id"], "dropped": -2,
+                      "tier": "INDUCTIVE" if ok else "NOT_INDUCTIVE"})
+        for i in range(len(r["invariants"])):
+            hit = i in needed.get(r["id"], [])
+            lines.append({"id": r["id"], "dropped": i,
+                          "clause": r["invariants"][i],
+                          "tier": "NOT_INDUCTIVE" if hit else "INDUCTIVE",
+                          "trace": f"cex for {r['id']} {i}" if hit else None})
+    path = tmp_path / "one_step.jsonl"
+    _write_jsonl(path, lines)
+    return path
+
+
+def test_clean_pairs_keep_only_answers_that_pass_one_step(tmp_path):
+    from build_sft import build_clean_pairs
+    import one_step
+    s = one_step.summary(_one_step_log(tmp_path))
+    pairs = build_clean_pairs([ROW, ROW2], s["passes_one_step"])
+    assert [p["id"] for p in pairs] == ["g0_000"]
+    assert pairs[0]["prompt"] == build_pair(ROW)["prompt"]
+    assert pairs[0]["completion"] == build_pair(ROW)["completion"]
+    assert isinstance(pairs[0]["holdout"], bool)
+
+
+def test_preference_pairs_drop_one_needed_fact_each(tmp_path):
+    from build_sft import build_preference_pairs
+    import one_step
+    row = dict(ROW, invariants=["c <= 4'd9", "c != 4'd12", "c >= 4'd0"])
+    log = _one_step_log(tmp_path, needed={"g0_000": [0, 1]})
+    log.write_text(log.read_text())                   # same fixture, wider row
+    lines = [json.loads(l) for l in log.read_text().splitlines()]
+    lines = [l for l in lines if l["id"] != "g0_000" or l["dropped"] < 0] + [
+        {"id": "g0_000", "dropped": i, "clause": row["invariants"][i],
+         "tier": "NOT_INDUCTIVE" if i < 2 else "INDUCTIVE",
+         "trace": f"cex {i}" if i < 2 else None} for i in range(3)]
+    _write_jsonl(log, lines)
+    s = one_step.summary(log)
+    pairs = build_preference_pairs([row, ROW2], s)
+    assert len(pairs) == 2                            # one per needed fact
+    for p, i in zip(pairs, (0, 1)):
+        assert p["prompt"] == build_pair(row)["prompt"]
+        assert p["chosen"] == build_pair(row)["completion"]
+        rest = [c for j, c in enumerate(row["invariants"]) if j != i]
+        assert parse_invariants(p["rejected"]) == rest
+        assert parse_invariants(p["chosen"]) == row["invariants"]
+        assert p["dropped"] == row["invariants"][i]
+        assert p["counterexample"] == f"cex {i}"
+        assert isinstance(p["holdout"], bool)
+
+
+def test_clean_and_preference_files_are_written(tmp_path):
+    from build_sft import main
+    corpus = _write_jsonl(tmp_path / "corpus.jsonl", [ROW, ROW2])
+    log = _one_step_log(tmp_path)
+    clean, pref = tmp_path / "v4a.jsonl", tmp_path / "v4b.jsonl"
+    main(["--corpus", str(corpus), "--one-step", str(log),
+          "--clean", str(clean), "--preference", str(pref)])
+    a = [json.loads(l) for l in clean.read_text().splitlines()]
+    b = [json.loads(l) for l in pref.read_text().splitlines()]
+    assert len(a) == 1 and set(a[0]) == {"prompt", "completion", "holdout"}
+    assert len(b) == 1 and {"prompt", "chosen", "rejected", "holdout",
+                            "id", "dropped", "counterexample"} <= set(b[0])

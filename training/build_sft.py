@@ -238,6 +238,85 @@ def write_reasoning_file(args, rows):
         print("  output: none (no --out given)")
 
 
+def held_back(rows):
+    """v2's own held-back questions, chosen on the full v2 list, so a file
+    built from fewer rows still holds back exactly v2's rows."""
+    return {p["prompt"] for p in split(build_pairs(rows))[1]}
+
+
+def build_clean_pairs(rows, passing):
+    """Run 4a: v2's pairs, keeping only answers that pass the 1-step rule
+    (training/one_step.py). 207 of 665 do not: by the benchmark's own
+    standard they are true but too weak, the habit v1 and v2 show."""
+    held = held_back(rows)
+    return [dict(p, holdout=p["prompt"] in held) for p in build_pairs(rows)
+            if p["id"] in passing]
+
+
+def build_preference_pairs(rows, s):
+    """Run 4b: for each answer that passes the 1-step rule, one pair per
+    needed fact: the full answer (chosen, v2's own completion) against the
+    same answer without that fact (rejected: still true, too weak by the
+    1-step rule, with the proof tool's counterexample attached)."""
+    held = held_back(rows)
+    by_id = {r.get("id"): r for r in rows}
+    out = []
+    for p in build_pairs(rows):
+        if p["id"] not in s["passes_one_step"]:
+            continue
+        inv = by_id[p["id"]]["invariants"]
+        for i in s["needed"].get(p["id"], []):
+            out.append({"prompt": p["prompt"], "chosen": p["completion"],
+                        "rejected": json.dumps(
+                            {"invariants": inv[:i] + inv[i + 1:]}),
+                        "holdout": p["prompt"] in held, "id": p["id"],
+                        "dropped": inv[i],
+                        "counterexample": s["counterexample"].get((p["id"], i))})
+    return out
+
+
+def write_one_step_files(args, rows):
+    """Build, check that every answer reads back through the scorer, and
+    only then write."""
+    import one_step
+    s = one_step.summary(args.one_step)
+    by_id = {r.get("id"): r for r in rows}
+    v2_prompts = {p["id"]: p["prompt"] for p in build_pairs(rows)}
+    problems = []
+    clean = build_clean_pairs(rows, s["passes_one_step"])
+    for p in clean:
+        if parse_invariants(p["completion"]) != by_id[p["id"]]["invariants"]:
+            problems.append(f"{p['id']}: clean answer does not read back")
+    pref = build_preference_pairs(rows, s)
+    for p in pref:
+        full = by_id[p["id"]]["invariants"]
+        if parse_invariants(p["chosen"]) != full:
+            problems.append(f"{p['id']}: chosen does not read back")
+        rej = parse_invariants(p["rejected"])
+        if rej is None or len(rej) != len(full) - 1:
+            problems.append(f"{p['id']}: rejected does not read back")
+        if p["prompt"] != v2_prompts[p["id"]]:
+            problems.append(f"{p['id']}: question differs from v2")
+    if problems:
+        sys.exit(f"check failed on {len(problems)} items, nothing written:\n  "
+                 + "\n  ".join(problems[:20]))
+    print(f"1-step rule ({args.one_step}): {len(s['passes_one_step'])} of "
+          f"{len(rows)} answers pass")
+    if args.clean:
+        Path(args.clean).write_text("".join(
+            json.dumps({"prompt": p["prompt"], "completion": p["completion"],
+                        "holdout": p["holdout"]}) + "\n" for p in clean))
+        print(f"  clean pairs: {len(clean)} "
+              f"({sum(not p['holdout'] for p in clean)} trained on) -> {args.clean}")
+    if args.preference:
+        Path(args.preference).write_text("".join(
+            json.dumps(p) + "\n" for p in pref))
+        print(f"  preference pairs: {len(pref)} from "
+              f"{len({p['id'] for p in pref})} answers "
+              f"({sum(not p['holdout'] for p in pref)} trained on) -> "
+              f"{args.preference}")
+
+
 def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--corpus", default=str(CORPUS))
@@ -253,7 +332,17 @@ def main(argv=None):
                    default="fail",
                    help="rows with no accepted reasoning: stop, leave "
                         "them out, or keep them answers-only")
+    p.add_argument("--one-step", default=None,
+                   help="1-step check log (extender/logs/one_step.jsonl)")
+    p.add_argument("--clean", default=None,
+                   help="with --one-step: answers that pass the 1-step "
+                        "rule only (run 4a)")
+    p.add_argument("--preference", default=None,
+                   help="with --one-step: chosen/rejected pairs, one per "
+                        "needed fact (run 4b)")
     args = p.parse_args(argv)
+    if (args.clean or args.preference) and not args.one_step:
+        sys.exit("--clean and --preference need --one-step")
 
     rows = [json.loads(l) for l in
             Path(args.corpus).read_text().splitlines() if l.strip()]
@@ -267,7 +356,9 @@ def main(argv=None):
         by_gen[pair["generation"]] = by_gen.get(pair["generation"], 0) + 1
     print("  by generation:", dict(sorted(by_gen.items())))
 
-    if args.reasoning:
+    if args.one_step:
+        write_one_step_files(args, rows)
+    elif args.reasoning:
         write_reasoning_file(args, rows)
     elif args.out:
         Path(args.out).write_text(
