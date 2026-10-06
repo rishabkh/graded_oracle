@@ -137,3 +137,44 @@ def test_judgeability_is_measured_once_and_cached(tmp_path):
     assert judgeable(tmp_path / "bad.sv", cache, _run=fake_run) is False
     assert len(calls) == 2
     assert "bad.sv" in cache.read_text()
+
+
+# --- the one-bit enum crash (6 Oct 2026) --------------------------------
+
+import os                                                        # noqa: E402
+import shutil                                                    # noqa: E402
+
+import pytest                                                    # noqa: E402
+
+from ebmc_eval import normalize                                  # noqa: E402
+
+ENUM_FILE = (Path(__file__).resolve().parent.parent.parent
+             / "large_lemma_miners" / "benchmarks" / "hard"
+             / "gulwani_fig1a_ebmc.sv")
+
+
+def test_a_one_bit_enum_is_written_with_its_bit():
+    src = "typedef enum logic {LOOP, DONE} state_t;"
+    assert normalize(src) == "typedef enum logic [0:0] {LOOP, DONE} state_t;"
+
+
+def test_wider_enums_and_other_text_are_left_alone():
+    for src in ("typedef enum logic [1:0] {A, B, C} s_t;",
+                "typedef enum {A, B} s_t;", "logic x; // enum logic {"):
+        assert normalize(src.split("//")[0]) == src.split("//")[0]
+
+
+def test_every_variant_sent_to_ebmc_is_normalized():
+    src = ENUM_FILE.read_text() if ENUM_FILE.exists() else (
+        "module m(input clk);\ntypedef enum logic {A, B} s_t;\n"
+        "property prop; @(posedge clk) 1; endproperty\nendmodule\n")
+    out = build_variant(src, ["1"], "one_inductive_with_prop")
+    assert "enum logic {" not in out and "enum logic [0:0] {" in out
+
+
+@pytest.mark.skipif(not (os.environ.get("EBMC_PATH") and ENUM_FILE.exists()),
+                    reason="needs EBMC_PATH and the benchmark checkout")
+def test_ebmc_judges_the_enum_family_instead_of_crashing(tmp_path):
+    from ebmc_eval import run
+    r = run(ENUM_FILE, [], "one_inductive_with_prop", tmp_path)
+    assert r["verdict"] == "INCONCLUSIVE"

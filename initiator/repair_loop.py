@@ -46,6 +46,13 @@ Differences, each on purpose:
     but time.
   - A lemma shown twice in one feedback (their prefix re-check lists the
     first kept lemma again) is shown once.
+
+The control (`give_feedback=False`), ours, not theirs: the same loop with
+the feedback taken out, to tell whether a repaired score comes from what
+the feedback says or from the extra answers. Every lemma is still judged,
+kept and tried together, the model still sees its earlier answers, and an
+unreadable reply still gets the format message; but between answers the
+model hears only NO_FEEDBACK, never which lemmas were right or wrong.
 """
 import json
 import re
@@ -91,6 +98,13 @@ Below are the candidate lemmas from the last iteration and feedback for each.
 """
 
 FORMAT_REMINDER = 'Provide the proposed lemmas as JSON: {"invariants": ["<expr>", ...]}'
+
+# what they send when there is no feedback to give (agentic.py:290-293)
+EMPTY_FEEDBACK = ("Please propose new lemmas. Follow the JSON format "
+                  "specified earlier.")
+# the control's message: theirs, plus "not solved yet", which the feedback
+# version tells the model too
+NO_FEEDBACK = "Your lemmas do not prove the property yet. " + EMPTY_FEEDBACK
 
 
 # --- one EBMC run, read the authors' way --------------------------------
@@ -261,8 +275,7 @@ def repair_message(singletons, counter, show_cex):
                            "not be determined.")
     text = "\n".join(message)
     if not text.strip():
-        return ("Please propose new lemmas. Follow the JSON format specified "
-                "earlier.")
+        return EMPTY_FEEDBACK
     return text
 
 
@@ -324,9 +337,10 @@ def remembered(run):
 
 def repair(bench_path, question, first_reply, first_lemmas, ask, *,
            rounds=ROUNDS, show_cex=False, workdir, run=None, log,
-           workers=4):
+           workers=4, give_feedback=True):
     """The loop after our first answer. `ask(messages, max_tokens)` returns
-    (text, finish). `log(row)` is called once per answer, round 0 first."""
+    (text, finish). `log(row)` is called once per answer, round 0 first.
+    `give_feedback=False` runs the control (see the module docstring)."""
     run = remembered(run or run_mode)
     messages = [{"role": "user", "content": question}]
     kept, proposed = [], set()
@@ -351,7 +365,8 @@ def repair(bench_path, question, first_reply, first_lemmas, ask, *,
                 proposed.add(lemma)
                 if booleans(e)["correct"]:
                     kept.append(lemma)
-            feedback = repair_message(singletons, counter, show_cex)
+            feedback = repair_message(singletons, counter, show_cex) \
+                if give_feedback else NO_FEEDBACK
         counter += 1
         messages += [{"role": "assistant", "content": reply},
                      {"role": "user", "content": feedback}]

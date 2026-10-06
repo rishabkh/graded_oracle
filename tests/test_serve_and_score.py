@@ -7,12 +7,45 @@ server the moment they end. Its scores only compare with the old ones if
 the server starts exactly as serve.sbatch started it, and the judge is
 the EBMC proved identical to the laptop's, at the old 300 s limit."""
 import re
+import subprocess
 from pathlib import Path
 
 TRAINING = Path(__file__).resolve().parent.parent / "training"
 SERVE = (TRAINING / "serve.sbatch").read_text()
 SCORE = (TRAINING / "serve_and_score.sbatch").read_text()
 BUILD = (TRAINING / "build_ebmc.sbatch").read_text()
+
+
+# The job run for real, with every outside program (module, vllm, curl,
+# nvidia-smi, the scorer itself) replaced by a stub; returns the scorer
+# commands it would have run. A wrong loop costs GPU hours on the cluster.
+STUBS = {"module": "", "nvidia-smi": "", "nvcc": "", "curl": "",
+         "vllm": "sleep 30",
+         "python": 'echo "$@" >> "$CALLS"'}
+
+
+def run_job(tmp_path, **env):
+    home = tmp_path / "home"
+    (home / "graded_oracle").mkdir(parents=True)
+    (home / "envs" / "vllm" / "bin").mkdir(parents=True)
+    (home / "envs" / "vllm" / "bin" / "activate").write_text("")
+    (home / "bin").mkdir()
+    stubs = tmp_path / "stubs"
+    stubs.mkdir()
+    for path, body in [(stubs / n, b) for n, b in STUBS.items()] + \
+            [(home / "bin" / "ebmc", "")]:
+        path.write_text(f"#!/bin/sh\n{body}\n")
+        path.chmod(0o755)
+    calls = tmp_path / "calls.txt"
+    calls.write_text("")
+    r = subprocess.run(
+        ["bash", str(TRAINING / "serve_and_score.sbatch")], capture_output=True,
+        text=True, timeout=60,
+        env={"PATH": f"{stubs}:/usr/bin:/bin", "HOME": str(home),
+             "CALLS": str(calls), "USER": "tester", "SLURM_JOB_ID": "1",
+             "SLURM_CPUS_PER_TASK": "8", **env})
+    return r, [c.removeprefix("initiator/benchmark_solve.py ")
+               for c in calls.read_text().splitlines()]
 
 
 def joined(text):
@@ -55,9 +88,11 @@ def test_answers_are_judged_like_the_earlier_scores():
     assert '$HOME/bin/ebmc' in SCORE
 
 
-def test_every_pass_covers_all_files_of_both_sets():
-    assert "--set hard --n 31" in SCORE
-    assert "--set main_experiment --n 78" in SCORE
+def test_every_pass_covers_all_files_of_both_sets(tmp_path):
+    r, calls = run_job(tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert calls == ["--solver qwen --set hard --n 31",
+                     "--solver qwen --set main_experiment --n 78"] * 5
 
 
 def test_the_server_is_stopped_however_the_job_ends():
@@ -83,19 +118,56 @@ def test_the_judge_is_built_and_run_with_one_named_compiler():
     assert gcc_module(BUILD) == gcc_module(SCORE) == "gcc/13.2.0-fasrc01"
 
 
-def test_repair_is_off_unless_asked_for():
+def test_repair_is_off_unless_asked_for(tmp_path):
     """ROUNDS and SHOW_CEX unset must give exactly the one-shot command
-    the earlier scores were made with."""
+    the earlier scores were made with. Checked by running the job, since
+    7 Oct 2026, not by reading its text."""
     assert 'ROUNDS="${ROUNDS:-0}"' in SCORE
     assert 'SHOW_CEX="${SHOW_CEX:-0}"' in SCORE
-    assert "--n 31 $REPAIR" in SCORE and "--n 78 $REPAIR" in SCORE
-    assert 'REPAIR=""' in SCORE
-    assert 'if [ "$ROUNDS" != "0" ]; then REPAIR="--rounds $ROUNDS' in SCORE
-    assert 'if [ "$SHOW_CEX" = "1" ]; then REPAIR="$REPAIR --show-cex"; fi' in SCORE
+    r, calls = run_job(tmp_path, PASSES="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert calls == ["--solver qwen --set hard --n 31",
+                     "--solver qwen --set main_experiment --n 78"]
+
+
+def test_a_repair_run_gives_the_command_it_always_has(tmp_path):
+    r, calls = run_job(tmp_path, PASSES="1", ROUNDS="5", SHOW_CEX="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    repair = "--rounds 5 --ebmc-workers 6 --show-cex"
+    assert calls == [f"--solver qwen --set hard --n 31 {repair}",
+                     f"--solver qwen --set main_experiment --n 78 {repair}"]
+
+
+def test_both_versions_on_the_hard_set_in_one_job(tmp_path):
+    """The repair loop with and without its feedback (7 Oct 2026): one
+    job, so both versions run with the same code, server and day."""
+    r, calls = run_job(tmp_path, PASSES="1", ROUNDS="5", SHOW_CEX="1",
+                       FEEDBACK="both", SETS="hard")
+    assert r.returncode == 0, r.stdout + r.stderr
+    same = "--solver qwen --set hard --n 31 --rounds 5 --ebmc-workers 6"
+    # the control shows no counterexamples: it has no feedback to put them in
+    assert calls == [f"{same} --show-cex", f"{same} --no-feedback"]
+
+
+def test_the_control_alone(tmp_path):
+    r, calls = run_job(tmp_path, PASSES="2", ROUNDS="5", FEEDBACK="off",
+                       SETS="hard")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert calls == ["--solver qwen --set hard --n 31 --rounds 5 "
+                     "--ebmc-workers 6 --no-feedback"] * 2
+
+
+def test_bad_settings_stop_before_the_server_starts(tmp_path):
+    for i, env in enumerate(({"FEEDBACK": "off"},     # no repair loop to control
+                             {"FEEDBACK": "maybe", "ROUNDS": "5"},
+                             {"SETS": "hardd", "ROUNDS": "5"})):
+        r, calls = run_job(tmp_path / str(i), **env)
+        assert r.returncode != 0 and calls == [], env
+        assert "serving" not in r.stdout, env
 
 
 def test_the_job_says_what_it_is_running():
-    assert "ROUNDS=$ROUNDS SHOW_CEX=$SHOW_CEX" in SCORE
+    assert "ROUNDS=$ROUNDS SHOW_CEX=$SHOW_CEX FEEDBACK=$FEEDBACK" in SCORE
 
 
 def test_repair_checks_use_the_cores_the_job_was_given():

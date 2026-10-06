@@ -334,3 +334,82 @@ def test_per_lemma_checks_use_the_authors_120_seconds(tmp_path, monkeypatch):
                      "endproperty\nendmodule\n")
     rl.run_mode(bench, ["1"], "one_induction", tmp_path)
     assert seen == [120] and rl.FACT_TIMEOUT_S == 120
+
+
+# --- the control: the same loop with the feedback taken out ------------
+# Repair lifted v2 by 5 hard designs, but the model also got four more
+# tries. The control tells the two apart: same loop, same checks, same
+# kept facts, earlier answers still in the conversation; between answers
+# the model hears only that it has not solved the design yet.
+
+def test_the_control_message_is_the_authors_plus_not_solved_yet():
+    if not (AUTHORS / "src" / "agentic.py").exists():
+        pytest.skip("authors' checkout absent")
+    # what agentic.py:290-293 sends when there is no feedback to give
+    assert rl.EMPTY_FEEDBACK in (AUTHORS / "src" / "agentic.py").read_text()
+    assert rl.NO_FEEDBACK == ("Your lemmas do not prove the property yet. "
+                              + rl.EMPTY_FEEDBACK)
+    assert rl.repair_message([], counter=1, show_cex=False) == rl.EMPTY_FEEDBACK
+
+
+def test_without_feedback_every_message_is_the_same_try_again(tmp_path):
+    # a false fact, a correct one, and five answers, so the reminder's
+    # rounds and a counterexample would both show up if anything leaked
+    table = {frozenset(["a"]): {"correctness_bounded": "CEX"},
+             frozenset(["b"]): {"correctness_bounded": "PROVEN"}}
+    ask = scripted(['{"invariants": ["b"]}', '{"invariants": ["c"]}',
+                    '{"invariants": ["d"]}', '{"invariants": ["e"]}'])
+    rows = []
+    out = rl.repair("f.sv", "QUESTION", '{"invariants": ["a"]}', ["a"], ask,
+                    rounds=5, show_cex=False, workdir=tmp_path,
+                    run=fake_run(table), log=rows.append, give_feedback=False)
+    assert out["stop_reason"] == "max_iterations"
+    sent = [m["content"] for m in ask.seen[-1] if m["role"] == "user"][1:]
+    assert sent == [rl.NO_FEEDBACK] * 4
+    assert [r["feedback"] for r in rows] == [rl.NO_FEEDBACK] * 5
+
+
+def test_without_feedback_the_model_still_sees_its_earlier_answers(tmp_path):
+    replies = ['{"invariants": ["b"]}', '{"invariants": ["c"]}']
+    ask = scripted(list(replies))
+    rl.repair("f.sv", "QUESTION", '{"invariants": ["a"]}', ["a"], ask,
+              rounds=3, show_cex=False, workdir=tmp_path, run=fake_run({}),
+              log=[].append, give_feedback=False)
+    second = ask.seen[1]
+    assert [m["role"] for m in second] == ["user", "assistant", "user",
+                                           "assistant", "user"]
+    assert second[0]["content"] == "QUESTION"
+    assert second[1]["content"] == '{"invariants": ["a"]}'
+    assert second[3]["content"] == replies[0]
+
+
+def test_without_feedback_facts_are_checked_kept_and_tried_together_alike(
+        tmp_path):
+    table = {frozenset(["a"]): {"correctness_bounded": "PROVEN"},
+             frozenset(["b"]): {"correctness_bounded": "PROVEN"},
+             frozenset(["a", "b"]): {"one_inductive_with_prop": "PROVEN"}}
+    runs = {}
+    for give in (True, False):
+        rows = []
+        out = rl.repair("f.sv", "QUESTION", '{"invariants": ["a"]}', ["a"],
+                        scripted(['{"invariants": ["b"]}',
+                                  '{"invariants": ["c"]}']),
+                        rounds=5, show_cex=False, workdir=tmp_path,
+                        run=fake_run(table), log=rows.append,
+                        give_feedback=give)
+        runs[give] = (out, [r["per_lemma"] for r in rows],
+                      [r["kept"] for r in rows])
+    assert runs[True] == runs[False]
+    assert runs[False][0]["solved_round"] == 1
+
+
+def test_without_feedback_an_unreadable_answer_still_gets_the_format_message(
+        tmp_path):
+    # the format message is about the reply's form, not about the lemmas
+    ask = scripted(["no json here", '{"invariants": ["b"]}'])
+    rl.repair("f.sv", "QUESTION", '{"invariants": ["a"]}', ["a"], ask,
+              rounds=3, show_cex=False, workdir=tmp_path, run=fake_run({}),
+              log=[].append, give_feedback=False)
+    assert ask.seen[0][-1]["content"] == rl.NO_FEEDBACK
+    assert ask.seen[1][-1]["content"].startswith(
+        "Your last response did not follow the expected format.")

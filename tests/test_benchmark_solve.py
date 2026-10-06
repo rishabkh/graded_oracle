@@ -93,7 +93,8 @@ def _no_ebmc(monkeypatch):
 
 def test_without_rounds_rows_are_todays(tmp_path, monkeypatch):
     [row] = _run(tmp_path, monkeypatch, _first())
-    for field in ("round", "per_lemma", "kept", "solved", "final"):
+    for field in ("round", "per_lemma", "kept", "solved", "final",
+                  "feedback_mode"):
         assert field not in row
 
 
@@ -138,3 +139,57 @@ def test_rounds_need_the_qwen_solver(tmp_path, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["benchmark_solve.py", "--solver",
                                           "opus", "--rounds", "2"])
         bs.main()
+
+
+# --- the control: the repair loop with the feedback taken out -----------
+
+def _scripted_ask(monkeypatch, replies):
+    seen = []
+
+    def ask(messages, max_tokens):
+        # a copy: the loop keeps adding to the same list after the call
+        seen.append([dict(m) for m in messages])
+        return replies.pop(0), "stop"
+    monkeypatch.setattr(bs, "make_ask", lambda: ask)
+    return seen
+
+
+def test_no_feedback_reaches_the_loop_and_every_row_says_so(tmp_path,
+                                                            monkeypatch):
+    _no_ebmc(monkeypatch)
+    seen = _scripted_ask(monkeypatch, ['{"invariants": ["c <= 4\'d8"]}'] * 2)
+    rows = _run(tmp_path, monkeypatch, _first(),
+                extra=("--rounds", "3", "--no-feedback"))
+    assert [r["round"] for r in rows] == [0, 1, 2]
+    assert [r["feedback_mode"] for r in rows] == ["none"] * 3
+    assert [m[-1]["content"] for m in seen] == [repair_loop.NO_FEEDBACK] * 2
+
+
+def test_repair_rows_with_feedback_say_so_too(tmp_path, monkeypatch):
+    _no_ebmc(monkeypatch)
+    seen = _scripted_ask(monkeypatch, ['{"invariants": ["c <= 4\'d8"]}'])
+    rows = _run(tmp_path, monkeypatch, _first(),
+                extra=("--rounds", "2", "--show-cex"))
+    assert [r["feedback_mode"] for r in rows] == ["per_lemma"] * 2
+    assert "// Feedback for c <= 4'd9: " in seen[0][-1]["content"]
+
+
+def test_a_file_solved_one_shot_still_says_which_run_it_was_in(tmp_path,
+                                                                monkeypatch):
+    rows = _run(tmp_path, monkeypatch, _first(), one_shot="PROVEN",
+                extra=("--rounds", "5", "--no-feedback"))
+    assert rows[0]["feedback_mode"] == "none" and rows[0]["solved"] is True
+
+
+def test_no_feedback_needs_rounds_and_has_no_counterexample_to_show(
+        tmp_path, monkeypatch):
+    import pytest
+    for extra, says in ((("--no-feedback",), "needs --rounds"),
+                        (("--rounds", "5", "--no-feedback", "--show-cex"),
+                         "nothing to show")):
+        monkeypatch.setattr(sys, "argv", ["benchmark_solve.py", "--solver",
+                                          "qwen", *extra])
+        with pytest.raises(SystemExit) as stop:
+            bs.main()
+        # our refusal, not argparse's exit 2 for an option it does not know
+        assert says in str(stop.value.code)

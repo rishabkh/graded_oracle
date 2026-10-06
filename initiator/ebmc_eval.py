@@ -85,8 +85,21 @@ def directives(names, mode):
     raise ValueError(f"unknown mode {mode!r}")
 
 
+_ONE_BIT_ENUM = re.compile(r"\benum\s+logic\s*\{")
+
+
+def normalize(source):
+    """Spell a one-bit enum's width out: `enum logic {` becomes
+    `enum logic [0:0] {`, the same type. EBMC 6.0 (0308d417) crashes while
+    type-checking the short form (invariant violation in numeric_cast_v,
+    found 6 Oct 2026), and the six files that use it (the gulwani_fig1a
+    family, five hard and one easy) were set aside as unjudgeable for
+    every model since 23 Sep. Applied to every variant, for every model."""
+    return _ONE_BIT_ENUM.sub("enum logic [0:0] {", source)
+
+
 def build_variant(source, lemma_exprs, mode):
-    lines = source.splitlines(keepends=True)
+    lines = normalize(source).splitlines(keepends=True)
     at = insert_index(lines)
     blocks = [b + "\n" for b in wrap_lemmas(lemma_exprs,
                                              clocking_prefix(source))]

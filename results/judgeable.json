@@ -252,28 +252,28 @@
     "without_lemmas": "INCONCLUSIVE"
   },
   "gulwani_fig1a_2_ebmc.sv": {
-    "judgeable": false,
-    "without_lemmas": "ERROR"
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
   },
   "gulwani_fig1a_3.sv": {
-    "judgeable": false,
-    "without_lemmas": "ERROR"
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
   },
   "gulwani_fig1a_4_ebmc.sv": {
-    "judgeable": false,
-    "without_lemmas": "ERROR"
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
   },
   "gulwani_fig1a_5_ebmc.sv": {
-    "judgeable": false,
-    "without_lemmas": "ERROR"
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
   },
   "gulwani_fig1a_6_ebmc.sv": {
-    "judgeable": false,
-    "without_lemmas": "ERROR"
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
   },
   "gulwani_fig1a_ebmc.sv": {
-    "judgeable": false,
-    "without_lemmas": "ERROR"
+    "judgeable": true,
+    "without_lemmas": "INCONCLUSIVE"
   },
   "h_Arbiter.sv": {
     "judgeable": true,

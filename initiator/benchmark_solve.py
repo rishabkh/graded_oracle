@@ -73,10 +73,19 @@ def main():
                         "incorrect lemma (their show_cex option)")
     p.add_argument("--ebmc-workers", type=int, default=4,
                    help="EBMC checks run at once during repair")
+    p.add_argument("--no-feedback", action="store_true",
+                   help="the repair loop's control: between answers the "
+                        "model hears only that the design is not solved yet "
+                        "(repair_loop.NO_FEEDBACK); all else is the same")
     args = p.parse_args()
     if args.rounds and args.solver != "qwen":
         sys.exit("--rounds needs --solver qwen (a served model); nothing "
                  "was run")
+    if args.no_feedback and not args.rounds:
+        sys.exit("--no-feedback needs --rounds; nothing was run")
+    if args.no_feedback and args.show_cex:
+        sys.exit("--show-cex has nothing to show with --no-feedback; "
+                 "nothing was run")
 
     files = sorted((BENCH_ROOT / args.set).glob("*.sv"))[:args.n]
     print(f"{len(files)} benchmark file(s) from {args.set}/")
@@ -107,6 +116,9 @@ def main():
                "ebmc_timeout_s": ebmc_timeout(),
                # a file that errors with no lemmas is nobody's failure
                "file_judgeable": judgeable(f)}
+        if args.rounds:
+            # both versions can run in one job, so each row says which
+            rec["feedback_mode"] = "none" if args.no_feedback else "per_lemma"
         t0 = time.monotonic()
         # cleared first, so a call that dies early cannot leave the
         # previous file's reply recorded against this one
@@ -142,7 +154,8 @@ def main():
     print(f"\nsolved {solved}/{len(files)} "
           f"({100 * solved / max(len(files), 1):.0f}%)")
     if args.rounds:
-        print(f"after the repair loop (up to {args.rounds} answers): "
+        print(f"after the repair loop (up to {args.rounds} answers"
+              f"{', no feedback' if args.no_feedback else ''}): "
               f"{repaired}/{len(files)} "
               f"({100 * repaired / max(len(files), 1):.0f}%)")
 
@@ -188,7 +201,7 @@ def repair_file(f, rec, lemmas, args, i):
         return 0
     fields = {k: rec[k] for k in ("run_id", "solver", "bench", "set",
                                   "served_model", "ebmc_timeout_s",
-                                  "file_judgeable")}
+                                  "file_judgeable", "feedback_mode")}
 
     def log(row):
         if row["round"] == 0:
@@ -203,7 +216,8 @@ def repair_file(f, rec, lemmas, args, i):
             out = repair_loop.repair(
                 f, PROMPT.format(verilog=f.read_text()), rec["raw"], lemmas,
                 make_ask(), rounds=args.rounds, show_cex=args.show_cex,
-                workdir=d, log=log, workers=args.ebmc_workers)
+                workdir=d, log=log, workers=args.ebmc_workers,
+                give_feedback=not args.no_feedback)
     print(f"[{i}] {f.stem:28s} repair: {out['stop_reason']} after "
           f"{out['answers']} answer(s)"
           + (f", solved at round {out['solved_round']}" if out["solved"]
