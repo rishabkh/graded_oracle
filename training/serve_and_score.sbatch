@@ -3,8 +3,8 @@
 #SBATCH --partition=gpu
 #SBATCH --account=amin_lab
 #SBATCH --gres=gpu:2
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=256G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128G
 #SBATCH --time=05:00:00
 #SBATCH --output=runs/score_%j.out
 # Serve a model and score it on the Large Lemma Miners sets in one job,
@@ -19,6 +19,9 @@
 # From ~/graded_oracle:
 #   sbatch --export=ALL,MODEL=/n/netscratch/amin_lab/Lab/$USER/hardware-formal-disco/runs/v2/merged training/serve_and_score.sbatch
 #   sbatch --export=ALL,PASSES=1 training/serve_and_score.sbatch     # untrained model, one pass of each set
+#   repair-loop runs check many lemmas at once with EBMC, which needs cores
+#   and memory the one-shot runs do not; ask for them on the sbatch line:
+#   sbatch --cpus-per-task=8 --mem=256G --export=ALL,ROUNDS=5,SHOW_CEX=1,... training/serve_and_score.sbatch
 set -euo pipefail
 
 # gcc pinned to the version build_ebmc.sbatch compiled EBMC with

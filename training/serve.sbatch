@@ -14,8 +14,8 @@
 #SBATCH --partition=gpu
 #SBATCH --account=amin_lab
 #SBATCH --gres=gpu:2
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=256G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128G
 #SBATCH --time=12:00:00
 #SBATCH --output=runs/serve_%j.out
 

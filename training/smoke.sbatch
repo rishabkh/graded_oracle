@@ -3,7 +3,7 @@
 #SBATCH --partition=gpu_test         # 12h cap, short queue; use gpu for the real run
 #SBATCH --account=amin_lab
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=2
 #SBATCH --mem=64G
 #SBATCH --time=01:00:00
 #SBATCH --output=runs/smoke_%j.out

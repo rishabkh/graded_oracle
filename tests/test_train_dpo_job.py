@@ -12,7 +12,8 @@ TRAIN = (TRAINING / "train32b.sbatch").read_text()
 def test_same_environment_as_the_training_job():
     for line in ("module load python/3.12.8-fasrc01 cuda/12.4.1-fasrc01",
                  'source "$HOME/envs/disco/bin/activate"',
-                 "#SBATCH --gres=gpu:2", "#SBATCH --mem=256G"):
+                 "#SBATCH --gres=gpu:2", "#SBATCH --mem=128G",
+                 "#SBATCH --cpus-per-task=2"):
         assert line in JOB and line in TRAIN
 
 
