@@ -213,3 +213,35 @@ def test_since_run_without_a_cutoff_keeps_everything():
     from extender.build_corpus import since_run
     rows = [{"run_id": "2026-08-14_22h31m36s"}]
     assert since_run(rows, None) == rows
+
+
+# --- a separate corpus for the catalog run (task 5, Oct 2026) -----------
+# The new designs must not enter extender/corpus.jsonl: a rebuild there
+# renumbers every first-batch row, and v2's training file and held-back
+# marks name rows by id.
+
+def test_a_separate_corpus_gets_its_own_ids_and_keeps_the_size_seed():
+    rec = dict(RECORD, scale="Use 64-bit counters.",
+               constructs_file="constructs_x.txt")
+    row = flatten_record(rec, idx=4, prefix="c0")
+    assert row["id"] == "c0_004"
+    assert row["scale"] == "Use 64-bit counters."
+    assert row["constructs_file"] == "constructs_x.txt"
+    plain = flatten_record(RECORD, idx=5)
+    assert plain["id"] == "g0_005"
+    assert "scale" not in plain and "constructs_file" not in plain
+
+
+def test_main_builds_a_separate_corpus_from_a_separate_log(tmp_path,
+                                                           monkeypatch):
+    import extender.build_corpus as bc
+    monkeypatch.setattr(bc, "CORPUS", tmp_path / "main_corpus.jsonl")
+    log = tmp_path / "catalog_log.jsonl"
+    log.write_text(json.dumps(dict(RECORD, scale="s")) + "\n"
+                   + json.dumps(dict(RECORD, verdict="NOT_PROVEN")) + "\n")
+    out = tmp_path / "corpus_catalog.jsonl"
+    bc.main(["--no-yosys", "--source", str(log), "--out", str(out),
+             "--id-prefix", "c0"])
+    rows = [json.loads(l) for l in out.read_text().splitlines()]
+    assert [r["id"] for r in rows] == ["c0_000"] and rows[0]["scale"] == "s"
+    assert not (tmp_path / "main_corpus.jsonl").exists()

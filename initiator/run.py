@@ -33,8 +33,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))   # graded_oracle root -> `oracle` package
 sys.path.insert(0, str(HERE))
 
-from prompts import (SYSTEM_PROMPT, USER_TEMPLATE,   # noqa: E402
-                     prompt_version)
+from prompts import (SIZE_SECTION, SYSTEM_PROMPT,   # noqa: E402
+                     USER_TEMPLATE, prompt_version)
 from schema import TRIPLE_SCHEMA                   # noqa: E402
 
 import llm_client                                            # noqa: E402
@@ -99,10 +99,13 @@ def _pool(path):
             if s.strip() and not s.startswith("#")]
 
 
-def load_pools():
+def load_pools(constructs_path=None):
+    """`constructs_path` swaps in another kinds file (the catalog run's
+    picked kinds); the default is our 32."""
     exemplars = json.loads((HERE / "exemplars.json").read_text())
     constructs = [s.strip() for s in
-                  (HERE / "constructs.txt").read_text().splitlines()
+                  Path(constructs_path or HERE / "constructs.txt")
+                  .read_text().splitlines()
                   if s.strip()]
     readmes = [json.loads(line) for line in
                (HERE / "readmes.jsonl").read_text().splitlines() if line.strip()]
@@ -189,10 +192,15 @@ def assert_exemplar_pool(exemplars):
     print(f"exemplar pool ok ({len(exemplars)})")
 
 
-def build_user_msg(readme, construct, style, pattern, scope, exemplar):
-    return USER_TEMPLATE.format(
+def build_user_msg(readme, construct, style, pattern, scope, exemplar,
+                   scale=None):
+    msg = USER_TEMPLATE.format(
         readme=readme["readme"], construct=construct, style=style,
         pattern=pattern, scope=scope, exemplar=json.dumps(exemplar, indent=2))
+    if scale:
+        marker = "## Property pattern seed"
+        msg = msg.replace(marker, SIZE_SECTION.format(scale=scale) + marker, 1)
+    return msg
 
 
 def call_model(user_msg):
@@ -203,11 +211,12 @@ def call_model(user_msg):
         user=user_msg, schema=TRIPLE_SCHEMA, effort=EFFORT)
 
 
-def dump(record):
-    LOG_PATH.parent.mkdir(exist_ok=True)
+def dump(record, path=None):
+    path = Path(path or LOG_PATH)
+    path.parent.mkdir(exist_ok=True)
     try:
         line = json.dumps(record, default=str)
-        with LOG_PATH.open("a") as f:
+        with path.open("a") as f:
             f.write(line + "\n")
     except Exception as exc:
         # Never lose the artifact to a serialisation bug.
@@ -255,8 +264,14 @@ def sample_seeds(readme_s, construct_s, style_s, pattern_s, scope_s,
     return readme, construct, style, pattern, scope, ex_id, exemplar
 
 
-def run_attempts(n, grade=True, show_raw=False, cmd=""):
-    exemplars, constructs, readmes, styles, patterns, scopes = load_pools()
+def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
+                 scales_path=None, log_path=None):
+    """`constructs_path`, `scales_path` and `log_path` are the catalog run's
+    (task 5): its own kinds, a size seed per attempt, and its own log, so
+    its designs never enter the main corpus. Unset, a run is as before."""
+    exemplars, constructs, readmes, styles, patterns, scopes = load_pools(
+        constructs_path)
+    scale_s = BalancedSampler(_pool(Path(scales_path))) if scales_path else None
     if grade:
         assert_exemplar_pool(exemplars)
 
@@ -275,6 +290,7 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
     for i in range(n):
         (readme, construct, style, pattern, scope, ex_id,
          exemplar) = sample_seeds(*samplers)
+        scale = scale_s.draw() if scale_s else None
         record = {
             "run_id": run_id,
             "cmd": cmd,
@@ -290,14 +306,18 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
             "style": style, "pattern": pattern, "scope": scope,
             "exemplar_id": ex_id,
         }
+        if constructs_path:
+            record["constructs_file"] = Path(constructs_path).name
+        if scale:
+            record["scale"] = scale
         try:
             with Spinner(f"[{i}] {llm_client.model_label(MODEL)} writing a triple"):
                 raw_json, usage, stop = call_model(
                     build_user_msg(readme, construct, style, pattern, scope,
-                                   exemplar))
+                                   exemplar, scale))
         except Exception as exc:
             record["error"] = f"{type(exc).__name__}: {exc}"
-            dump(record)
+            dump(record, log_path)
             print(f"[{i}] API error: {type(exc).__name__} - logged, continuing")
             time.sleep(5)
             continue
@@ -307,7 +327,7 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
             record["verdict"] = {"refusal": "REFUSED",
                                  "length": "TRUNCATED"}.get(stop, "UNPARSEABLE")
             record["raw_text"] = llm_client.LAST_RAW
-            dump(record)
+            dump(record, log_path)
             print(f"[{i}] refusal - logged, continuing")
             continue
         record["raw_json"] = raw_json
@@ -319,7 +339,7 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
             record["verdict"] = "SCOPE_UNARMED"
             record["reason"] = reason
             tally["SCOPE_UNARMED"] = tally.get("SCOPE_UNARMED", 0) + 1
-            dump(record)
+            dump(record, log_path)
             print(f"[{i}] SCOPE_UNARMED - {reason[:70]}")
             continue
 
@@ -333,7 +353,7 @@ def run_attempts(n, grade=True, show_raw=False, cmd=""):
             tally[result.verdict.name] = tally.get(result.verdict.name, 0) + 1
             print(f"[{i}] {result.verdict.name:12s} ({record['grade_wall_s']}s) "
                   f"- {result.reason[:100]}")
-        dump(record)
+        dump(record, log_path)
 
     if grade and tally:
         print("\nverdict distribution:", dict(sorted(tally.items())))
@@ -348,6 +368,12 @@ def main():
     sub.add_parser("grade-one")
     pilot = sub.add_parser("pilot")
     pilot.add_argument("--n", type=int, default=10)
+    pilot.add_argument("--constructs", default=None,
+                       help="kinds file to draw from instead of constructs.txt")
+    pilot.add_argument("--scales", default=None,
+                       help="size seeds, one drawn per attempt")
+    pilot.add_argument("--log", default=None,
+                       help="attempts log to write instead of logs/attempts.jsonl")
 
     args = p.parse_args()
     if args.cmd == "check-contract":
@@ -359,7 +385,9 @@ def main():
     elif args.cmd == "grade-one":
         run_attempts(1, grade=True, show_raw=True, cmd="grade-one")
     elif args.cmd == "pilot":
-        run_attempts(args.n, grade=True, cmd="pilot")
+        run_attempts(args.n, grade=True, cmd="pilot",
+                     constructs_path=args.constructs,
+                     scales_path=args.scales, log_path=args.log)
 
 
 if __name__ == "__main__":

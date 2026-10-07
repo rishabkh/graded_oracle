@@ -190,6 +190,18 @@ every field of the schema.
 """
 
 
+# Added before the pattern seed only when a size seed is drawn (the
+# catalog run, task 5, Oct 2026); without one the message is unchanged.
+SIZE_SECTION = """## Size seed
+
+{scale}
+
+Declare the design's registers and storage at this size, and size every
+constant to match.
+
+"""
+
+
 _CAP = re.compile(r"Keep the module under\s+(\d+)\s+lines")
 
 

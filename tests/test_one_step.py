@@ -82,3 +82,43 @@ def test_summary_reads_the_verdicts(tmp_path):
     assert s["passes_one_step"] == {"x"}
     assert s["needed"] == {"x": [0]}
     assert s["counterexample"][("x", 0)] == "t"
+
+
+# --- the whole proof, for facts not yet proven true ---------------------
+# prove() runs the induction step only, which is enough for subsets of an
+# answer already proven. A NEW fact (task 4: Opus strengthening a too-weak
+# answer) has not been proven, so it needs the base case too, and a
+# rejection has to say which fact failed and why.
+
+@needs_sby
+def test_a_true_one_step_answer_is_proven(tmp_path):
+    r = one_step.prove_true(ROW, ["a == b"], tmp_path)
+    assert r["tier"] == "PROVEN"
+
+
+@needs_sby
+def test_a_true_but_too_weak_answer_gets_its_counterexample(tmp_path):
+    r = one_step.prove_true(ROW, ["a <= 3'd7"], tmp_path)
+    assert r["tier"] == "NOT_INDUCTIVE"
+    assert r["fact"] is None                      # the property broke
+    assert r["trace"] and "trace_induct" in r["trace"]
+
+
+@needs_sby
+def test_a_false_fact_is_named_with_a_run_from_reset(tmp_path):
+    r = one_step.prove_true(ROW, ["a == b", "a == b + 3'd1"], tmp_path)
+    assert r["tier"] == "FALSE"
+    assert r["fact"] == "a == b + 3'd1"
+    assert r["trace"] and "trace.vcd" in r["trace"]
+
+
+@needs_sby
+@pytest.mark.parametrize("fact, says", [
+    ("a == q", "q"),                               # yosys would invent a wire
+    ("a == b +", "syntax error"),
+    ("$past(a) == b", "$past"),
+])
+def test_an_unreadable_fact_is_named_not_called_false(tmp_path, fact, says):
+    r = one_step.prove_true(ROW, ["a == b", fact], tmp_path)
+    assert r["tier"] == "BAD_FACT"
+    assert r["fact"] == fact and says in r["detail"]

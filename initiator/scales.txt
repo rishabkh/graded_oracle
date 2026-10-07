@@ -1,0 +1,23 @@
+# Size seeds for the catalog run (task 5, Oct 2026). Our designs had no
+# size rule, yet 95% of the 665 corpus rows have nothing wider than 8 bits
+# and no storage above 8 entries: the prompt says "small" and its examples
+# use 3- and 4-bit registers. These lift that accidental limit to ordinary
+# hardware sizes, a byte to a 64-bit word and 4 to 32 entries, crossed
+# evenly (4 x 4) and drawn in balanced turns like the other seeds. Chosen
+# as common word and storage sizes, not from any test set.
+Make the design's counters and data words 8-bit; if it stores several items, give that storage 4 entries.
+Make the design's counters and data words 8-bit; if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 8-bit; if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 8-bit; if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 16-bit; if it stores several items, give that storage 4 entries.
+Make the design's counters and data words 16-bit; if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 16-bit; if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 16-bit; if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 32-bit; if it stores several items, give that storage 4 entries.
+Make the design's counters and data words 32-bit; if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 32-bit; if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 32-bit; if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 64-bit; if it stores several items, give that storage 4 entries.
+Make the design's counters and data words 64-bit; if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 64-bit; if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 64-bit; if it stores several items, give that storage 32 entries.

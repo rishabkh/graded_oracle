@@ -89,6 +89,81 @@ def prove(row, invariants, work, depth=1):
         shutil.rmtree(td, ignore_errors=True)
 
 
+_FAILED_AT = re.compile(r"failed assertion \S+ at design\.sv:(\d+)\.")
+_IMPLICIT = re.compile(r"design\.sv:(\d+): Warning: Identifier `\\?(\S+?)' "
+                       r"is implicitly declared")
+_ERROR_AT = re.compile(r"design\.sv:(\d+): ERROR: (.*)")
+
+
+def prove_true(row, invariants, work, depth=1):
+    """The whole proof, base case and induction step, for facts not yet
+    proven true (prove() runs the step only, which is enough for subsets
+    of an answer already proven). One of:
+      PROVEN         every fact holds from reset, and the facts with the
+                     property are inductive at `depth`
+      FALSE          a run from reset breaks `fact` (None: the property)
+      NOT_INDUCTIVE  true from reset, but a state holding everything
+                     breaks `fact` (None: the property) one step later
+      BAD_FACT       `fact` cannot be read: a name the design does not
+                     have (yosys would quietly invent a free wire for it,
+                     making the fact look false), bad syntax, or a system
+                     function; `detail` says which
+      TIMEOUT, ERROR the tool could not judge; says nothing of the facts
+    with `trace`, the proof tool's run, for FALSE and NOT_INDUCTIVE."""
+    td = Path(tempfile.mkdtemp(dir=work))
+    try:
+        inj = inject_invariants(row["verilog"], row["top_module"],
+                                list(invariants))
+        facts = {line: expr for line, (_, expr) in inj.line_map.items()}
+        (td / "design.sv").write_text(inj.text)
+        (td / "job.sby").write_text(
+            f"[options]\nmode prove\ndepth {depth}\ntimeout {TIMEOUT_S}\n\n"
+            "[engines]\nsmtbmc yices\n\n"
+            f"[script]\nread -formal design.sv\nprep -top {row['top_module']}\n\n"
+            "[files]\ndesign.sv\n")
+        t0 = time.monotonic()
+        out = {"tier": None, "fact": None, "detail": None, "trace": None}
+        try:
+            r = subprocess.run(["sby", "-f", "job.sby"], cwd=td,
+                               capture_output=True, text=True,
+                               timeout=TIMEOUT_S * 1.5 + 10)
+            log = r.stdout
+        except subprocess.TimeoutExpired:
+            return dict(out, tier="TIMEOUT",
+                        secs=round(time.monotonic() - t0, 1))
+        logfile = td / "job" / "logfile.txt"
+        if logfile.exists():
+            log += logfile.read_text()
+        out["secs"] = round(time.monotonic() - t0, 1)
+        for pattern, why in ((_ERROR_AT, None), (_IMPLICIT, "unknown name")):
+            for m in pattern.finditer(log):
+                line = int(m.group(1))
+                if line in facts:
+                    detail = (f"{why} `{m.group(2)}`: the design has no "
+                              f"such signal in module {row['top_module']}"
+                              if why else m.group(2).strip())
+                    return dict(out, tier="BAD_FACT", fact=facts[line],
+                                detail=detail)
+        status = {k: m.group(1).upper() for k in ("basecase", "induction")
+                  for m in [re.search(rf"returned (\w+) for {k}", log)] if m}
+        failed = _FAILED_AT.search(log)
+        fact = facts.get(int(failed.group(1))) if failed else None
+        if status.get("basecase") == "FAIL":
+            tier, vcd = "FALSE", "trace.vcd"
+        elif status.get("induction") == "FAIL":
+            tier, vcd = "NOT_INDUCTIVE", "trace_induct.vcd"
+        elif "DONE (PASS" in log:
+            return dict(out, tier="PROVEN")
+        else:
+            return dict(out, tier="TIMEOUT" if "timeout" in log.lower()
+                        else "ERROR", detail=log[-600:])
+        vcds = sorted((td / "job").rglob(vcd))
+        trace = summarize_vcd(vcds[0])[:TRACE_CAP] if vcds else None
+        return dict(out, tier=tier, fact=fact, trace=trace)
+    finally:
+        shutil.rmtree(td, ignore_errors=True)
+
+
 def run(corpus=CORPUS, out=OUT, workers=6):
     rows = [json.loads(l) for l in Path(corpus).read_text().splitlines()
             if l.strip()]

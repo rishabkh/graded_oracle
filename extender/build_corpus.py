@@ -150,11 +150,13 @@ def state_bits(verilog, top_module):
 
 # --- flatten ---
 
-def flatten_record(record, idx):
+def flatten_record(record, idx, prefix="g0"):
+    """`prefix` names a separate corpus (the catalog run's "c0"), whose
+    rows also keep the kinds file and size seed that made them."""
     t = json.loads(record["raw_json"])
     invariants = t.get("invariants", [])
-    return {
-        "id": f"g0_{idx:03d}",
+    row = {
+        "id": f"{prefix}_{idx:03d}",
         "generation": 0,
         "parent": None,
         "source_run_id": record.get("run_id"),
@@ -185,6 +187,10 @@ def flatten_record(record, idx):
             "invariant_templates": [template(x) for x in invariants],
         },
     }
+    for key in ("constructs_file", "scale"):
+        if key in record:
+            row[key] = record[key]
+    return row
 
 
 # --- distributions ---
@@ -230,7 +236,7 @@ def print_distributions(rows):
         print(f"  {n:3d}  {shape}")
 
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--no-yosys", action="store_true",
                    help="skip the state_bits metric")
@@ -238,14 +244,24 @@ def main():
                    help="keep only initiator runs at or after this run id, "
                         "e.g. 2026-09-15_00h00m00s - the fresh corpus "
                         "leaves the placeholder-readme designs behind")
-    args = p.parse_args()
+    p.add_argument("--source", default=None,
+                   help="attempts log to read instead of the initiator's")
+    p.add_argument("--out", default=None,
+                   help="corpus file to write instead of extender/corpus.jsonl")
+    p.add_argument("--id-prefix", default="g0",
+                   help='row id prefix; the catalog run uses "c0"')
+    args = p.parse_args(argv)
+    source = Path(args.source) if args.source else SOURCE_LOG
+    corpus = Path(args.out) if args.out else CORPUS
 
-    records = [json.loads(line) for line in SOURCE_LOG.read_text().splitlines()]
+    records = [json.loads(line) for line in source.read_text().splitlines()
+               if line.strip()]
     records = since_run(records, args.since)
     necessary = [r for r in records if r.get("verdict") == "NECESSARY"]
-    print(f"{len(necessary)} NECESSARY triples from {SOURCE_LOG.name}")
+    print(f"{len(necessary)} NECESSARY triples from {source.name}")
 
-    rows = [flatten_record(r, i) for i, r in enumerate(necessary)]
+    rows = [flatten_record(r, i, args.id_prefix)
+            for i, r in enumerate(necessary)]
 
     if not args.no_yosys:
         if shutil.which("yosys") is None:
@@ -261,14 +277,14 @@ def main():
                   f"state_bits={row['metrics']['state_bits']} "
                   f"coi={row['metrics']['coi_ratio']}")
 
-    existing = ([json.loads(l) for l in CORPUS.read_text().splitlines()]
-                if CORPUS.exists() else [])
+    existing = ([json.loads(l) for l in corpus.read_text().splitlines()]
+                if corpus.exists() else [])
     rows = merge_corpus(rows, existing)
-    with CORPUS.open("w") as f:
+    with corpus.open("w") as f:
         for row in rows:
             f.write(json.dumps(row) + "\n")
     n_later = sum(1 for r in rows if r.get("generation", 0) > 0)
-    print(f"\nwrote {len(rows)} rows -> {CORPUS} "
+    print(f"\nwrote {len(rows)} rows -> {corpus} "
           f"({n_later} promoted row(s) preserved)")
 
     print_distributions(rows)
