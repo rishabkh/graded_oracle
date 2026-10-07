@@ -85,6 +85,165 @@ Rules:
 """
 
 
+CATEGORY_SCHEMA = {
+    "type": "object",
+    "properties": {"categories": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"name": {"type": "string"},
+                       "description": {"type": "string"}},
+        "required": ["name", "description"],
+        "additionalProperties": False}}},
+    "required": ["categories"],
+    "additionalProperties": False,
+}
+
+CATEGORY_PROMPT = """\
+List {n} distinct categories of digital hardware building blocks. Together
+they should cover, broadly and representatively, what digital designers
+build: the kinds of blocks found across digital design textbooks and
+open-source hardware libraries.
+
+For each category give:
+- name: a short name;
+- description: one sentence saying what the blocks in it do.
+
+Every category must be clearly different from the others.
+"""
+
+KINDS_IN_CATEGORY_PROMPT = """\
+List {k} distinct kinds of digital hardware building blocks in the
+category "{category}": {description}
+
+For each kind give:
+- name: a short name for the block;
+- description: one sentence saying what the block does and what state it
+  keeps (its registers or memories).
+
+Rules:
+- Every entry is a different kind of block, not a size or parameter
+  variant of another entry.
+- Describe the block only. Do not state any correctness property, rule or
+  relationship that its state must satisfy.
+- Leave out these kinds, which are already covered:
+{known}
+"""
+
+
+def build_category_prompt(n):
+    return CATEGORY_PROMPT.format(n=n)
+
+
+def build_kinds_prompt(k, category, known):
+    return KINDS_IN_CATEGORY_PROMPT.format(
+        k=k, category=category["name"], description=category["description"],
+        known="\n".join(f"  - {x}" for x in known))
+
+
+def parse_categories(text):
+    obj = None
+    if text:
+        try:
+            obj = json.loads(text)
+        except json.JSONDecodeError:
+            obj = llm_client.extract_json(text)
+    items = obj.get("categories") if isinstance(obj, dict) else None
+    out, seen = [], set()
+    for c in items or []:
+        if isinstance(c, dict) and str(c.get("name", "")).strip() and \
+                str(c.get("description", "")).strip() and \
+                c["name"].strip().lower() not in seen:
+            seen.add(c["name"].strip().lower())
+            out.append({"name": c["name"].strip(),
+                        "description": c["description"].strip()})
+    return out
+
+
+def _call(prompt, schema):
+    return llm_client.call_claude(model=MODEL, max_tokens=MAX_TOKENS,
+                                  user=prompt, schema=schema, effort=EFFORT)
+
+
+def by_category(n_categories, per_category, known, call=None, workers=4):
+    """One call for the categories, then one per category, in parallel.
+    Kinds whose name repeats one we have, or an earlier one, are dropped
+    and listed; near repeats are judged later and applied by --finish."""
+    from concurrent.futures import ThreadPoolExecutor
+    call = call or _call
+    cat_prompt = build_category_prompt(n_categories)
+    cat_text, usage, _ = call(cat_prompt, CATEGORY_SCHEMA)
+    categories = parse_categories(cat_text)
+    prompts = [build_kinds_prompt(per_category, c, known) for c in categories]
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        answers = list(ex.map(lambda q: call(q, SCHEMA), prompts))
+    total = {"input": usage.get("input", 0), "output": usage.get("output", 0)}
+    seen = {k.strip().lower() for k in known}
+    candidates, dropped = [], []
+    for cat, (text, u, _) in zip(categories, answers):
+        total["input"] += u.get("input", 0)
+        total["output"] += u.get("output", 0)
+        for k in parse(text) or []:
+            key = k["name"].strip().lower()
+            if key in seen:
+                dropped.append(k["name"])
+                continue
+            seen.add(key)
+            candidates.append(dict(k, category=cat["name"]))
+    return {"timestamp": datetime.now(timezone.utc).isoformat(),
+            "model": llm_client.model_label(MODEL), "effort": EFFORT,
+            "max_tokens": MAX_TOKENS, "system_prompt": None,
+            "prompts": {"categories": cat_prompt,
+                        "kinds": {c["name"]: q for c, q in zip(categories, prompts)}},
+            "replies": [cat_text] + [a[0] for a in answers],
+            "usage": total, "categories": categories,
+            "candidates": candidates, "dropped_repeats": dropped,
+            "known_count": len(known)}
+
+
+def known_kinds(out_dir, ours_file):
+    """Every kind we already have: our original lines, and every kind any
+    earlier picker run returned (drawn or not)."""
+    known = [l.strip() for l in Path(ours_file).read_text().splitlines()
+             if l.strip()]
+    for rec in sorted(Path(out_dir).glob("kinds_*.json")):
+        data = json.loads(rec.read_text())
+        for key in ("kinds", "candidates"):
+            for k in data.get(key) or []:
+                known.append(k["name"])
+    return list(dict.fromkeys(known))
+
+
+def finish(record_path, verdicts_path, k, seed, out_dir):
+    """Drop the candidates two judges found to repeat a kind we have or an
+    earlier candidate, then draw `k` with the seed."""
+    record_path = Path(record_path)
+    rec = json.loads(record_path.read_text())
+    verdicts = json.loads(Path(verdicts_path).read_text())
+    cands = rec["candidates"]
+    missing = [c["name"] for c in cands if c["name"] not in verdicts]
+    if missing:
+        sys.exit(f"no verdict for {len(missing)} candidates, e.g. "
+                 f"{missing[:3]}; nothing was written")
+    repeats = [c["name"] for c in cands if verdicts[c["name"]].get("repeat_of")]
+    kept = [c for c in cands if not verdicts[c["name"]].get("repeat_of")]
+    if len(kept) < k:
+        sys.exit(f"only {len(kept)} kinds left after removing repeats, fewer "
+                 f"than the {k} to keep; nothing was written")
+    chosen = pick(kept, k, seed)
+    out = Path(out_dir)
+    lines = out / f"constructs_{rec['run_id']}_bycat.txt"
+    lines.write_text("".join(construct_line(c) + "\n" for c in chosen))
+    (out / f"kinds_{rec['run_id']}_bycat_finish.json").write_text(json.dumps({
+        "from_record": record_path.name, "verdicts": Path(verdicts_path).name,
+        "repeats_dropped": repeats, "kept": len(kept), "picked": k,
+        "seed": seed, "chosen": chosen,
+        "rule": ("drop candidates judged a repeat of a kind we have or of an "
+                 "earlier candidate, then random.Random(seed).sample(kept, pick)"),
+        "timestamp": datetime.now(timezone.utc).isoformat()}, indent=1))
+    print(f"{len(cands)} candidates, {len(repeats)} repeats dropped, {k} drawn "
+          f"with seed {seed} -> {lines}")
+    return lines
+
+
 def build_prompt(n, ours):
     return PROMPT.format(n=n, ours="\n".join(f"  - {k}" for k in ours))
 
@@ -160,9 +319,49 @@ def main(argv=None):
                    help="print the prompt; no call")
     p.add_argument("--use-all", default=None, metavar="RECORD",
                    help="write every kind in a saved record; no call")
+    p.add_argument("--by-category", action="store_true",
+                   help="categories first, then kinds per category (paid)")
+    p.add_argument("--categories", type=int, default=40)
+    p.add_argument("--per-category", type=int, default=25)
+    p.add_argument("--finish", default=None, metavar="RECORD",
+                   help="apply near-repeat verdicts to a by-category record "
+                        "and draw --pick kinds; no call")
+    p.add_argument("--verdicts", default=None)
     args = p.parse_args(argv)
     if args.use_all:
         use_all(args.use_all, args.out_dir)
+        return
+    if args.finish:
+        if not args.verdicts:
+            sys.exit("--finish needs --verdicts")
+        finish(args.finish, args.verdicts, args.pick, args.seed, args.out_dir)
+        return
+    if args.by_category:
+        known = known_kinds(args.out_dir, args.ours)
+        if args.dry:
+            print(build_category_prompt(args.categories))
+            print(build_kinds_prompt(args.per_category,
+                                     {"name": "<category>",
+                                      "description": "<from the first call>"},
+                                     known)[:1500] + "\n...")
+            print(f"{1 + args.categories} calls; {len(known)} known kinds left out")
+            return
+        need = ("OPENROUTER_API_KEY" if llm_client.provider() == "openrouter"
+                else "ANTHROPIC_API_KEY")
+        if not os.environ.get(need):
+            sys.exit(f"{need} is not set, so no call was made")
+        rec = by_category(args.categories, args.per_category, known)
+        rec["run_id"] = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
+        out = Path(args.out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        path = out / f"kinds_bycat_{rec['run_id']}.json"
+        path.write_text(json.dumps(rec, indent=1))
+        cost = llm_client.dollars(MODEL, rec["usage"]["input"],
+                                  rec["usage"]["output"])
+        print(f"{len(rec['categories'])} categories, {len(rec['candidates'])} "
+              f"new candidate kinds, {len(rec['dropped_repeats'])} exact "
+              f"repeats dropped (${cost:.2f}) -> {path}")
+        print("next: two judges check near repeats; then --finish")
         return
 
     ours = [l.strip() for l in Path(args.ours).read_text().splitlines()

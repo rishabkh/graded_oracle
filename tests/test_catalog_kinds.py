@@ -150,3 +150,83 @@ def test_using_every_kind_needs_no_call_and_keeps_the_seeded_ones_first(
     note = json.loads((tmp_path / "kinds_r1_all.json").read_text())
     assert note["from_record"] == "kinds_r1.json" and note["count"] == 250
     assert note["rule"] and note["timestamp"]
+
+
+# --- category by category, toward 1,000 kinds (8 Oct 2026) ---------------
+# One reply cannot hold 700+ kinds without being cut off or repeating, so
+# a fresh model first lists categories, then kinds within each category,
+# leaving out every kind we already have. Exact repeats are dropped by
+# name; near repeats are judged separately (two judges) and applied by
+# --finish, which then makes the seeded draw.
+
+def test_the_category_prompts_name_nothing_from_the_map():
+    for template in (ck.CATEGORY_PROMPT, ck.KINDS_IN_CATEGORY_PROMPT):
+        text = template.lower()
+        for word in MAP_WORDS:
+            assert not re.search(rf"\b{re.escape(word)}\b", text), word
+
+
+def test_a_category_prompt_asks_for_kinds_we_do_not_have():
+    p = ck.build_kinds_prompt(25, {"name": "Arithmetic", "description": "math"},
+                              ["Barrel shifter", "CRC generator"])
+    assert "Arithmetic" in p and "Barrel shifter" in p and "25" in p
+
+
+def _cat_reply(n):
+    return json.dumps({"categories": [{"name": f"cat {i}", "description": f"d{i}"}
+                                      for i in range(n)]})
+
+
+def _kinds_reply(cat, k, clash=None):
+    kinds = [{"name": f"{cat} block {i}", "description": f"does {i}; keeps r{i}"}
+             for i in range(k)]
+    if clash:
+        kinds.append({"name": clash, "description": "already have it"})
+    return json.dumps({"kinds": kinds})
+
+
+def test_by_category_collects_kinds_and_drops_exact_repeats(monkeypatch):
+    calls = []
+
+    def call(prompt, schema):
+        calls.append(prompt)
+        if "categories" in schema["properties"]:
+            return _cat_reply(3), {"input": 10, "output": 20}, "ok"
+        cat = re.search(r'category "([^"]+)"', prompt).group(1)
+        return _kinds_reply(cat, 4, clash="Barrel Shifter"), {"input": 10, "output": 20}, "ok"
+    rec = ck.by_category(3, 4, known=["Barrel shifter"], call=call, workers=2)
+    assert len(calls) == 4                       # 1 category call + 3
+    names = [k["name"] for k in rec["candidates"]]
+    assert len(names) == 12 and "Barrel Shifter" not in names
+    assert all(k["category"].startswith("cat ") for k in rec["candidates"])
+    assert rec["dropped_repeats"] == ["Barrel Shifter"] * 3
+    assert rec["prompts"]["categories"] and len(rec["replies"]) == 4
+
+
+def test_finish_drops_judged_repeats_then_draws_by_seed(tmp_path):
+    cands = [{"name": f"k{i}", "description": f"d{i}", "category": "c"}
+             for i in range(10)]
+    rec = tmp_path / "kinds_bycat_r2.json"
+    rec.write_text(json.dumps({"run_id": "r2", "candidates": cands}))
+    verdicts = tmp_path / "v.json"
+    verdicts.write_text(json.dumps({f"k{i}": {"repeat_of": "k0" if i in (3, 4) else None}
+                                    for i in range(10)}))
+    ck.main(["--out-dir", str(tmp_path), "--finish", str(rec), "--verdicts",
+             str(verdicts), "--pick", "5", "--seed", "11"])
+    lines = (tmp_path / "constructs_r2_bycat.txt").read_text().splitlines()
+    kept = [c for c in cands if c["name"] not in ("k3", "k4")]
+    assert lines == [ck.construct_line(k) for k in ck.pick(kept, 5, seed=11)]
+    note = json.loads((tmp_path / "kinds_r2_bycat_finish.json").read_text())
+    assert note["repeats_dropped"] == ["k3", "k4"] and note["picked"] == 5
+
+
+def test_finish_refuses_a_candidate_with_no_verdict(tmp_path):
+    rec = tmp_path / "kinds_bycat_r3.json"
+    rec.write_text(json.dumps({"run_id": "r3", "candidates": [
+        {"name": "k0", "description": "d", "category": "c"}]}))
+    verdicts = tmp_path / "v.json"
+    verdicts.write_text("{}")
+    with pytest.raises(SystemExit) as stop:
+        ck.main(["--out-dir", str(tmp_path), "--finish", str(rec),
+                 "--verdicts", str(verdicts), "--pick", "1"])
+    assert "no verdict" in str(stop.value.code)    # our refusal, not argparse
