@@ -349,3 +349,85 @@ def test_a_log_dir_takes_all_three_logs(monkeypatch, tmp_path):
     assert sorted(p.name for p in logs.iterdir()) == [
         "batch_queue.jsonl", "extensions.jsonl", "fixer_queue.jsonl"]
     assert not list(tmp_path.glob("v2_*"))
+
+
+# --- batch mode for the extender (8 Oct 2026) ------------------------------
+# --batch opens llm_client's batch gate around the same loop, so the
+# workers' calls go out as half-price Message Batches. When a batch comes
+# back, many answers arrive at once; checking them all together would
+# overload the machine and push checks past their time limit, which
+# changes verdicts. So checking runs a few at a time.
+
+def _structural_out():
+    return {"invariants": ["a == b"], "new_state": "s", "coupling": "c",
+            "induction_gap": "g", "why_parent_insufficient": "w"}
+
+
+def test_checking_runs_only_a_few_at_a_time(monkeypatch):
+    import threading
+    import time
+    import batch
+    live, most = [0], [0]
+    lock = threading.Lock()
+
+    def slow_grade(parent, ext_type, out, record):
+        with lock:
+            live[0] += 1
+            most[0] = max(most[0], live[0])
+        time.sleep(0.05)
+        with lock:
+            live[0] -= 1
+        record["verdict"] = "NOT_PROVEN"
+        return record
+    monkeypatch.setattr(batch, "call_model",
+                        lambda p, s: (_structural_out(), {"input": 1, "output": 1}, "ok"))
+    monkeypatch.setattr(batch, "grade_step4", slow_grade)
+    monkeypatch.setattr(batch, "dump", lambda r: None)
+    monkeypatch.setattr(batch, "GRADE_SLOTS", threading.BoundedSemaphore(2))
+    parent = {"id": "c0_000", "top_module": "m", "verilog": "", "property": [],
+              "invariants": []}
+    tasks = [{"task_id": i, "attempt": 1, "ext_type": "structural",
+              "move": "STAGE", "parent_id": "c0_000", "k": 1} for i in range(6)]
+    threads = [threading.Thread(target=batch._real_executor, args=(t, [parent]))
+               for t in tasks]
+    [t.start() for t in threads]
+    [t.join(timeout=10) for t in threads]
+    assert most[0] == 2
+
+
+def test_batch_option_opens_the_gate_around_the_same_loop(monkeypatch, tmp_path):
+    import json
+    import batch
+    import llm_client
+    seen = {}
+
+    def fake_loop(rows, executor, **kw):
+        seen["gate_open"] = llm_client._gate is not None
+        seen["slots"] = batch.GRADE_SLOTS._initial_value \
+            if batch.GRADE_SLOTS is not None else None
+        seen["workers"] = kw["workers"]
+        return []
+    monkeypatch.setattr(batch, "run_loop", fake_loop)
+    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    corpus = tmp_path / "corpus_catalog.jsonl"
+    corpus.write_text(json.dumps({"id": "c0_000", "generation": 0}) + "\n")
+    batch.main(["--max-calls", "8", "--corpus", str(corpus), "--log-dir",
+                str(tmp_path / "logs"), "--batch", "--workers", "8",
+                "--grade-slots", "3"])
+    assert seen == {"gate_open": True, "slots": 3, "workers": 8}
+    assert llm_client._gate is None and batch.GRADE_SLOTS is None
+
+
+def test_a_record_made_in_batch_mode_says_so(monkeypatch):
+    import batch
+    import llm_client
+    rec = {}
+    monkeypatch.setattr(batch, "call_model",
+                        lambda p, s: (None, {"input": 1, "output": 2}, "refusal"))
+    monkeypatch.setattr(batch, "dump", lambda r: rec.update(r))
+    monkeypatch.setattr(llm_client, "_gate", object())
+    task = {"task_id": 1, "attempt": 1, "ext_type": "structural",
+            "move": "STAGE", "parent_id": "c0_000", "k": 1}
+    batch._real_executor(task, [{"id": "c0_000", "top_module": "m",
+                                 "verilog": "", "property": [], "invariants": []}])
+    assert rec["batch"] is True

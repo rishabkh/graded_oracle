@@ -1,6 +1,7 @@
 """Tests for the provider switch (no network): provider selection,
 lenient JSON extraction for the OpenRouter path, and usage mapping.
 """
+import json
 import sys
 from pathlib import Path
 
@@ -224,3 +225,100 @@ def test_a_refusal_does_not_leave_the_previous_reply_behind(monkeypatch):
     assert llm_client.LAST_RAW == '{"first": 1}'
     assert llm_client.call_claude(model="m", max_tokens=1, user="u")[2] == "refusal"
     assert llm_client.LAST_RAW is None
+
+
+# --- the batch gate (8 Oct 2026): many threads, one half-price batch -----
+# The extender runs many workers, each making ordinary call_claude calls.
+# With a gate open, those calls are gathered and sent as one Message
+# Batch; each thread blocks until its own answer is back. Nothing else in
+# the caller changes.
+import threading                                                 # noqa: E402
+import time as _time                                             # noqa: E402
+
+
+def _fake_batches(monkeypatch, answers=None, fail=()):
+    sent = []
+
+    def submit(items):
+        sent.append(items)
+        return f"batch_{len(sent)}"
+
+    def results(bid):
+        for cid, kw in sent[int(bid.split("_")[1]) - 1]:
+            user = kw["messages"][0]["content"]
+            if user in fail:
+                yield cid, ("error:overloaded_error", None, {"input": 0, "output": 0}, None)
+            else:
+                text = (answers or {}).get(user, f'{{"echo": "{user}"}}')
+                yield cid, ("ok", text, {"input": 1, "output": 2}, text)
+    monkeypatch.setattr(llm_client, "batch_submit", submit)
+    monkeypatch.setattr(llm_client, "batch_status", lambda bid: ("ended", {}))
+    monkeypatch.setattr(llm_client, "batch_results", results)
+    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    return sent
+
+
+def _call_in_threads(n):
+    out = [None] * n
+
+    def one(i):
+        out[i] = llm_client.call_claude(model="claude-opus-5-5", max_tokens=9,
+                                        user=f"q{i}", system="S")
+    threads = [threading.Thread(target=one, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    return out
+
+
+def test_concurrent_calls_through_the_gate_go_as_one_batch(monkeypatch, tmp_path):
+    sent = _fake_batches(monkeypatch)
+    with llm_client.batch_gate(flush_after_s=0.3, poll_s=0,
+                               manifest_dir=tmp_path):
+        out = _call_in_threads(5)
+    assert len(sent) == 1 and len(sent[0]) == 5
+    # every thread got its own answer, read exactly like a direct reply
+    assert [o[0] for o in out] == [f'{{"echo": "q{i}"}}' for i in range(5)]
+    assert all(o[2] == "ok" and o[1] == {"input": 1, "output": 2} for o in out)
+    # the request is the direct request, byte for byte
+    kw = sent[0][0][1]
+    assert kw == llm_client.request_kwargs(model="claude-opus-5-5", max_tokens=9,
+                                           user=kw["messages"][0]["content"],
+                                           system="S")
+
+
+def test_a_failed_batch_entry_raises_in_its_own_thread_only(monkeypatch, tmp_path):
+    _fake_batches(monkeypatch, fail={"q1"})
+    errors = []
+
+    def one(i):
+        try:
+            llm_client.call_claude(model="claude-opus-5-5", max_tokens=9,
+                                   user=f"q{i}")
+        except RuntimeError as e:
+            errors.append((i, str(e)))
+    with llm_client.batch_gate(flush_after_s=0.3, poll_s=0,
+                               manifest_dir=tmp_path):
+        ts = [threading.Thread(target=one, args=(i,)) for i in range(3)]
+        [t.start() for t in ts]
+        [t.join(timeout=10) for t in ts]
+    assert errors == [(1, "batch error:overloaded_error")]
+
+
+def test_every_batch_is_written_down_before_it_is_sent(monkeypatch, tmp_path):
+    sent = _fake_batches(monkeypatch)
+    with llm_client.batch_gate(flush_after_s=0.3, poll_s=0,
+                               manifest_dir=tmp_path):
+        _call_in_threads(2)
+    [m] = list(tmp_path.glob("batch_*.json"))
+    rec = json.loads(m.read_text())
+    assert rec["batch_id"] == "batch_1" and len(rec["requests"]) == 2
+    assert rec["usage"] == {"input": 2, "output": 4}
+
+
+def test_with_the_gate_closed_calls_go_direct_again(monkeypatch, tmp_path):
+    sent = _fake_batches(monkeypatch)
+    with llm_client.batch_gate(flush_after_s=0.3, poll_s=0, manifest_dir=tmp_path):
+        pass
+    assert llm_client._gate is None

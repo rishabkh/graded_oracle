@@ -104,6 +104,10 @@ def call_claude(*, model, max_tokens, user, system=None, schema=None,
         return _call_openrouter(model=model, max_tokens=max_tokens,
                                 user=user, system=system, schema=schema,
                                 effort=effort)
+    if _gate is not None:
+        return _gate_call(request_kwargs(model=model, max_tokens=max_tokens,
+                                         user=user, system=system,
+                                         schema=schema, effort=effort))
     return _call_anthropic(model=model, max_tokens=max_tokens, user=user,
                            system=system, schema=schema, effort=effort)
 
@@ -246,3 +250,139 @@ def _call_openrouter(*, model, max_tokens, user, system, schema, effort):
     # Re-serialise so callers always receive clean JSON text, exactly as
     # the Anthropic structured-output path would have produced.
     return json.dumps(obj), usage, "ok"
+
+
+# --- the batch gate (8 Oct 2026) -------------------------------------------
+# Many threads making ordinary call_claude calls, sent as Message Batches at
+# half price. Inside `with batch_gate(...)`, a call queues its request and
+# blocks its own thread; once no new request has arrived for flush_after_s
+# (or max_size are queued), the queue goes out as one batch, and each
+# thread gets back its own answer, read by read_message exactly like a
+# direct reply. A failed entry raises in its own thread, as a failed direct
+# call would. Every batch is written to manifest_dir before it is sent, and
+# again with its id and token use, so paid work can always be traced.
+
+import contextlib                                              # noqa: E402
+import threading                                               # noqa: E402
+import time                                                    # noqa: E402
+from datetime import datetime, timezone                        # noqa: E402
+from pathlib import Path                                       # noqa: E402
+
+_gate = None
+
+
+class _Gate:
+    def __init__(self, flush_after_s, poll_s, manifest_dir, max_size):
+        self.flush_after_s, self.poll_s, self.max_size = \
+            flush_after_s, poll_s, max_size
+        self.manifest_dir = Path(manifest_dir) if manifest_dir else None
+        self.lock = threading.Lock()
+        self.pending, self.senders = [], []
+        self.seq, self.last = 0, time.monotonic()
+        self.closing = threading.Event()
+        self.flusher = threading.Thread(target=self._flush_loop, daemon=True)
+        self.flusher.start()
+
+    def call(self, kwargs):
+        slot = {"event": threading.Event(), "result": None}
+        with self.lock:
+            self.seq += 1
+            self.pending.append((f"r{self.seq:05d}", kwargs, slot))
+            self.last = time.monotonic()
+        slot["event"].wait()
+        if isinstance(slot["result"], Exception):
+            raise slot["result"]
+        return slot["result"]
+
+    def _flush_loop(self):
+        while True:
+            time.sleep(min(0.05, self.flush_after_s))
+            with self.lock:
+                quiet = time.monotonic() - self.last >= self.flush_after_s
+                if self.pending and (quiet or len(self.pending) >= self.max_size
+                                     or self.closing.is_set()):
+                    take, self.pending = self.pending, []
+                elif self.closing.is_set() and not self.pending:
+                    return
+                else:
+                    continue
+            sender = threading.Thread(target=self._send, args=(take,),
+                                      daemon=True)
+            sender.start()
+            self.senders.append(sender)
+
+    def _write(self, path, rec):
+        if path is not None:
+            path.write_text(json.dumps(rec, indent=1))
+
+    def _send(self, take):
+        items = [(cid, kw) for cid, kw, _ in take]
+        slots = {cid: slot for cid, _, slot in take}
+        rec = {"created": datetime.now(timezone.utc).isoformat(),
+               "batch_id": None,
+               "requests": [{"custom_id": c, "params": kw} for c, kw in items]}
+        path = None
+        if self.manifest_dir is not None:
+            self.manifest_dir.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
+            path = self.manifest_dir / f"batch_{stamp}_{items[0][0]}.json"
+        self._write(path, rec)
+        try:
+            rec["batch_id"] = batch_submit(items)
+            self._write(path, rec)
+            while batch_status(rec["batch_id"])[0] != "ended":
+                time.sleep(self.poll_s)
+            got = dict(batch_results(rec["batch_id"]))
+        except Exception as exc:
+            rec["error"] = f"{type(exc).__name__}: {exc}"
+            self._write(path, rec)
+            for slot in slots.values():
+                slot["result"] = RuntimeError(f"batch failed: {exc}")
+                slot["event"].set()
+            return
+        usage = {"input": 0, "output": 0}
+        results = {}
+        for cid in slots:
+            out = got.get(cid, ("error:no_result", None,
+                                {"input": 0, "output": 0}, None))
+            usage["input"] += out[2].get("input", 0)
+            usage["output"] += out[2].get("output", 0)
+            results[cid] = out
+        rec.update(usage=usage, ended=datetime.now(timezone.utc).isoformat())
+        self._write(path, rec)
+        for cid, slot in slots.items():
+            slot["result"] = results[cid]
+            slot["event"].set()
+
+    def close(self):
+        self.closing.set()
+        self.flusher.join()
+        for sender in self.senders:
+            sender.join()
+
+
+def _gate_call(kwargs):
+    global LAST_RAW
+    stop, text, usage, raw = _gate.call(kwargs)
+    if stop.startswith("error"):
+        raise RuntimeError(f"batch {stop}")
+    LAST_RAW = raw
+    return text, usage, stop
+
+
+@contextlib.contextmanager
+def batch_gate(flush_after_s=20, poll_s=60, manifest_dir=None,
+               max_size=10000):
+    """Inside the block, Anthropic call_claude calls from any thread go out
+    as Message Batches at half price (see the notes above)."""
+    global _gate
+    if provider() != "anthropic":
+        raise RuntimeError("batch mode needs the Anthropic API, not "
+                           f"{provider()}")
+    gate = _Gate(flush_after_s, poll_s, manifest_dir, max_size)
+    _gate = gate
+    try:
+        yield gate
+    finally:
+        gate.close()
+        _gate = None

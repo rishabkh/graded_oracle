@@ -19,6 +19,7 @@ recursive: children of children get extended in the same run.
 """
 import argparse
 import json
+import os
 import random
 import sys
 import threading
@@ -43,6 +44,16 @@ from promote import FIXER_QUEUE, promote, ratchet, route         # noqa: E402
 import distractor                                                # noqa: E402
 
 import contextlib
+
+# How many answers are checked at once. None (no limit) unless --batch sets
+# it: a batch returns many answers together, and checking them all at the
+# same time would push checks past their time limit and change verdicts.
+GRADE_SLOTS = None
+
+
+def _grading():
+    return GRADE_SLOTS if GRADE_SLOTS is not None else contextlib.nullcontext()
+
 
 # with --workers > 1, main() sets Spinner.quiet (per-step spinners would
 # draw over each other) and runs one pool-wide spinner fed by PROGRESS
@@ -254,6 +265,8 @@ def _real_executor(task, corpus_rows):
               # who wrote this row: a corpus grown by two different models
               # is training data that cannot be reasoned about otherwise
               "model": llm_client.model_label(MODEL), "effort": EFFORT}
+    if llm_client._gate is not None:
+        record["batch"] = True            # sent at half price
     try:
         if task["ext_type"] == "distractor":
             record["invariants"] = parent["invariants"]     # verbatim
@@ -268,7 +281,9 @@ def _real_executor(task, corpus_rows):
                                      else "UNPARSEABLE")
             else:
                 record["reasoning"] = out["note"]   # kept under the old key
-                finalize_distractor(grade_extension(parent, out["patch"], record))
+                with _grading():
+                    finalize_distractor(grade_extension(parent, out["patch"],
+                                                        record))
         elif task["ext_type"] == "compose":
             p2 = by_id[task["parent2_id"]]
             prompt = COMPOSE_TEMPLATE.format(
@@ -288,7 +303,8 @@ def _real_executor(task, corpus_rows):
                                      else "UNPARSEABLE")
             else:
                 keep_reasoning(out, record)
-                grade_compose(parent, p2, out, record)
+                with _grading():
+                    grade_compose(parent, p2, out, record)
         else:
             prompt = build_prompt(parent, task["ext_type"], task.get("move"),
                                   n=task.get("instances", 6),
@@ -308,11 +324,12 @@ def _real_executor(task, corpus_rows):
                                      else "UNPARSEABLE")
             else:
                 keep_reasoning(out, record)
-                if task["ext_type"] == "replicate":
-                    grade_replicate(parent, out, record,
-                                    task.get("instances", 6))
-                else:
-                    grade_step4(parent, task["ext_type"], out, record)
+                with _grading():
+                    if task["ext_type"] == "replicate":
+                        grade_replicate(parent, out, record,
+                                        task.get("instances", 6))
+                    else:
+                        grade_step4(parent, task["ext_type"], out, record)
     except Exception as exc:
         record["verdict"] = "ERROR"
         record["error"] = f"{type(exc).__name__}: {exc}"
@@ -361,13 +378,23 @@ def main(argv=None):
                    help="write the extension, queue and fixer logs here "
                         "instead of extender/logs; required with any "
                         "--corpus other than extender/corpus.jsonl")
+    p.add_argument("--batch", action="store_true",
+                   help="send the workers' calls as half-price Message "
+                        "Batches (llm_client.batch_gate); --workers sets how "
+                        "many requests can wait in one batch")
+    p.add_argument("--grade-slots", type=int,
+                   default=max(1, (os.cpu_count() or 4) - 2),
+                   help="with --batch: answers checked at the same time")
+    p.add_argument("--flush-after", type=float, default=30.0,
+                   help="with --batch: send the waiting requests once no new "
+                        "one has arrived for this many seconds")
     p.add_argument("--dry", action="store_true",
                    help="print the planned first tasks, call nothing")
     args = p.parse_args(argv)
     # 8 Oct 2026: --corpus used to change only the corpus. The logs stayed
     # v2's, so a later promote or fix run could copy another corpus's
     # designs into v2's corpus under clashing names.
-    global QUEUE_LOG, FIXER_QUEUE
+    global QUEUE_LOG, FIXER_QUEUE, GRADE_SLOTS
     if not args.dry and args.log_dir is None and \
             args.corpus.resolve() != CORPUS.resolve():
         sys.exit("a corpus other than extender/corpus.jsonl needs its own "
@@ -425,13 +452,22 @@ def main(argv=None):
         with args.corpus.open("a") as f:
             f.write(json.dumps(row) + "\n")
 
-    with PROGRESS["spinner"] or contextlib.nullcontext():
-        new_rows = run_loop(corpus_rows, _real_executor,
-                            max_calls=args.max_calls, max_gen=args.max_gen,
-                            rng=rng, on_task=log_task,
-                            on_fixer=to_fixer_queue,
+    gate = contextlib.nullcontext()
+    if args.batch:
+        GRADE_SLOTS = threading.BoundedSemaphore(args.grade_slots)
+        gate = llm_client.batch_gate(
+            flush_after_s=args.flush_after, poll_s=60,
+            manifest_dir=(args.log_dir or QUEUE_LOG.parent) / "batches")
+    try:
+        with gate, PROGRESS["spinner"] or contextlib.nullcontext():
+            new_rows = run_loop(corpus_rows, _real_executor,
+                                max_calls=args.max_calls,
+                                max_gen=args.max_gen, rng=rng,
+                                on_task=log_task, on_fixer=to_fixer_queue,
                                 workers=args.workers, on_promote=checkpoint,
-                            order=args.order, per_family=args.per_family)
+                                order=args.order, per_family=args.per_family)
+    finally:
+        GRADE_SLOTS = None
     print(f"\nrun complete: {len(new_rows)} promoted "
           f"(corpus now {len(corpus_rows) + len(new_rows)} rows); "
           f"log: {distractor.OUT_LOG}")
