@@ -38,6 +38,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / "extender"))
 
 import llm_client                                             # noqa: E402
 
@@ -163,18 +164,34 @@ def _call(prompt, schema):
                                   user=prompt, schema=schema, effort=EFFORT)
 
 
-def by_category(n_categories, per_category, known, call=None, workers=4):
+def by_category(n_categories, per_category, known, call=None, workers=4,
+                progress=None):
     """One call for the categories, then one per category, in parallel.
     Kinds whose name repeats one we have, or an earlier one, are dropped
     and listed; near repeats are judged later and applied by --finish."""
     from concurrent.futures import ThreadPoolExecutor
+    import threading
     call = call or _call
+    lock = threading.Lock()
+    state = {"done": 0, "total": 1 + n_categories, "input": 0, "output": 0}
+
+    def counted(prompt, schema):
+        out = call(prompt, schema)
+        with lock:
+            state["done"] += 1
+            state["input"] += out[1].get("input", 0)
+            state["output"] += out[1].get("output", 0)
+            if progress:
+                progress(state["done"], state["total"],
+                         {"input": state["input"], "output": state["output"]})
+        return out
     cat_prompt = build_category_prompt(n_categories)
-    cat_text, usage, _ = call(cat_prompt, CATEGORY_SCHEMA)
+    cat_text, usage, _ = counted(cat_prompt, CATEGORY_SCHEMA)
     categories = parse_categories(cat_text)
+    state["total"] = 1 + len(categories)
     prompts = [build_kinds_prompt(per_category, c, known) for c in categories]
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        answers = list(ex.map(lambda q: call(q, SCHEMA), prompts))
+        answers = list(ex.map(lambda q: counted(q, SCHEMA), prompts))
     total = {"input": usage.get("input", 0), "output": usage.get("output", 0)}
     seen = {k.strip().lower() for k in known}
     candidates, dropped = [], []
@@ -350,7 +367,17 @@ def main(argv=None):
                 else "ANTHROPIC_API_KEY")
         if not os.environ.get(need):
             sys.exit(f"{need} is not set, so no call was made")
-        rec = by_category(args.categories, args.per_category, known)
+        from distractor import Spinner
+        spinner = Spinner(f"picking kinds: 0/{1 + args.categories} calls done",
+                          always=True)
+
+        def progress(done, total, usage):
+            cost = llm_client.dollars(MODEL, usage["input"], usage["output"])
+            spinner.label = (f"picking kinds: {done}/{total} calls done, "
+                             f"${cost:.2f} so far")
+        with spinner:
+            rec = by_category(args.categories, args.per_category, known,
+                              progress=progress)
         rec["run_id"] = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
         out = Path(args.out_dir)
         out.mkdir(parents=True, exist_ok=True)
@@ -377,9 +404,11 @@ def main(argv=None):
     if not os.environ.get(need):
         sys.exit(f"{need} is not set, so no call was made")
 
-    text, usage, stop = llm_client.call_claude(
-        model=MODEL, max_tokens=MAX_TOKENS, user=prompt, schema=SCHEMA,
-        effort=EFFORT)
+    from distractor import Spinner
+    with Spinner(f"asking {MODEL} for {args.ask} kinds (one call)", always=True):
+        text, usage, stop = llm_client.call_claude(
+            model=MODEL, max_tokens=MAX_TOKENS, user=prompt, schema=SCHEMA,
+            effort=EFFORT)
     kinds = parse(text)
     stamp = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
     chosen = pick(kinds, args.pick, args.seed) \

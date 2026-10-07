@@ -438,12 +438,19 @@ def collect(manifest, poll_s=60):
     m = json.loads(manifest.read_text())
     if not m.get("batch_id"):
         sys.exit(f"{manifest.name} was never sent: no batch id, nothing paid")
-    while True:
-        status, counts = llm_client.batch_status(m["batch_id"])
-        print(f"batch {m['batch_id']}: {status} {counts}", flush=True)
-        if status == "ended":
-            break
-        time.sleep(poll_s)
+    spinner = Spinner(f"waiting for batch {m['batch_id']}")
+    with spinner:
+        while True:
+            status, counts = llm_client.batch_status(m["batch_id"])
+            done = counts.get("succeeded", 0) + counts.get("errored", 0) + \
+                counts.get("canceled", 0) + counts.get("expired", 0)
+            spinner.label = (f"batch {m['batch_id']}: {status}, {done} of "
+                             f"{len(m['attempts'])} answered (checks every "
+                             f"{poll_s}s)")
+            if status == "ended":
+                break
+            time.sleep(poll_s)
+    print(f"batch {m['batch_id']} ended: {counts}", flush=True)
     log = Path(m["log"])
     done = set()
     if log.exists():

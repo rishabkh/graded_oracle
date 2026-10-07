@@ -230,3 +230,17 @@ def test_finish_refuses_a_candidate_with_no_verdict(tmp_path):
         ck.main(["--out-dir", str(tmp_path), "--finish", str(rec),
                  "--verdicts", str(verdicts), "--pick", "1"])
     assert "no verdict" in str(stop.value.code)    # our refusal, not argparse
+
+
+def test_by_category_reports_progress_after_every_call(monkeypatch):
+    """Feeds the spinner: a 41-call run used to sit silent for minutes."""
+    seen = []
+
+    def call(prompt, schema):
+        if "categories" in schema["properties"]:
+            return _cat_reply(3), {"input": 10, "output": 20}, "ok"
+        cat = re.search(r'category "([^"]+)"', prompt).group(1)
+        return _kinds_reply(cat, 2), {"input": 10, "output": 20}, "ok"
+    ck.by_category(3, 2, known=[], call=call, workers=2,
+                   progress=lambda done, total, usage: seen.append((done, total)))
+    assert sorted(seen) == [(1, 4), (2, 4), (3, 4), (4, 4)]
