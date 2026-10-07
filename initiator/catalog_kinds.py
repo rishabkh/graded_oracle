@@ -37,8 +37,8 @@ import llm_client                                             # noqa: E402
 MODEL = "claude-opus-5"
 EFFORT = "medium"
 MAX_TOKENS = 32000
-ASK = 200
-PICK = 50
+ASK = 250
+PICK = 150
 SEED = 20261007          # the day the choice was made, fixed beforehand
 RULE = ("drop repeated names (case-insensitive, first kept), then "
         "random.Random(seed).sample(kinds, pick)")
