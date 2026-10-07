@@ -1,0 +1,7899 @@
+{
+ "rule": "repeat = same kind of hardware block doing the same job, differing only in name, size, width, count or a minor parameter; marked against the EARLIEST earlier item (our 282 kinds first, then candidates in order); two independent judges, a third settling disagreements on repeat-or-not",
+ "verdicts": {
+  "AND gate": {
+   "id": "C001",
+   "repeat_of": null,
+   "reasons": [
+    "A: basic AND gate; nothing earlier",
+    "B: basic AND gate, nothing earlier"
+   ]
+  },
+  "OR gate": {
+   "id": "C002",
+   "repeat_of": null,
+   "reasons": [
+    "A: basic OR gate; distinct",
+    "B: basic OR gate, new"
+   ]
+  },
+  "NOT gate (inverter)": {
+   "id": "C003",
+   "repeat_of": null,
+   "reasons": [
+    "A: inverter; distinct",
+    "B: inverter, new"
+   ]
+  },
+  "NAND gate": {
+   "id": "C004",
+   "repeat_of": null,
+   "reasons": [
+    "A: NAND treated as its own gate",
+    "B: NAND differs from AND in function"
+   ]
+  },
+  "NOR gate": {
+   "id": "C005",
+   "repeat_of": null,
+   "reasons": [
+    "A: NOR treated as its own gate",
+    "B: NOR differs from OR"
+   ]
+  },
+  "XOR gate": {
+   "id": "C006",
+   "repeat_of": "K088",
+   "reasons": [
+    "A: odd-parity of inputs = parity tree",
+    "B: multi-input XOR is exactly a parity tree"
+   ]
+  },
+  "XNOR gate": {
+   "id": "C007",
+   "repeat_of": "K088",
+   "reasons": [
+    "A: even-parity of inputs = parity tree, inverted",
+    "B: XNOR = parity bit with other polarity, minor parameter"
+   ]
+  },
+  "Non-inverting buffer": {
+   "id": "C008",
+   "repeat_of": null,
+   "reasons": [
+    "A: plain buffer; distinct",
+    "B: plain buffer, new"
+   ]
+  },
+  "Tri-state buffer": {
+   "id": "C009",
+   "repeat_of": null,
+   "reasons": [
+    "A: tri-state buffer; distinct",
+    "B: tri-state output, new behaviour"
+   ]
+  },
+  "AND-OR-Invert (AOI21) gate": {
+   "id": "C010",
+   "repeat_of": null,
+   "reasons": [
+    "A: AOI21 compound gate; distinct",
+    "B: distinct compound gate function"
+   ]
+  },
+  "OR-AND-Invert (OAI21) gate": {
+   "id": "C011",
+   "repeat_of": null,
+   "reasons": [
+    "A: OAI21 compound gate; distinct",
+    "B: distinct compound gate function"
+   ]
+  },
+  "AND-OR (AO22) gate": {
+   "id": "C012",
+   "repeat_of": null,
+   "reasons": [
+    "A: AO22 compound gate; distinct",
+    "B: distinct compound gate function"
+   ]
+  },
+  "OR-AND (OA22) gate": {
+   "id": "C013",
+   "repeat_of": null,
+   "reasons": [
+    "A: OA22 compound gate; distinct",
+    "B: distinct compound gate function"
+   ]
+  },
+  "Majority gate": {
+   "id": "C014",
+   "repeat_of": null,
+   "reasons": [
+    "A: stateless majority; K025 voter has registers",
+    "B: stateless; TMR voter K025 has registers"
+   ]
+  },
+  "Minority gate": {
+   "id": "C015",
+   "repeat_of": null,
+   "reasons": [
+    "A: minority gate; own gate like NAND vs AND",
+    "B: inverted majority, different gate"
+   ]
+  },
+  "Implication (IMPLY) gate": {
+   "id": "C016",
+   "repeat_of": null,
+   "reasons": [
+    "A: IMPLY gate; distinct",
+    "B: implication function, new"
+   ]
+  },
+  "Inhibit gate": {
+   "id": "C017",
+   "repeat_of": null,
+   "reasons": [
+    "A: inhibit gate; distinct",
+    "B: inhibit function, new"
+   ]
+  },
+  "Muller C-element": {
+   "id": "C018",
+   "repeat_of": null,
+   "reasons": [
+    "A: C-element holds state; distinct",
+    "B: C-element holds state, new"
+   ]
+  },
+  "Threshold gate": {
+   "id": "C019",
+   "repeat_of": null,
+   "reasons": [
+    "A: weighted threshold, not plain majority",
+    "B: weighted threshold, more general than majority"
+   ]
+  },
+  "Transmission gate": {
+   "id": "C020",
+   "repeat_of": null,
+   "reasons": [
+    "A: bidirectional switch; distinct",
+    "B: bidirectional switch, new"
+   ]
+  },
+  "Open-drain driver": {
+   "id": "C021",
+   "repeat_of": null,
+   "reasons": [
+    "A: open-drain only pulls low; differs from tri-state",
+    "B: open-drain driver, new"
+   ]
+  },
+  "Schmitt-trigger inverter": {
+   "id": "C022",
+   "repeat_of": null,
+   "reasons": [
+    "A: hysteresis inverter; distinct",
+    "B: hysteresis inverter, new"
+   ]
+  },
+  "Toffoli gate": {
+   "id": "C023",
+   "repeat_of": null,
+   "reasons": [
+    "A: Toffoli reversible gate; distinct",
+    "B: reversible Toffoli, new"
+   ]
+  },
+  "Fredkin gate": {
+   "id": "C024",
+   "repeat_of": null,
+   "reasons": [
+    "A: Fredkin controlled swap; distinct",
+    "B: reversible controlled swap, new"
+   ]
+  },
+  "Bus keeper": {
+   "id": "C025",
+   "repeat_of": null,
+   "reasons": [
+    "A: bus keeper holds last bit; distinct",
+    "B: bus keeper, new"
+   ]
+  },
+  "Registered-select multiplexer": {
+   "id": "C026",
+   "repeat_of": null,
+   "reasons": [
+    "A: mux with select register; K107 has none",
+    "B: mux with stored select; K107 has none"
+   ]
+  },
+  "One-hot AND-OR multiplexer": {
+   "id": "C027",
+   "repeat_of": null,
+   "reasons": [
+    "A: one-hot select register, AND-OR build",
+    "B: one-hot AND-OR build differs from binary select"
+   ]
+  },
+  "Time-division multiplexer": {
+   "id": "C028",
+   "repeat_of": null,
+   "reasons": [
+    "A: slot-counter TDM mux; distinct",
+    "B: slot-counter TDM mux, new"
+   ]
+  },
+  "Priority multiplexer": {
+   "id": "C029",
+   "repeat_of": null,
+   "reasons": [
+    "A: forwards data by priority; not just index",
+    "B: forwards data, not just index like K022"
+   ]
+  },
+  "Tri-state bus multiplexer": {
+   "id": "C030",
+   "repeat_of": null,
+   "reasons": [
+    "A: tri-state bus with enable register; distinct build",
+    "B: multi-source tri-state bus with enable reg"
+   ]
+  },
+  "Packet-boundary stream multiplexer": {
+   "id": "C031",
+   "repeat_of": null,
+   "reasons": [
+    "A: packet-boundary stream mux; distinct",
+    "B: packet-boundary locking mux, new"
+   ]
+  },
+  "Byte-lane steering multiplexer": {
+   "id": "C032",
+   "repeat_of": null,
+   "reasons": [
+    "A: byte-lane steering by offset/size; distinct",
+    "B: byte-lane steering, new"
+   ]
+  },
+  "Output-registered multiplexer": {
+   "id": "C033",
+   "repeat_of": "K107",
+   "reasons": [
+    "A: mux with registered output = K107 option",
+    "B: mux with registered output; K107 covers it"
+   ]
+  },
+  "ADC channel scan multiplexer": {
+   "id": "C034",
+   "repeat_of": null,
+   "reasons": [
+    "A: channel list + settle counter; distinct",
+    "B: channel list + settle counter, new"
+   ]
+  },
+  "Test-mode multiplexer": {
+   "id": "C035",
+   "repeat_of": "C026",
+   "reasons": [
+    "A: 2-input mux with config select register",
+    "B: mux with programmable select register"
+   ]
+  },
+  "Redundancy repair multiplexer": {
+   "id": "C036",
+   "repeat_of": null,
+   "reasons": [
+    "A: fuse repair steering; distinct",
+    "B: fuse-loaded spare steering, new"
+   ]
+  },
+  "Sample-and-hold multiplexer": {
+   "id": "C037",
+   "repeat_of": null,
+   "reasons": [
+    "A: holds data until strobe; differs from C033",
+    "B: captures and holds data, unlike C026"
+   ]
+  },
+  "Debug observation multiplexer": {
+   "id": "C038",
+   "repeat_of": "C026",
+   "reasons": [
+    "A: mux with software-written select register",
+    "B: mux with programmable select register"
+   ]
+  },
+  "Recirculating hold multiplexer": {
+   "id": "C039",
+   "repeat_of": "K146",
+   "reasons": [
+    "A: enable register; K146 adds flush",
+    "B: load-enable register = pipeline reg with enable",
+    "decider: enable-hold register; flush is a minor clear"
+   ]
+  },
+  "Zero-insertion multiplexer": {
+   "id": "C040",
+   "repeat_of": null,
+   "reasons": [
+    "A: valid mask forces default; distinct",
+    "B: adds valid mask and default value"
+   ]
+  },
+  "Break-before-make multiplexer": {
+   "id": "C041",
+   "repeat_of": null,
+   "reasons": [
+    "A: dead-time switchover mux; distinct",
+    "B: dead-time switching, new"
+   ]
+  },
+  "Context-select multiplexer": {
+   "id": "C042",
+   "repeat_of": null,
+   "reasons": [
+    "A: stored context banks + index; distinct",
+    "B: selectable context banks, new"
+   ]
+  },
+  "LUT multiplexer": {
+   "id": "C043",
+   "repeat_of": "K248",
+   "reasons": [
+    "A: writable table indexed by input; 1-bit wide",
+    "B: writable lookup table, 1-bit output"
+   ]
+  },
+  "Read-response return multiplexer": {
+   "id": "C044",
+   "repeat_of": null,
+   "reasons": [
+    "A: ID table routes responses; first such",
+    "B: ID-table response routing, new"
+   ]
+  },
+  "Latency-matched bank read multiplexer": {
+   "id": "C045",
+   "repeat_of": null,
+   "reasons": [
+    "A: delayed bank-select pipeline; distinct",
+    "B: delayed select pipeline, new"
+   ]
+  },
+  "Failover source multiplexer": {
+   "id": "C046",
+   "repeat_of": null,
+   "reasons": [
+    "A: health-based failover; distinct",
+    "B: health-based failover, new"
+   ]
+  },
+  "Header insertion multiplexer": {
+   "id": "C047",
+   "repeat_of": null,
+   "reasons": [
+    "A: header regs then payload; distinct",
+    "B: header-then-payload; differs from K196 framer"
+   ]
+  },
+  "Loopback multiplexer": {
+   "id": "C048",
+   "repeat_of": "C026",
+   "reasons": [
+    "A: 2-input mux with mode register",
+    "B: 2:1 mux with mode register"
+   ]
+  },
+  "Bitwise masked merge multiplexer": {
+   "id": "C049",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-bit mask merge; distinct",
+    "B: per-bit mask merge, new"
+   ]
+  },
+  "Coefficient bank multiplexer": {
+   "id": "C050",
+   "repeat_of": "C042",
+   "reasons": [
+    "A: stored banks + select register, renamed",
+    "B: stored banks + bank-select index"
+   ]
+  },
+  "Registered 1-to-N demultiplexer": {
+   "id": "C051",
+   "repeat_of": null,
+   "reasons": [
+    "A: demux with select and output registers",
+    "B: registered outputs add state vs K108"
+   ]
+  },
+  "Addressable latch demultiplexer": {
+   "id": "C052",
+   "repeat_of": null,
+   "reasons": [
+    "A: addressable bit latch; distinct",
+    "B: addressable latch bank, new"
+   ]
+  },
+  "Packet-boundary stream demultiplexer": {
+   "id": "C053",
+   "repeat_of": null,
+   "reasons": [
+    "A: demux reads dest at SOP; mux C031 differs",
+    "B: demux side; differs from C031 mux"
+   ]
+  },
+  "Valid/ready stream demultiplexer": {
+   "id": "C054",
+   "repeat_of": null,
+   "reasons": [
+    "A: handshaked stream demux; distinct",
+    "B: handshaked demux, new"
+   ]
+  },
+  "Time-division slot demultiplexer": {
+   "id": "C055",
+   "repeat_of": null,
+   "reasons": [
+    "A: TDM demux, opposite of C028",
+    "B: TDM demux with channel regs, not C028"
+   ]
+  },
+  "Round-robin work distributor": {
+   "id": "C056",
+   "repeat_of": null,
+   "reasons": [
+    "A: rotating distributor; not an arbiter",
+    "B: rotating distributor, not arbiter"
+   ]
+  },
+  "Least-loaded dispatcher": {
+   "id": "C057",
+   "repeat_of": null,
+   "reasons": [
+    "A: occupancy-based dispatch; distinct",
+    "B: occupancy-based dispatch, new"
+   ]
+  },
+  "First-free dispatcher": {
+   "id": "C058",
+   "repeat_of": "K218",
+   "reasons": [
+    "A: busy bitmap, pick first clear = bitmap allocator",
+    "B: busy-flag dispatch; job differs from K218",
+    "decider: busy bitmap, pick first clear, set/clear = allocator"
+   ]
+  },
+  "Multicast mask demultiplexer": {
+   "id": "C059",
+   "repeat_of": null,
+   "reasons": [
+    "A: multicast mask with delivered flags",
+    "B: multicast with delivered flags, new"
+   ]
+  },
+  "Transaction-ID response demultiplexer": {
+   "id": "C060",
+   "repeat_of": "C044",
+   "reasons": [
+    "A: same outstanding-ID response routing",
+    "B: same ID-table response routing"
+   ]
+  },
+  "Flow-hash steering demultiplexer": {
+   "id": "C061",
+   "repeat_of": null,
+   "reasons": [
+    "A: hash + indirection table; distinct",
+    "B: hash + indirection table, new"
+   ]
+  },
+  "EtherType protocol demultiplexer": {
+   "id": "C062",
+   "repeat_of": null,
+   "reasons": [
+    "A: exact type match table; not hash",
+    "B: type-match table steering, new"
+   ]
+  },
+  "Virtual-channel input demultiplexer": {
+   "id": "C063",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-VC buffers; distinct",
+    "B: per-VC buffers, new"
+   ]
+  },
+  "Memory bank-steering demultiplexer": {
+   "id": "C064",
+   "repeat_of": null,
+   "reasons": [
+    "A: address-interleaved bank steering",
+    "B: bank interleave steering, new"
+   ]
+  },
+  "Multi-lane striping distributor": {
+   "id": "C065",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds alignment marker counter vs C056",
+    "B: adds alignment markers vs C056"
+   ]
+  },
+  "Break-before-make demultiplexer": {
+   "id": "C066",
+   "repeat_of": "C041",
+   "reasons": [
+    "A: same break-before-make select logic",
+    "B: same break-before-make select logic"
+   ]
+  },
+  "Shadowed-select demultiplexer": {
+   "id": "C067",
+   "repeat_of": "K265",
+   "reasons": [
+    "A: shadow-to-active commit on one select reg",
+    "B: demux with shadowed select, new",
+    "decider: shadow-to-active commit of one select register"
+   ]
+  },
+  "Event routing demultiplexer": {
+   "id": "C068",
+   "repeat_of": null,
+   "reasons": [
+    "A: routing reg + per-target pending flags",
+    "B: routing reg + per-target pending, new"
+   ]
+  },
+  "Cross-domain pulse demultiplexer": {
+   "id": "C069",
+   "repeat_of": null,
+   "reasons": [
+    "A: toggle-based cross-domain pulse routing",
+    "B: toggle-sync cross-domain routing, new"
+   ]
+  },
+  "Scan-chain select demultiplexer": {
+   "id": "C070",
+   "repeat_of": null,
+   "reasons": [
+    "A: demux with config select register; first",
+    "B: demux with programmable select reg, new"
+   ]
+  },
+  "Trace sink demultiplexer": {
+   "id": "C071",
+   "repeat_of": "C070",
+   "reasons": [
+    "A: demux with config select register + enable",
+    "B: demux with programmable select reg"
+   ]
+  },
+  "Pipelined demultiplexer tree": {
+   "id": "C072",
+   "repeat_of": null,
+   "reasons": [
+    "A: multi-level pipelined demux tree",
+    "B: multi-level pipelined build, new"
+   ]
+  },
+  "Error-sinking demultiplexer": {
+   "id": "C073",
+   "repeat_of": null,
+   "reasons": [
+    "A: out-of-range error sink; distinct",
+    "B: out-of-range error capture, new"
+   ]
+  },
+  "Auto-increment register loader": {
+   "id": "C074",
+   "repeat_of": null,
+   "reasons": [
+    "A: auto-incrementing write index; distinct",
+    "B: auto-increment write index, new"
+   ]
+  },
+  "Write-strobe demultiplexer": {
+   "id": "C075",
+   "repeat_of": null,
+   "reasons": [
+    "A: registered address to one-hot strobe; first",
+    "B: registered addr/data write strobe, new"
+   ]
+  },
+  "Registered-output one-hot decoder": {
+   "id": "C076",
+   "repeat_of": null,
+   "reasons": [
+    "A: decoder with one-hot output register",
+    "B: registered decoder adds state vs K105"
+   ]
+  },
+  "Cascadable enable-gated decoder": {
+   "id": "C077",
+   "repeat_of": "K105",
+   "reasons": [
+    "A: combinational decoder with enables",
+    "B: decoder with enables; cascading minor"
+   ]
+  },
+  "Two-level predecoder": {
+   "id": "C078",
+   "repeat_of": null,
+   "reasons": [
+    "A: two-level predecode structure",
+    "B: predecode structure differs"
+   ]
+  },
+  "SRAM wordline decoder with pulse latch": {
+   "id": "C079",
+   "repeat_of": null,
+   "reasons": [
+    "A: self-timed wordline pulse; distinct",
+    "B: self-timed wordline pulse, new"
+   ]
+  },
+  "Column select decoder": {
+   "id": "C080",
+   "repeat_of": "C075",
+   "reasons": [
+    "A: latched address decoded to one-hot",
+    "B: decoder with registered input"
+   ]
+  },
+  "DRAM row decoder with RAS address latch": {
+   "id": "C081",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds row-open flag until precharge",
+    "B: row held until precharge, row-open flag"
+   ]
+  },
+  "Redundancy-steering row decoder": {
+   "id": "C082",
+   "repeat_of": null,
+   "reasons": [
+    "A: repair-address compare to spare row",
+    "B: address-compare spare row, new"
+   ]
+  },
+  "Binary-to-thermometer decoder": {
+   "id": "C083",
+   "repeat_of": null,
+   "reasons": [
+    "A: thermometer decode; distinct",
+    "B: thermometer output, new"
+   ]
+  },
+  "Byte-lane strobe decoder": {
+   "id": "C084",
+   "repeat_of": null,
+   "reasons": [
+    "A: size-dependent byte strobes; distinct",
+    "B: size-aware byte strobes, new"
+   ]
+  },
+  "Register-file write-port decoder": {
+   "id": "C085",
+   "repeat_of": "C075",
+   "reasons": [
+    "A: registered index + WE to one-hot strobes",
+    "B: registered index+enable to write strobes"
+   ]
+  },
+  "Bank-select decoder": {
+   "id": "C086",
+   "repeat_of": "C075",
+   "reasons": [
+    "A: held address register decoded one-hot",
+    "B: decoder with registered select"
+   ]
+  },
+  "Latched-address chip-select decoder": {
+   "id": "C087",
+   "repeat_of": "C075",
+   "reasons": [
+    "A: latched address decoded to selects",
+    "B: decoder with latched address"
+   ]
+  },
+  "Cache way-enable decoder": {
+   "id": "C088",
+   "repeat_of": "C075",
+   "reasons": [
+    "A: registered index decoded one-hot",
+    "B: decoder with registered index"
+   ]
+  },
+  "Bus-grant line decoder": {
+   "id": "C089",
+   "repeat_of": "C075",
+   "reasons": [
+    "A: registered index decoded one-hot",
+    "B: decoder with registered index"
+   ]
+  },
+  "Shift-amount stage decoder": {
+   "id": "C090",
+   "repeat_of": "C075",
+   "reasons": [
+    "A: registered count decoded to selects",
+    "B: decoder with registered count"
+   ]
+  },
+  "Range mask decoder": {
+   "id": "C091",
+   "repeat_of": null,
+   "reasons": [
+    "A: start/end range mask; distinct",
+    "B: start-end range mask, new"
+   ]
+  },
+  "Priority-level mask decoder": {
+   "id": "C092",
+   "repeat_of": "C083",
+   "reasons": [
+    "A: thermometer mask of registered level",
+    "B: level-to-mask is thermometer decode",
+    "decider: level-to-mask is thermometer decode of a register"
+   ]
+  },
+  "Timing-phase decoder": {
+   "id": "C093",
+   "repeat_of": null,
+   "reasons": [
+    "A: phase counter decoded to strobes",
+    "B: counter decoded to phase strobes, new"
+   ]
+  },
+  "Indexed bit set/clear decoder": {
+   "id": "C094",
+   "repeat_of": "C052",
+   "reasons": [
+    "A: indexed single-bit write into flag bank",
+    "B: write one addressed bit of a flag vector"
+   ]
+  },
+  "Pipelined two-stage decoder": {
+   "id": "C095",
+   "repeat_of": "C078",
+   "reasons": [
+    "A: two-level decode with register between",
+    "B: predecoder with group register"
+   ]
+  },
+  "Domino precharged decoder": {
+   "id": "C096",
+   "repeat_of": null,
+   "reasons": [
+    "A: dynamic precharge build; distinct",
+    "B: precharge/evaluate dynamic build"
+   ]
+  },
+  "Configuration frame address decoder": {
+   "id": "C097",
+   "repeat_of": "C074",
+   "reasons": [
+    "A: auto-increment index decoded to enables",
+    "B: auto-increment frame address decode",
+    "decider: auto-increment index decoded to one-hot enables"
+   ]
+  },
+  "Power-domain enable decoder": {
+   "id": "C098",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds request-pending flag",
+    "B: domain select + pending request, new"
+   ]
+  },
+  "Keypad row-drive decoder": {
+   "id": "C099",
+   "repeat_of": null,
+   "reasons": [
+    "A: row counter + dwell timer; distinct",
+    "B: row scan with dwell timer, new"
+   ]
+  },
+  "Gray-coded input decoder": {
+   "id": "C100",
+   "repeat_of": null,
+   "reasons": [
+    "A: Gray-code input decode; distinct",
+    "B: direct Gray-to-one-hot decode, new"
+   ]
+  },
+  "Thermometer-to-binary encoder": {
+   "id": "C101",
+   "repeat_of": null,
+   "reasons": [
+    "A: thermometer code converter, not general popcount",
+    "B: thermometer-specific, not general popcount"
+   ]
+  },
+  "Bubble-correcting flash ADC encoder": {
+   "id": "C102",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds bubble correction",
+    "B: bubble correction voting, new"
+   ]
+  },
+  "One-hot-to-binary encoder with error flag": {
+   "id": "C103",
+   "repeat_of": null,
+   "reasons": [
+    "A: one-hot encoder with error flag",
+    "B: adds error flag and state vs K106"
+   ]
+  },
+  "Cascadable priority encoder slice": {
+   "id": "C104",
+   "repeat_of": "K022",
+   "reasons": [
+    "A: priority encoder with valid; cascade pins minor",
+    "B: priority encoder; cascade pins minor"
+   ]
+  },
+  "Hierarchical tree priority encoder": {
+   "id": "C105",
+   "repeat_of": null,
+   "reasons": [
+    "A: two-level tree build; distinct",
+    "B: hierarchical build differs"
+   ]
+  },
+  "Pipelined priority encoder": {
+   "id": "C106",
+   "repeat_of": "C105",
+   "reasons": [
+    "A: hierarchical encoder with stage registers",
+    "B: multi-level encoder with stage regs"
+   ]
+  },
+  "Masked priority encoder": {
+   "id": "C107",
+   "repeat_of": null,
+   "reasons": [
+    "A: mask register before priority; distinct",
+    "B: software mask register, new"
+   ]
+  },
+  "Programmable-priority encoder": {
+   "id": "C108",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-input programmable priority",
+    "B: per-input programmable priority"
+   ]
+  },
+  "Threshold-gated priority encoder": {
+   "id": "C109",
+   "repeat_of": null,
+   "reasons": [
+    "A: threshold-gated encode; distinct",
+    "B: threshold gating, new"
+   ]
+  },
+  "Wraparound-search priority encoder": {
+   "id": "C110",
+   "repeat_of": null,
+   "reasons": [
+    "A: programmable start, not auto round-robin",
+    "B: programmable start wrap search, not RR arbiter"
+   ]
+  },
+  "Bidirectional priority encoder": {
+   "id": "C111",
+   "repeat_of": null,
+   "reasons": [
+    "A: both lowest and highest index",
+    "B: both lowest and highest index"
+   ]
+  },
+  "Top-two priority encoder": {
+   "id": "C112",
+   "repeat_of": null,
+   "reasons": [
+    "A: first and second highest",
+    "B: top-two selection, new"
+   ]
+  },
+  "Iterative set-bit enumerator": {
+   "id": "C113",
+   "repeat_of": null,
+   "reasons": [
+    "A: iterative clear-lowest enumerator",
+    "B: iterative residual-mask enumerator"
+   ]
+  },
+  "Serial scanning encoder": {
+   "id": "C114",
+   "repeat_of": null,
+   "reasons": [
+    "A: serial polling scan counter",
+    "B: counter-based serial scan, new"
+   ]
+  },
+  "Keypad matrix encoder": {
+   "id": "C115",
+   "repeat_of": null,
+   "reasons": [
+    "A: full keypad scan + key code",
+    "B: adds key-code capture vs C099"
+   ]
+  },
+  "2D grid coordinate encoder": {
+   "id": "C116",
+   "repeat_of": "C105",
+   "reasons": [
+    "A: row-OR then per-row = hierarchical encoder",
+    "B: 2D coordinate encoding, new",
+    "decider: row-OR then per-row encode = two-level encoder"
+   ]
+  },
+  "CAM match-line encoder": {
+   "id": "C117",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds multiple-hit indicator",
+    "B: priority + multi-hit flags, new"
+   ]
+  },
+  "Field-granular priority encoder": {
+   "id": "C118",
+   "repeat_of": null,
+   "reasons": [
+    "A: multi-bit field index + value",
+    "B: multi-bit field granularity, new"
+   ]
+  },
+  "Age-ordered priority encoder": {
+   "id": "C119",
+   "repeat_of": null,
+   "reasons": [
+    "A: age counters pick oldest",
+    "B: age counters pick oldest, new"
+   ]
+  },
+  "First-arrival encoder": {
+   "id": "C120",
+   "repeat_of": null,
+   "reasons": [
+    "A: captures first arrival; distinct",
+    "B: first-arrival capture, new"
+   ]
+  },
+  "Most-recent-event encoder": {
+   "id": "C121",
+   "repeat_of": null,
+   "reasons": [
+    "A: tracks most recent rising edge",
+    "B: most-recent edge index, new"
+   ]
+  },
+  "Change-detect encoder": {
+   "id": "C122",
+   "repeat_of": null,
+   "reasons": [
+    "A: snapshot change detect + encode",
+    "B: snapshot change detection, new"
+   ]
+  },
+  "Sticky latched priority encoder": {
+   "id": "C123",
+   "repeat_of": null,
+   "reasons": [
+    "A: sticky pending + ack; K148 adds enable/in-service",
+    "B: sticky pending + ack; no in-service like K148"
+   ]
+  },
+  "Comparator-bank level encoder": {
+   "id": "C124",
+   "repeat_of": null,
+   "reasons": [
+    "A: threshold bank to bin index; no earlier match",
+    "B: threshold-bin encoder, new"
+   ]
+  },
+  "Combinatorial-number encoder": {
+   "id": "C125",
+   "repeat_of": null,
+   "reasons": [
+    "A: new kind",
+    "B: combinatorial rank encoder, new"
+   ]
+  },
+  "NOR SR latch": {
+   "id": "C126",
+   "repeat_of": null,
+   "reasons": [
+    "A: first SR latch",
+    "B: first SR latch"
+   ]
+  },
+  "NAND SR-bar latch": {
+   "id": "C127",
+   "repeat_of": "C126",
+   "reasons": [
+    "A: SR latch, only input polarity differs",
+    "B: same SR latch, only gate type/polarity differ"
+   ]
+  },
+  "Gated SR latch": {
+   "id": "C128",
+   "repeat_of": null,
+   "reasons": [
+    "A: enable adds behaviour vs plain SR latch",
+    "B: adds enable gating"
+   ]
+  },
+  "Set-dominant SR latch": {
+   "id": "C129",
+   "repeat_of": "C126",
+   "reasons": [
+    "A: SR latch, only both-asserted case differs",
+    "B: defined set priority changes behaviour",
+    "decider: SR latch; only both-asserted case differs"
+   ]
+  },
+  "Reset-dominant SR latch": {
+   "id": "C130",
+   "repeat_of": "C126",
+   "reasons": [
+    "A: SR latch, only both-asserted case differs",
+    "B: only which input wins differs"
+   ]
+  },
+  "Gated D latch (active-high)": {
+   "id": "C131",
+   "repeat_of": null,
+   "reasons": [
+    "A: first D latch",
+    "B: first gated D latch"
+   ]
+  },
+  "Gated D latch (active-low)": {
+   "id": "C132",
+   "repeat_of": "C131",
+   "reasons": [
+    "A: D latch, enable polarity only",
+    "B: enable polarity only"
+   ]
+  },
+  "Gated JK latch": {
+   "id": "C133",
+   "repeat_of": null,
+   "reasons": [
+    "A: JK latch new",
+    "B: JK latch, different function"
+   ]
+  },
+  "Earle latch": {
+   "id": "C134",
+   "repeat_of": "C131",
+   "reasons": [
+    "A: D latch circuit variant, same behaviour",
+    "B: distinct hazard-free gate structure",
+    "decider: D latch circuit variant, same behaviour"
+   ]
+  },
+  "Polarity-hold latch": {
+   "id": "C135",
+   "repeat_of": "C131",
+   "reasons": [
+    "A: D latch circuit variant",
+    "B: plain D latch under another name"
+   ]
+  },
+  "Mux-feedback latch": {
+   "id": "C136",
+   "repeat_of": "C131",
+   "reasons": [
+    "A: D latch built from mux",
+    "B: mux feedback is the standard D latch"
+   ]
+  },
+  "Transmission-gate static latch": {
+   "id": "C137",
+   "repeat_of": "C131",
+   "reasons": [
+    "A: D latch circuit variant",
+    "B: transistor-level form of D latch"
+   ]
+  },
+  "Dynamic latch": {
+   "id": "C138",
+   "repeat_of": null,
+   "reasons": [
+    "A: charge storage decays; behaviour differs",
+    "B: charge-based hold, decays"
+   ]
+  },
+  "Latch with asynchronous clear": {
+   "id": "C139",
+   "repeat_of": "C131",
+   "reasons": [
+    "A: D latch plus clear",
+    "B: adds async clear",
+    "decider: D latch plus clear; reset is minor"
+   ]
+  },
+  "Latch with asynchronous preset": {
+   "id": "C140",
+   "repeat_of": "C131",
+   "reasons": [
+    "A: D latch plus preset",
+    "B: preset vs clear value only"
+   ]
+  },
+  "Pulsed latch": {
+   "id": "C141",
+   "repeat_of": null,
+   "reasons": [
+    "A: pulse-window capture, new",
+    "B: pulse-opened latch, new"
+   ]
+  },
+  "Scan lockup latch": {
+   "id": "C142",
+   "repeat_of": null,
+   "reasons": [
+    "A: scan race-prevention role",
+    "B: scan lockup role, new"
+   ]
+  },
+  "LSSD shift-register latch": {
+   "id": "C143",
+   "repeat_of": null,
+   "reasons": [
+    "A: two-clock scan latch pair, differs from mux scan",
+    "B: LSSD L1/L2 pair, new"
+   ]
+  },
+  "Dual-port latch": {
+   "id": "C144",
+   "repeat_of": null,
+   "reasons": [
+    "A: two write ports",
+    "B: two write ports, new"
+   ]
+  },
+  "Bus-keeper latch": {
+   "id": "C145",
+   "repeat_of": "C025",
+   "reasons": [
+    "A: same bus keeper",
+    "B: same bus keeper"
+   ]
+  },
+  "Tri-state output transparent latch": {
+   "id": "C146",
+   "repeat_of": null,
+   "reasons": [
+    "A: latch bank with output enable",
+    "B: latch bank plus output enable"
+   ]
+  },
+  "Addressable latch": {
+   "id": "C147",
+   "repeat_of": "C052",
+   "reasons": [
+    "A: same addressable latch",
+    "B: same addressable latch"
+   ]
+  },
+  "State-retention balloon latch": {
+   "id": "C148",
+   "repeat_of": null,
+   "reasons": [
+    "A: retention latch new",
+    "B: retention shadow latch, new"
+   ]
+  },
+  "Razor shadow latch": {
+   "id": "C149",
+   "repeat_of": null,
+   "reasons": [
+    "A: Razor shadow new",
+    "B: Razor shadow latch, new"
+   ]
+  },
+  "Positive-edge D flip-flop": {
+   "id": "C150",
+   "repeat_of": null,
+   "reasons": [
+    "A: first plain D flip-flop",
+    "B: first plain D flip-flop"
+   ]
+  },
+  "Negative-edge D flip-flop": {
+   "id": "C151",
+   "repeat_of": "C150",
+   "reasons": [
+    "A: clock edge polarity only",
+    "B: clock edge polarity only"
+   ]
+  },
+  "D flip-flop with asynchronous reset": {
+   "id": "C152",
+   "repeat_of": "C150",
+   "reasons": [
+    "A: DFF plus reset",
+    "B: adds async reset",
+    "decider: DFF plus async reset; minor"
+   ]
+  },
+  "D flip-flop with synchronous reset": {
+   "id": "C153",
+   "repeat_of": "C150",
+   "reasons": [
+    "A: DFF plus reset",
+    "B: sync reset differs from async",
+    "decider: DFF plus sync reset; minor"
+   ]
+  },
+  "D flip-flop with asynchronous preset and clear": {
+   "id": "C154",
+   "repeat_of": "C150",
+   "reasons": [
+    "A: DFF plus preset/clear",
+    "B: adds both preset and clear",
+    "decider: DFF plus preset/clear; minor"
+   ]
+  },
+  "Clock-enable D flip-flop": {
+   "id": "C155",
+   "repeat_of": "C039",
+   "reasons": [
+    "A: enable register, width only",
+    "B: enable register, width only"
+   ]
+  },
+  "JK flip-flop": {
+   "id": "C156",
+   "repeat_of": null,
+   "reasons": [
+    "A: edge JK, differs from latch",
+    "B: edge JK differs from JK latch"
+   ]
+  },
+  "T flip-flop": {
+   "id": "C157",
+   "repeat_of": null,
+   "reasons": [
+    "A: T flop new",
+    "B: T flip-flop, new"
+   ]
+  },
+  "Clocked SR flip-flop": {
+   "id": "C158",
+   "repeat_of": null,
+   "reasons": [
+    "A: edge SR, differs from latch",
+    "B: edge SR differs from SR latch"
+   ]
+  },
+  "Set-dominant SR flip-flop": {
+   "id": "C159",
+   "repeat_of": "C158",
+   "reasons": [
+    "A: SR flop, priority only",
+    "B: adds set priority",
+    "decider: SR flop; only set priority differs"
+   ]
+  },
+  "Reset-dominant SR flip-flop": {
+   "id": "C160",
+   "repeat_of": "C158",
+   "reasons": [
+    "A: SR flop, priority only",
+    "B: only which input wins differs"
+   ]
+  },
+  "Dual-edge-triggered flip-flop": {
+   "id": "C161",
+   "repeat_of": null,
+   "reasons": [
+    "A: both-edge capture",
+    "B: both-edge capture, new"
+   ]
+  },
+  "Master-slave D flip-flop": {
+   "id": "C162",
+   "repeat_of": "C150",
+   "reasons": [
+    "A: standard DFF construction",
+    "B: explicit two-latch structure",
+    "decider: standard DFF build, same behaviour"
+   ]
+  },
+  "Pulse-triggered flip-flop": {
+   "id": "C163",
+   "repeat_of": "C141",
+   "reasons": [
+    "A: same pulse-opened latch",
+    "B: same pulsed latch"
+   ]
+  },
+  "Sense-amplifier flip-flop": {
+   "id": "C164",
+   "repeat_of": "C150",
+   "reasons": [
+    "A: DFF circuit variant",
+    "B: sense-amp plus SR latch structure",
+    "decider: DFF circuit variant, same behaviour"
+   ]
+  },
+  "Complementary-output D flip-flop": {
+   "id": "C165",
+   "repeat_of": "C150",
+   "reasons": [
+    "A: DFF with inverted output too",
+    "B: just adds inverted output"
+   ]
+  },
+  "Muxed-input D flip-flop": {
+   "id": "C166",
+   "repeat_of": "C033",
+   "reasons": [
+    "A: mux then register",
+    "B: mux then register, size only"
+   ]
+  },
+  "State-retention flip-flop": {
+   "id": "C167",
+   "repeat_of": "C148",
+   "reasons": [
+    "A: same retention save/restore",
+    "B: same balloon retention scheme"
+   ]
+  },
+  "Razor timing-error flip-flop": {
+   "id": "C168",
+   "repeat_of": "C149",
+   "reasons": [
+    "A: same Razor shadow compare",
+    "B: same Razor main+shadow scheme"
+   ]
+  },
+  "DICE radiation-hardened flip-flop": {
+   "id": "C169",
+   "repeat_of": null,
+   "reasons": [
+    "A: redundant self-restoring storage",
+    "B: four-node redundant storage"
+   ]
+  },
+  "Metastability-hardened flip-flop": {
+   "id": "C170",
+   "repeat_of": "C150",
+   "reasons": [
+    "A: DFF circuit variant",
+    "B: logically a plain D flip-flop"
+   ]
+  },
+  "Sticky-bit flip-flop": {
+   "id": "C171",
+   "repeat_of": "C158",
+   "reasons": [
+    "A: set/clear bit = SR flop",
+    "B: event-set/clear is a clocked SR flop"
+   ]
+  },
+  "Write-1-to-clear flip-flop": {
+   "id": "C172",
+   "repeat_of": "C158",
+   "reasons": [
+    "A: set by event, clear by write = SR",
+    "B: software write-1 clear interface",
+    "decider: set by event, clear by write = SR flop"
+   ]
+  },
+  "Write-1-to-toggle flip-flop": {
+   "id": "C173",
+   "repeat_of": "C157",
+   "reasons": [
+    "A: toggle on write = T flop",
+    "B: software write-1 toggle interface",
+    "decider: toggle on write-1 = T flop"
+   ]
+  },
+  "Event-clocked capture flip-flop": {
+   "id": "C174",
+   "repeat_of": null,
+   "reasons": [
+    "A: event used as clock",
+    "B: event used as clock, new"
+   ]
+  },
+  "Load-enable parallel register": {
+   "id": "C175",
+   "repeat_of": "C039",
+   "reasons": [
+    "A: load-enable register",
+    "B: enable register"
+   ]
+  },
+  "Synchronous-reset register": {
+   "id": "C176",
+   "repeat_of": "C150",
+   "reasons": [
+    "A: register with reset, width only",
+    "B: sync-reset flop, width only"
+   ]
+  },
+  "Asynchronous-reset register": {
+   "id": "C177",
+   "repeat_of": "C150",
+   "reasons": [
+    "A: register with reset, width only",
+    "B: async-reset flop, width only"
+   ]
+  },
+  "Parallel-in serial-out shift register": {
+   "id": "C178",
+   "repeat_of": null,
+   "reasons": [
+    "A: no bit counter unlike serializer",
+    "B: plain PISO, no bit counter"
+   ]
+  },
+  "Serial-in serial-out delay register": {
+   "id": "C179",
+   "repeat_of": null,
+   "reasons": [
+    "A: first fixed delay chain",
+    "B: first flop delay chain"
+   ]
+  },
+  "Circular rotate register": {
+   "id": "C180",
+   "repeat_of": null,
+   "reasons": [
+    "A: rotate, differs from shift",
+    "B: rotation with wraparound, new"
+   ]
+  },
+  "Byte-enable register": {
+   "id": "C181",
+   "repeat_of": null,
+   "reasons": [
+    "A: byte-strobe write new",
+    "B: byte-strobe writes, new"
+   ]
+  },
+  "Write-one-to-clear status register": {
+   "id": "C182",
+   "repeat_of": "C158",
+   "reasons": [
+    "A: per-bit set/clear, width",
+    "B: W1C bit, width only"
+   ]
+  },
+  "Write-one-to-set register": {
+   "id": "C183",
+   "repeat_of": "C158",
+   "reasons": [
+    "A: per-bit set/clear family",
+    "B: write-1-to-set differs",
+    "decider: per-bit set register = SR bits, width only"
+   ]
+  },
+  "Read-to-clear register": {
+   "id": "C184",
+   "repeat_of": null,
+   "reasons": [
+    "A: read side effect / count",
+    "B: clear on read, new"
+   ]
+  },
+  "Sticky error register": {
+   "id": "C185",
+   "repeat_of": "C158",
+   "reasons": [
+    "A: sticky bits, width",
+    "B: sticky set/clear bits, width only"
+   ]
+  },
+  "Set/clear/toggle alias register": {
+   "id": "C186",
+   "repeat_of": null,
+   "reasons": [
+    "A: three write aliases",
+    "B: three alias write ports"
+   ]
+  },
+  "Snapshot capture register": {
+   "id": "C187",
+   "repeat_of": "C039",
+   "reasons": [
+    "A: load on trigger = enable register",
+    "B: load-on-trigger enable register"
+   ]
+  },
+  "Tri-state bus register": {
+   "id": "C188",
+   "repeat_of": null,
+   "reasons": [
+    "A: flop version, differs from latch",
+    "B: edge register on bidirectional bus"
+   ]
+  },
+  "Ring counter": {
+   "id": "C189",
+   "repeat_of": null,
+   "reasons": [
+    "A: first one-hot ring counter",
+    "B: one-hot ring, not Johnson"
+   ]
+  },
+  "Bit-addressable register": {
+   "id": "C190",
+   "repeat_of": "C094",
+   "reasons": [
+    "A: indexed bit set/clear",
+    "B: indexed bit set/clear register"
+   ]
+  },
+  "Lockable configuration register": {
+   "id": "C191",
+   "repeat_of": null,
+   "reasons": [
+    "A: lock bit new",
+    "B: lock bit blocks writes"
+   ]
+  },
+  "Write-once register": {
+   "id": "C192",
+   "repeat_of": "C191",
+   "reasons": [
+    "A: lock set by first write",
+    "B: auto-lock after first write",
+    "decider: lock set by first write; trigger minor"
+   ]
+  },
+  "Masked-write register": {
+   "id": "C193",
+   "repeat_of": "C181",
+   "reasons": [
+    "A: bit mask vs byte mask",
+    "B: partial write, bit vs byte granularity"
+   ]
+  },
+  "Exchange register pair": {
+   "id": "C194",
+   "repeat_of": null,
+   "reasons": [
+    "A: swap pair new",
+    "B: swap pair, new"
+   ]
+  },
+  "Endian-swap register": {
+   "id": "C195",
+   "repeat_of": null,
+   "reasons": [
+    "A: byte swap, not bit reverse",
+    "B: byte-order output, new"
+   ]
+  },
+  "Bypass register": {
+   "id": "C196",
+   "repeat_of": null,
+   "reasons": [
+    "A: bypass path new",
+    "B: bypass path, new"
+   ]
+  },
+  "Hardware/software shared register": {
+   "id": "C197",
+   "repeat_of": null,
+   "reasons": [
+    "A: two writers with priority",
+    "B: two writers with priority"
+   ]
+  },
+  "State-retention register": {
+   "id": "C198",
+   "repeat_of": "C148",
+   "reasons": [
+    "A: retention, width only",
+    "B: retention shadow, width only"
+   ]
+  },
+  "Self-clearing command register": {
+   "id": "C199",
+   "repeat_of": null,
+   "reasons": [
+    "A: self-clearing pulse bits",
+    "B: self-clearing pulse bits"
+   ]
+  },
+  "Latch-based register": {
+   "id": "C200",
+   "repeat_of": "C131",
+   "reasons": [
+    "A: D latch, width only",
+    "B: D latch, width only"
+   ]
+  },
+  "Serial-in serial-out delay line": {
+   "id": "C201",
+   "repeat_of": "C179",
+   "reasons": [
+    "A: same delay chain",
+    "B: same flop delay chain"
+   ]
+  },
+  "Parallel-in parallel-out shift register": {
+   "id": "C202",
+   "repeat_of": "C178",
+   "reasons": [
+    "A: load and shift, output view only",
+    "B: one-way shift with parallel I/O",
+    "decider: load and shift; only output view differs"
+   ]
+  },
+  "Bidirectional shift register": {
+   "id": "C203",
+   "repeat_of": null,
+   "reasons": [
+    "A: lacks parallel load vs universal",
+    "B: no parallel load vs universal"
+   ]
+  },
+  "Rotate-through-carry register": {
+   "id": "C204",
+   "repeat_of": null,
+   "reasons": [
+    "A: carry in rotate loop",
+    "B: extra carry bit in rotation"
+   ]
+  },
+  "Addressable tap shift register": {
+   "id": "C205",
+   "repeat_of": null,
+   "reasons": [
+    "A: selectable tap adds behaviour",
+    "B: selectable tap delay"
+   ]
+  },
+  "Fall-through shift FIFO": {
+   "id": "C206",
+   "repeat_of": null,
+   "reasons": [
+    "A: shift FIFO, built differently",
+    "B: fall-through stage FIFO"
+   ]
+  },
+  "Nonlinear feedback shift register": {
+   "id": "C207",
+   "repeat_of": null,
+   "reasons": [
+    "A: nonlinear, differs from LFSR",
+    "B: nonlinear feedback differs"
+   ]
+  },
+  "Double-data-rate shift register": {
+   "id": "C208",
+   "repeat_of": null,
+   "reasons": [
+    "A: both-edge shifting",
+    "B: both-edge shifting"
+   ]
+  },
+  "Word-wide lane shift register": {
+   "id": "C209",
+   "repeat_of": "C179",
+   "reasons": [
+    "A: delay chain, width only",
+    "B: delay chain, width only"
+   ]
+  },
+  "Latched-output shift register": {
+   "id": "C210",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds output latch",
+    "B: adds output storage register"
+   ]
+  },
+  "Bit-slip alignment register": {
+   "id": "C211",
+   "repeat_of": null,
+   "reasons": [
+    "A: manual slip, no pattern search",
+    "B: manual bit slip, no pattern search"
+   ]
+  },
+  "Sticky-bit right-shift register": {
+   "id": "C212",
+   "repeat_of": null,
+   "reasons": [
+    "A: sticky shift new",
+    "B: sticky shifted-out bit"
+   ]
+  },
+  "Sequential arithmetic shift register": {
+   "id": "C213",
+   "repeat_of": null,
+   "reasons": [
+    "A: iterative sign-keeping shift",
+    "B: sequential arithmetic shift"
+   ]
+  },
+  "Thermometer-code shift register": {
+   "id": "C214",
+   "repeat_of": null,
+   "reasons": [
+    "A: first thermometer register",
+    "B: thermometer up/down shift, new"
+   ]
+  },
+  "Global history shift register": {
+   "id": "C215",
+   "repeat_of": "K222",
+   "reasons": [
+    "A: serial-in parallel-out shift",
+    "B: serial-in parallel-out register"
+   ]
+  },
+  "Data/valid delay pipeline": {
+   "id": "C216",
+   "repeat_of": "C179",
+   "reasons": [
+    "A: delay chain, width only",
+    "B: delay chain with extra valid bit"
+   ]
+  },
+  "Pre-trigger capture shift register": {
+   "id": "C217",
+   "repeat_of": null,
+   "reasons": [
+    "A: shift chain vs circular memory",
+    "B: shift chain freeze, not circular memory"
+   ]
+  },
+  "Majority-vote sample filter": {
+   "id": "C218",
+   "repeat_of": null,
+   "reasons": [
+    "A: majority window filter",
+    "B: majority window filter"
+   ]
+  },
+  "Bit-stuffing shift register": {
+   "id": "C219",
+   "repeat_of": null,
+   "reasons": [
+    "A: standalone bit stuffing",
+    "B: standalone bit stuffing"
+   ]
+  },
+  "Manchester-encoding shift register": {
+   "id": "C220",
+   "repeat_of": null,
+   "reasons": [
+    "A: Manchester new",
+    "B: Manchester encoding"
+   ]
+  },
+  "Two-dimensional shift matrix": {
+   "id": "C221",
+   "repeat_of": null,
+   "reasons": [
+    "A: 2D shift grid",
+    "B: 2D grid shifting"
+   ]
+  },
+  "Sentinel-bit word assembler": {
+   "id": "C222",
+   "repeat_of": null,
+   "reasons": [
+    "A: marker bit, no counter",
+    "B: marker bit instead of counter"
+   ]
+  },
+  "Asynchronous ripple counter": {
+   "id": "C223",
+   "repeat_of": null,
+   "reasons": [
+    "A: async ripple construction",
+    "B: ripple clocked counter"
+   ]
+  },
+  "Synchronous binary up counter": {
+   "id": "C224",
+   "repeat_of": null,
+   "reasons": [
+    "A: first plain binary counter",
+    "B: plain sync up counter"
+   ]
+  },
+  "Synchronous binary down counter": {
+   "id": "C225",
+   "repeat_of": "C224",
+   "reasons": [
+    "A: direction only",
+    "B: count direction only"
+   ]
+  },
+  "Up/down counter": {
+   "id": "C226",
+   "repeat_of": null,
+   "reasons": [
+    "A: up/down adds mode",
+    "B: up/down differs from up"
+   ]
+  },
+  "Dual-clock up/down counter": {
+   "id": "C227",
+   "repeat_of": "C226",
+   "reasons": [
+    "A: up/down, input style only",
+    "B: separate up and down pulse inputs",
+    "decider: up/down count; input style only"
+   ]
+  },
+  "BCD decade counter": {
+   "id": "C228",
+   "repeat_of": null,
+   "reasons": [
+    "A: decimal digit counter",
+    "B: decimal digit counter"
+   ]
+  },
+  "Cascaded multi-digit BCD counter": {
+   "id": "C229",
+   "repeat_of": "C228",
+   "reasons": [
+    "A: more digits only",
+    "B: more digits only"
+   ]
+  },
+  "Excess-3 counter": {
+   "id": "C230",
+   "repeat_of": "C228",
+   "reasons": [
+    "A: decade counter, code offset",
+    "B: decade counter with code offset"
+   ]
+  },
+  "Modulo-N counter": {
+   "id": "C231",
+   "repeat_of": "K030",
+   "reasons": [
+    "A: mod-N with wrap pulse",
+    "B: wrap counter with terminal pulse"
+   ]
+  },
+  "Presettable loadable counter": {
+   "id": "C232",
+   "repeat_of": null,
+   "reasons": [
+    "A: parallel load adds mode",
+    "B: adds parallel load"
+   ]
+  },
+  "Auto-reload down counter": {
+   "id": "C233",
+   "repeat_of": "K030",
+   "reasons": [
+    "A: reload divider, counts down",
+    "B: periodic wrap pulse, counts down"
+   ]
+  },
+  "Cascadable counter slice": {
+   "id": "C234",
+   "repeat_of": "C224",
+   "reasons": [
+    "A: up counter with carry out",
+    "B: up counter with carry-out port"
+   ]
+  },
+  "Pipelined split counter": {
+   "id": "C235",
+   "repeat_of": null,
+   "reasons": [
+    "A: pipelined carry changes timing",
+    "B: registered carry split"
+   ]
+  },
+  "One-hot ring counter": {
+   "id": "C236",
+   "repeat_of": "C189",
+   "reasons": [
+    "A: same ring counter",
+    "B: same ring counter"
+   ]
+  },
+  "Thermometer-code counter": {
+   "id": "C237",
+   "repeat_of": "C214",
+   "reasons": [
+    "A: same thermometer register",
+    "B: same thermometer up/down register"
+   ]
+  },
+  "Dual-modulus prescaler": {
+   "id": "C238",
+   "repeat_of": null,
+   "reasons": [
+    "A: switchable P/P+1 divide",
+    "B: P/P+1 prescaler"
+   ]
+  },
+  "Pulse-swallow counter": {
+   "id": "C239",
+   "repeat_of": null,
+   "reasons": [
+    "A: pulse-swallow new",
+    "B: prescaler plus swallow counters"
+   ]
+  },
+  "Mixed-radix counter": {
+   "id": "C240",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-digit moduli; RTC adds calendar",
+    "B: per-digit moduli, no calendar"
+   ]
+  },
+  "Nested loop index counter": {
+   "id": "C241",
+   "repeat_of": "C240",
+   "reasons": [
+    "A: mixed radix with set bounds",
+    "B: chained bounded digits"
+   ]
+  },
+  "Programmable stride counter": {
+   "id": "C242",
+   "repeat_of": "C224",
+   "reasons": [
+    "A: step size only",
+    "B: programmable step",
+    "decider: up counter; step size only"
+   ]
+  },
+  "Event counter with capture": {
+   "id": "C243",
+   "repeat_of": "K221",
+   "reasons": [
+    "A: counter with snapshot",
+    "B: running count plus snapshot"
+   ]
+  },
+  "Compare-match counter": {
+   "id": "C244",
+   "repeat_of": "K219",
+   "reasons": [
+    "A: counter with compare match",
+    "B: timer with compare and flag"
+   ]
+  },
+  "Wrapping counter with sticky overflow": {
+   "id": "C245",
+   "repeat_of": null,
+   "reasons": [
+    "A: sticky overflow flag added",
+    "B: adds sticky overflow flag"
+   ]
+  },
+  "Retriggerable one-shot counter": {
+   "id": "C246",
+   "repeat_of": "K168",
+   "reasons": [
+    "A: retriggerable fixed pulse",
+    "B: reload-counter pulse stretcher"
+   ]
+  },
+  "Arbitrary-sequence counter": {
+   "id": "C247",
+   "repeat_of": null,
+   "reasons": [
+    "A: table-driven sequence counter; no earlier match",
+    "B: table-driven next-state counter; new"
+   ]
+  },
+  "Half adder": {
+   "id": "C248",
+   "repeat_of": null,
+   "reasons": [
+    "A: new single-bit cell",
+    "B: single-bit cell; no earlier half adder"
+   ]
+  },
+  "Full adder": {
+   "id": "C249",
+   "repeat_of": null,
+   "reasons": [
+    "A: single-bit cell, not a chained word adder",
+    "B: one-bit cell, not a multi-bit adder"
+   ]
+  },
+  "Half subtractor": {
+   "id": "C250",
+   "repeat_of": null,
+   "reasons": [
+    "A: new single-bit cell",
+    "B: single-bit subtract cell; new"
+   ]
+  },
+  "Full subtractor": {
+   "id": "C251",
+   "repeat_of": null,
+   "reasons": [
+    "A: single-bit cell, not a chained subtractor",
+    "B: one-bit cell, not a multi-bit subtractor"
+   ]
+  },
+  "Carry-skip adder": {
+   "id": "C252",
+   "repeat_of": null,
+   "reasons": [
+    "A: distinct adder architecture",
+    "B: different carry structure"
+   ]
+  },
+  "Conditional-sum adder": {
+   "id": "C253",
+   "repeat_of": null,
+   "reasons": [
+    "A: recursive selection differs from block carry-select",
+    "B: recursive select differs from carry-select"
+   ]
+  },
+  "Sklansky prefix adder": {
+   "id": "C254",
+   "repeat_of": null,
+   "reasons": [
+    "A: distinct prefix topology",
+    "B: distinct prefix tree"
+   ]
+  },
+  "Han-Carlson adder": {
+   "id": "C255",
+   "repeat_of": null,
+   "reasons": [
+    "A: distinct prefix topology",
+    "B: distinct prefix tree"
+   ]
+  },
+  "Ladner-Fischer adder": {
+   "id": "C256",
+   "repeat_of": null,
+   "reasons": [
+    "A: distinct prefix topology",
+    "B: distinct prefix tree"
+   ]
+  },
+  "Knowles adder": {
+   "id": "C257",
+   "repeat_of": null,
+   "reasons": [
+    "A: distinct prefix topology",
+    "B: distinct prefix tree"
+   ]
+  },
+  "Ling adder": {
+   "id": "C258",
+   "repeat_of": null,
+   "reasons": [
+    "A: pseudo-carry lookahead, distinct architecture",
+    "B: pseudo-carry lookahead; distinct"
+   ]
+  },
+  "Sparse-tree adder": {
+   "id": "C259",
+   "repeat_of": null,
+   "reasons": [
+    "A: distinct adder architecture",
+    "B: hybrid prefix plus select; distinct"
+   ]
+  },
+  "Carry-increment adder": {
+   "id": "C260",
+   "repeat_of": null,
+   "reasons": [
+    "A: increment-on-carry differs from carry-select",
+    "B: increment not dual sums; distinct"
+   ]
+  },
+  "Manchester carry-chain adder": {
+   "id": "C261",
+   "repeat_of": null,
+   "reasons": [
+    "A: switch-chain with precharge, distinct build",
+    "B: dynamic switch chain; distinct build"
+   ]
+  },
+  "Adder-subtractor": {
+   "id": "C262",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds subtract mode; not a plain adder or ALU",
+    "B: add/sub mode unit; new"
+   ]
+  },
+  "Pipelined adder": {
+   "id": "C263",
+   "repeat_of": null,
+   "reasons": [
+    "A: pipeline registers add state vs combinational adders",
+    "B: segmented pipeline state; new"
+   ]
+  },
+  "Digit-serial adder": {
+   "id": "C264",
+   "repeat_of": "K039",
+   "reasons": [
+    "A: bit-serial adder with wider digit; width only",
+    "B: serial adder, only digit width differs"
+   ]
+  },
+  "4:2 compressor": {
+   "id": "C265",
+   "repeat_of": null,
+   "reasons": [
+    "A: lateral carry chain differs from 3:2 carry-save",
+    "B: 4:2 cell differs from 3:2 CSA"
+   ]
+  },
+  "Multi-operand adder tree": {
+   "id": "C266",
+   "repeat_of": null,
+   "reasons": [
+    "A: standalone multi-word summing tree",
+    "B: general multi-word adder tree; new"
+   ]
+  },
+  "Incrementer": {
+   "id": "C267",
+   "repeat_of": null,
+   "reasons": [
+    "A: stateless +1 unit; no earlier match",
+    "B: stateless +1; new"
+   ]
+  },
+  "Decrementer": {
+   "id": "C268",
+   "repeat_of": null,
+   "reasons": [
+    "A: different job from incrementer",
+    "B: stateless -1; different job"
+   ]
+  },
+  "End-around-carry adder": {
+   "id": "C269",
+   "repeat_of": null,
+   "reasons": [
+    "A: no accumulator, unlike checksum accumulator",
+    "B: stateless, K087 is an accumulator"
+   ]
+  },
+  "Signed-digit redundant adder": {
+   "id": "C270",
+   "repeat_of": null,
+   "reasons": [
+    "A: redundant number adder; new",
+    "B: signed-digit form; distinct"
+   ]
+  },
+  "Excess-3 adder": {
+   "id": "C271",
+   "repeat_of": null,
+   "reasons": [
+    "A: different decimal code and correction than BCD adder",
+    "B: different decimal code than BCD"
+   ]
+  },
+  "Sum-of-absolute-differences unit": {
+   "id": "C272",
+   "repeat_of": null,
+   "reasons": [
+    "A: new datapath block",
+    "B: SAD accumulator; new"
+   ]
+  },
+  "Dadda tree multiplier": {
+   "id": "C273",
+   "repeat_of": null,
+   "reasons": [
+    "A: distinct reduction scheme from Wallace",
+    "B: different reduction than Wallace"
+   ]
+  },
+  "Baugh-Wooley multiplier": {
+   "id": "C274",
+   "repeat_of": null,
+   "reasons": [
+    "A: signed array with correction terms, distinct build",
+    "B: signed array scheme; distinct"
+   ]
+  },
+  "Radix-2 Booth sequential multiplier": {
+   "id": "C275",
+   "repeat_of": "K042",
+   "reasons": [
+    "A: Booth multiplier differing only in radix",
+    "B: radix-2 Booth recoding differs",
+    "decider: Booth multiplier; radix differs only"
+   ]
+  },
+  "Radix-8 Booth multiplier": {
+   "id": "C276",
+   "repeat_of": null,
+   "reasons": [
+    "A: Booth multiplier differing only in radix",
+    "B: needs 3x multiple register; distinct",
+    "decider: 3x multiple register and pipeline change state"
+   ]
+  },
+  "Serial-parallel multiplier": {
+   "id": "C277",
+   "repeat_of": null,
+   "reasons": [
+    "A: carry-save cell chain, serial product out",
+    "B: CSA cell chain, serial output"
+   ]
+  },
+  "Digit-serial multiplier": {
+   "id": "C278",
+   "repeat_of": "K044",
+   "reasons": [
+    "A: shift-and-add with more bits per cycle; width only",
+    "B: sequential shift-add, digit width only"
+   ]
+  },
+  "Karatsuba multiplier": {
+   "id": "C279",
+   "repeat_of": null,
+   "reasons": [
+    "A: new algorithm",
+    "B: three sub-products; new"
+   ]
+  },
+  "Toom-Cook multiplier": {
+   "id": "C280",
+   "repeat_of": null,
+   "reasons": [
+    "A: evaluate/interpolate structure differs from Karatsuba",
+    "B: evaluate/interpolate; distinct"
+   ]
+  },
+  "Constant-coefficient CSD multiplier": {
+   "id": "C281",
+   "repeat_of": null,
+   "reasons": [
+    "A: new constant multiplier",
+    "B: fixed constant shift-add; new"
+   ]
+  },
+  "Multiple-constant multiplier block": {
+   "id": "C282",
+   "repeat_of": null,
+   "reasons": [
+    "A: shared shift-add graph across constants",
+    "B: shared multi-output graph; distinct"
+   ]
+  },
+  "Squarer unit": {
+   "id": "C283",
+   "repeat_of": null,
+   "reasons": [
+    "A: single-operand folded array; new",
+    "B: folded squaring; new"
+   ]
+  },
+  "Pipelined array multiplier": {
+   "id": "C284",
+   "repeat_of": "K041",
+   "reasons": [
+    "A: array multiplier with its optional row registers",
+    "B: K041 already has row registers"
+   ]
+  },
+  "Carry-save iterative multiplier": {
+   "id": "C285",
+   "repeat_of": null,
+   "reasons": [
+    "A: redundant sum/carry accumulator changes state",
+    "B: redundant accumulator state"
+   ]
+  },
+  "Mitchell logarithmic multiplier": {
+   "id": "C286",
+   "repeat_of": null,
+   "reasons": [
+    "A: new approximate multiplier",
+    "B: log approximation; new"
+   ]
+  },
+  "Truncated fixed-width multiplier": {
+   "id": "C287",
+   "repeat_of": null,
+   "reasons": [
+    "A: truncated output with bias; new",
+    "B: truncated with bias; new"
+   ]
+  },
+  "Complex multiplier": {
+   "id": "C288",
+   "repeat_of": null,
+   "reasons": [
+    "A: new complex multiplier",
+    "B: complex 3-mult; new"
+   ]
+  },
+  "Distributed-arithmetic multiplier": {
+   "id": "C289",
+   "repeat_of": null,
+   "reasons": [
+    "A: table-based bit-serial sum of products; new",
+    "B: ROM bit-serial sum; new"
+   ]
+  },
+  "Quarter-square LUT multiplier": {
+   "id": "C290",
+   "repeat_of": null,
+   "reasons": [
+    "A: new LUT multiplier",
+    "B: quarter-square LUT; new"
+   ]
+  },
+  "SIMD partitioned multiplier": {
+   "id": "C291",
+   "repeat_of": null,
+   "reasons": [
+    "A: lane partitioning changes behaviour",
+    "B: lane-split multiplier; new"
+   ]
+  },
+  "Vedic Urdhva multiplier": {
+   "id": "C292",
+   "repeat_of": null,
+   "reasons": [
+    "A: distinct named architecture",
+    "B: column crosswise scheme; distinct"
+   ]
+  },
+  "Stochastic bitstream multiplier": {
+   "id": "C293",
+   "repeat_of": null,
+   "reasons": [
+    "A: new stochastic multiplier",
+    "B: stochastic AND multiply; new"
+   ]
+  },
+  "RNS channel multiplier": {
+   "id": "C294",
+   "repeat_of": null,
+   "reasons": [
+    "A: new residue multiplier",
+    "B: RNS channels; new"
+   ]
+  },
+  "Systolic linear-array multiplier": {
+   "id": "C295",
+   "repeat_of": null,
+   "reasons": [
+    "A: pipelined systolic cells vs broadcast serial-parallel",
+    "B: pipelined systolic cells, not broadcast"
+   ]
+  },
+  "Tiled multi-precision multiplier": {
+   "id": "C296",
+   "repeat_of": null,
+   "reasons": [
+    "A: limb-scheduled wide multiply; new",
+    "B: limb tiling accumulator; new"
+   ]
+  },
+  "Interleaved modular multiplier": {
+   "id": "C297",
+   "repeat_of": null,
+   "reasons": [
+    "A: different algorithm from Montgomery",
+    "B: not Montgomery form; distinct"
+   ]
+  },
+  "Goldschmidt divider": {
+   "id": "C298",
+   "repeat_of": null,
+   "reasons": [
+    "A: different from Newton-Raphson reciprocal",
+    "B: Goldschmidt differs from NR"
+   ]
+  },
+  "Constant reciprocal-multiply divider": {
+   "id": "C299",
+   "repeat_of": null,
+   "reasons": [
+    "A: new constant divider",
+    "B: reciprocal multiply; new"
+   ]
+  },
+  "Bit-serial divider": {
+   "id": "C300",
+   "repeat_of": null,
+   "reasons": [
+    "A: serial operand arrival, distinct build",
+    "B: serial operands, 1-bit subtractor"
+   ]
+  },
+  "Combinational array divider": {
+   "id": "C301",
+   "repeat_of": null,
+   "reasons": [
+    "A: unrolled combinational vs iterative dividers",
+    "B: combinational, no iteration state"
+   ]
+  },
+  "Non-performing divider": {
+   "id": "C302",
+   "repeat_of": "K045",
+   "reasons": [
+    "A: same trial-subtract divider, same state",
+    "B: same restoring divider, same registers"
+   ]
+  },
+  "Pipelined unrolled divider": {
+   "id": "C303",
+   "repeat_of": null,
+   "reasons": [
+    "A: pipeline registers differ from combinational array",
+    "B: unrolled pipeline state"
+   ]
+  },
+  "Online MSB-first divider": {
+   "id": "C304",
+   "repeat_of": null,
+   "reasons": [
+    "A: online MSB-first; new",
+    "B: online MSB-first; new"
+   ]
+  },
+  "Modulo-by-constant reducer": {
+   "id": "C305",
+   "repeat_of": null,
+   "reasons": [
+    "A: new folding reducer",
+    "B: folding remainder; new"
+   ]
+  },
+  "Divide-by-three FSM": {
+   "id": "C306",
+   "repeat_of": null,
+   "reasons": [
+    "A: serial remainder FSM; new",
+    "B: serial remainder FSM; new"
+   ]
+  },
+  "Barrett reduction unit": {
+   "id": "C307",
+   "repeat_of": null,
+   "reasons": [
+    "A: different reduction from Montgomery",
+    "B: Barrett reduction; distinct"
+   ]
+  },
+  "GF(2) polynomial divider": {
+   "id": "C308",
+   "repeat_of": null,
+   "reasons": [
+    "A: full quotient/remainder, programmable divisor vs CRC",
+    "B: general division with quotient, not CRC"
+   ]
+  },
+  "Binary-field divider": {
+   "id": "C309",
+   "repeat_of": null,
+   "reasons": [
+    "A: new field divider",
+    "B: field inversion/division; new"
+   ]
+  },
+  "BCD decimal divider": {
+   "id": "C310",
+   "repeat_of": null,
+   "reasons": [
+    "A: decimal divider; new",
+    "B: decimal divider; new"
+   ]
+  },
+  "Early-termination normalizing divider": {
+   "id": "C311",
+   "repeat_of": null,
+   "reasons": [
+    "A: variable-cycle normalizing divider",
+    "B: variable latency; distinct"
+   ]
+  },
+  "Carry-save remainder divider": {
+   "id": "C312",
+   "repeat_of": "K047",
+   "reasons": [
+    "A: SRT-style redundant remainder divider",
+    "B: SRT-style redundant remainder divider"
+   ]
+  },
+  "Signed division wrapper": {
+   "id": "C313",
+   "repeat_of": null,
+   "reasons": [
+    "A: new sign wrapper",
+    "B: sign fix-up wrapper; new"
+   ]
+  },
+  "Repeated-subtraction divider": {
+   "id": "C314",
+   "repeat_of": null,
+   "reasons": [
+    "A: quotient counter algorithm differs",
+    "B: quotient counter loop; distinct"
+   ]
+  },
+  "Combined divide/square-root unit": {
+   "id": "C315",
+   "repeat_of": null,
+   "reasons": [
+    "A: combined two-operation unit",
+    "B: shared div/sqrt datapath; new"
+   ]
+  },
+  "Prescaled digit-recurrence divider": {
+   "id": "C316",
+   "repeat_of": null,
+   "reasons": [
+    "A: prescaling build differs",
+    "B: prescaling; distinct"
+   ]
+  },
+  "Exact divider": {
+   "id": "C317",
+   "repeat_of": null,
+   "reasons": [
+    "A: new exact divider",
+    "B: inverse multiply; new"
+   ]
+  },
+  "Modular inverse unit": {
+   "id": "C318",
+   "repeat_of": null,
+   "reasons": [
+    "A: integer inverse, not binary field",
+    "B: integer modulus, not GF(2^m)"
+   ]
+  },
+  "Mitchell logarithmic approximate divider": {
+   "id": "C319",
+   "repeat_of": null,
+   "reasons": [
+    "A: divide is different job from Mitchell multiply",
+    "B: divides, C286 multiplies"
+   ]
+  },
+  "Multi-word long divider": {
+   "id": "C320",
+   "repeat_of": null,
+   "reasons": [
+    "A: new multi-word divider",
+    "B: multi-word long division; new"
+   ]
+  },
+  "SIMD partitioned divider": {
+   "id": "C321",
+   "repeat_of": null,
+   "reasons": [
+    "A: different operation from SIMD multiplier",
+    "B: lane-split divider; new"
+   ]
+  },
+  "Table-lookup reciprocal approximation unit": {
+   "id": "C322",
+   "repeat_of": null,
+   "reasons": [
+    "A: seed table only; different job from iterative/activation LUT",
+    "B: seed only, no iteration"
+   ]
+  },
+  "Window comparator": {
+   "id": "C323",
+   "repeat_of": null,
+   "reasons": [
+    "A: new range comparator",
+    "B: range check; new"
+   ]
+  },
+  "Hysteresis threshold comparator": {
+   "id": "C324",
+   "repeat_of": null,
+   "reasons": [
+    "A: multi-bit comparator, not a gate",
+    "B: multi-bit programmable thresholds"
+   ]
+  },
+  "MSB-first serial comparator": {
+   "id": "C325",
+   "repeat_of": null,
+   "reasons": [
+    "A: new serial comparator",
+    "B: serial compare state; new"
+   ]
+  },
+  "LSB-first serial comparator": {
+   "id": "C326",
+   "repeat_of": null,
+   "reasons": [
+    "A: different state update than MSB-first",
+    "B: different scan order and state rule"
+   ]
+  },
+  "Mode-selectable signed/unsigned comparator": {
+   "id": "C327",
+   "repeat_of": null,
+   "reasons": [
+    "A: magnitude comparator; signedness minor",
+    "B: adds signed mode",
+    "decider: runtime signed/unsigned mode, like up/down"
+   ]
+  },
+  "Masked equality comparator": {
+   "id": "C328",
+   "repeat_of": null,
+   "reasons": [
+    "A: masked compare with stored reference; new",
+    "B: masked equality; new"
+   ]
+  },
+  "Min/max selector": {
+   "id": "C329",
+   "repeat_of": null,
+   "reasons": [
+    "A: new min/max router",
+    "B: min/max routing; new"
+   ]
+  },
+  "Compare-exchange cell": {
+   "id": "C330",
+   "repeat_of": "C329",
+   "reasons": [
+    "A: same min/max routing plus payload",
+    "B: order two values, payload is minor"
+   ]
+  },
+  "Threshold crossing detector": {
+   "id": "C331",
+   "repeat_of": null,
+   "reasons": [
+    "A: crossing event with direction; new",
+    "B: crossing direction with prior sample"
+   ]
+  },
+  "Hamming-distance threshold comparator": {
+   "id": "C332",
+   "repeat_of": null,
+   "reasons": [
+    "A: new near-match comparator",
+    "B: Hamming tolerance; new"
+   ]
+  },
+  "Memory-protection region checker": {
+   "id": "C333",
+   "repeat_of": null,
+   "reasons": [
+    "A: permission check, not target routing",
+    "B: protection check, not routing"
+   ]
+  },
+  "Timer compare-match unit": {
+   "id": "C334",
+   "repeat_of": "C244",
+   "reasons": [
+    "A: same timer compare-match job",
+    "B: same compare-match on timer count"
+   ]
+  },
+  "Prefix-length matcher": {
+   "id": "C335",
+   "repeat_of": "C328",
+   "reasons": [
+    "A: masked equality with length-made mask",
+    "B: prefix length is a special mask"
+   ]
+  },
+  "Lexicographic multi-word comparator": {
+   "id": "C336",
+   "repeat_of": "C325",
+   "reasons": [
+    "A: MSB-first serial compare, word width",
+    "B: MSB-first serial compare, word width"
+   ]
+  },
+  "Wraparound sequence-number comparator": {
+   "id": "C337",
+   "repeat_of": null,
+   "reasons": [
+    "A: modular serial-number compare; new",
+    "B: modular serial-number compare"
+   ]
+  },
+  "Tolerance comparator": {
+   "id": "C338",
+   "repeat_of": null,
+   "reasons": [
+    "A: abs-difference tolerance; new",
+    "B: abs-difference epsilon; new"
+   ]
+  },
+  "Fraction cross-multiply comparator": {
+   "id": "C339",
+   "repeat_of": null,
+   "reasons": [
+    "A: new ratio comparator",
+    "B: cross-multiply ratio compare"
+   ]
+  },
+  "Gray-code magnitude comparator": {
+   "id": "C340",
+   "repeat_of": null,
+   "reasons": [
+    "A: direct Gray compare logic differs",
+    "B: Gray ordering differs from binary"
+   ]
+  },
+  "BCD magnitude comparator": {
+   "id": "C341",
+   "repeat_of": "K055",
+   "reasons": [
+    "A: packed BCD compare equals magnitude compare",
+    "B: packed BCD orders like binary"
+   ]
+  },
+  "Carry-save sum-equality checker": {
+   "id": "C342",
+   "repeat_of": null,
+   "reasons": [
+    "A: new sum-equality checker",
+    "B: carry-free sum check; new"
+   ]
+  },
+  "Cascadable comparator slice": {
+   "id": "C343",
+   "repeat_of": "K055",
+   "reasons": [
+    "A: magnitude comparator with cascade ports",
+    "B: cascade inputs change behavior",
+    "decider: magnitude comparator sliced for width"
+   ]
+  },
+  "Pipelined wide comparator": {
+   "id": "C344",
+   "repeat_of": null,
+   "reasons": [
+    "A: pipeline registers add state",
+    "B: pipelined stage state"
+   ]
+  },
+  "Sign-magnitude comparator": {
+   "id": "C345",
+   "repeat_of": null,
+   "reasons": [
+    "A: sign-magnitude ordering and zero handling differ",
+    "B: sign-magnitude rules differ"
+   ]
+  },
+  "Vector predicate comparator": {
+   "id": "C346",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-lane predicate mask; new",
+    "B: per-lane predicate mask; new"
+   ]
+  },
+  "FIFO watermark comparator": {
+   "id": "C347",
+   "repeat_of": null,
+   "reasons": [
+    "A: new watermark comparator",
+    "B: fill-level thresholds; new"
+   ]
+  },
+  "Bit-slice ALU": {
+   "id": "C348",
+   "repeat_of": "K054",
+   "reasons": [
+    "A: ALU of fixed width with chaining outputs",
+    "B: slice with G/P chaining outputs",
+    "decider: ALU sliced for width with chain outputs"
+   ]
+  },
+  "SIMD packed ALU": {
+   "id": "C349",
+   "repeat_of": null,
+   "reasons": [
+    "A: lane partitioning changes behaviour",
+    "B: lane-split ALU; new"
+   ]
+  },
+  "Accumulator-based ALU": {
+   "id": "C350",
+   "repeat_of": null,
+   "reasons": [
+    "A: internal accumulator adds state",
+    "B: accumulator state differs"
+   ]
+  },
+  "Boolean function unit": {
+   "id": "C351",
+   "repeat_of": null,
+   "reasons": [
+    "A: word-wide truth-table logic unit; new",
+    "B: truth-table logic unit; new"
+   ]
+  },
+  "Three-input ternary-logic unit": {
+   "id": "C352",
+   "repeat_of": "C351",
+   "reasons": [
+    "A: same truth-table logic unit, 3 inputs vs 2",
+    "B: same truth-table unit, 3 inputs"
+   ]
+  },
+  "Rotate-through-carry unit": {
+   "id": "C353",
+   "repeat_of": "C204",
+   "reasons": [
+    "A: operand unit, not self-rotating register",
+    "B: same rotate through carry",
+    "decider: same rotate through carry; amount/dir minor"
+   ]
+  },
+  "Bit-field extract/insert unit": {
+   "id": "C354",
+   "repeat_of": null,
+   "reasons": [
+    "A: field extract/insert; more than mask decoder",
+    "B: field extract/insert; new"
+   ]
+  },
+  "Rotate-and-mask unit": {
+   "id": "C355",
+   "repeat_of": null,
+   "reasons": [
+    "A: rotate with wrap masks differs from extract/insert",
+    "B: rotate plus arbitrary mask; distinct"
+   ]
+  },
+  "Min/max unit": {
+   "id": "C356",
+   "repeat_of": "C329",
+   "reasons": [
+    "A: same min/max selection; signedness minor",
+    "B: same min/max select"
+   ]
+  },
+  "Clamp unit": {
+   "id": "C357",
+   "repeat_of": null,
+   "reasons": [
+    "A: standalone clamp; new",
+    "B: clamps value; new"
+   ]
+  },
+  "Conditional-select unit": {
+   "id": "C358",
+   "repeat_of": null,
+   "reasons": [
+    "A: flag-conditioned select; new",
+    "B: flag-based select; new"
+   ]
+  },
+  "Condition-code evaluator": {
+   "id": "C359",
+   "repeat_of": null,
+   "reasons": [
+    "A: condition decode; new",
+    "B: evaluates condition; new"
+   ]
+  },
+  "Address generation unit": {
+   "id": "C360",
+   "repeat_of": null,
+   "reasons": [
+    "A: new address generator",
+    "B: effective address calc; new"
+   ]
+  },
+  "Multi-precision add-with-carry unit": {
+   "id": "C361",
+   "repeat_of": null,
+   "reasons": [
+    "A: limb add/sub with carry, adds subtract",
+    "B: instruction ADC/SBC with carry flag"
+   ]
+  },
+  "Byte-permute unit": {
+   "id": "C362",
+   "repeat_of": null,
+   "reasons": [
+    "A: arbitrary byte shuffle; new",
+    "B: general byte shuffle; new"
+   ]
+  },
+  "Increment/decrement unit": {
+   "id": "C363",
+   "repeat_of": null,
+   "reasons": [
+    "A: combined inc/dec mode; not a counter",
+    "B: both directions plus flags"
+   ]
+  },
+  "Single-bit manipulation unit": {
+   "id": "C364",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds invert and test vs bit set/clear",
+    "B: adds invert and test ops"
+   ]
+  },
+  "Halving average unit": {
+   "id": "C365",
+   "repeat_of": null,
+   "reasons": [
+    "A: new averaging unit",
+    "B: halving average; new"
+   ]
+  },
+  "Flagged adder-subtractor": {
+   "id": "C366",
+   "repeat_of": "C262",
+   "reasons": [
+    "A: same adder-subtractor plus flags and register",
+    "B: same add/sub with flags"
+   ]
+  },
+  "Residue number system ALU": {
+   "id": "C367",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds add/sub beyond residue multiplier",
+    "B: ALU ops beyond multiply"
+   ]
+  },
+  "Stochastic computing ALU": {
+   "id": "C368",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds scaled addition beyond multiplier",
+    "B: adds scaled addition"
+   ]
+  },
+  "Bit-serial ALU": {
+   "id": "C369",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds subtract and logic beyond bit-serial adder",
+    "B: ALU ops beyond add"
+   ]
+  },
+  "SIMD compare-mask unit": {
+   "id": "C370",
+   "repeat_of": "C346",
+   "reasons": [
+    "A: same per-lane vector compare producing a lane mask",
+    "B: same lane-wise vector compare producing a per-lane mask"
+   ]
+  },
+  "Vector reduction ALU": {
+   "id": "C371",
+   "repeat_of": null,
+   "reasons": [
+    "A: multi-cycle vector reduction is new",
+    "B: multi-cycle vector reduction; nothing earlier matches"
+   ]
+  },
+  "Logarithmic rotator": {
+   "id": "C372",
+   "repeat_of": "K051",
+   "reasons": [
+    "A: log-stage mux rotator is the barrel shifter/rotator",
+    "B: log-stage mux rotator is the barrel shifter/rotator"
+   ]
+  },
+  "Bidirectional single-network rotator": {
+   "id": "C373",
+   "repeat_of": "K051",
+   "reasons": [
+    "A: barrel rotator; complement trick for right rotate is minor",
+    "B: barrel rotator; complementing the amount is a minor trick"
+   ]
+  },
+  "Pipelined barrel shifter": {
+   "id": "C374",
+   "repeat_of": null,
+   "reasons": [
+    "A: pipelined stages add latency and valid state",
+    "B: pipeline stages add state and latency"
+   ]
+  },
+  "Crossbar shifter": {
+   "id": "C375",
+   "repeat_of": null,
+   "reasons": [
+    "A: one-level crossbar network, different build",
+    "B: different build: one-level crossbar"
+   ]
+  },
+  "Coarse-fine two-level shifter": {
+   "id": "C376",
+   "repeat_of": "C374",
+   "reasons": [
+    "A: two-level coarse/fine with intermediate register",
+    "B: two-stage shifter with a middle register = pipelined barrel shifter",
+    "decider: two-stage barrel shifter with middle register"
+   ]
+  },
+  "Bitfield extract unit": {
+   "id": "C377",
+   "repeat_of": null,
+   "reasons": [
+    "A: extract only; C354 does extract and insert",
+    "B: extract only; C354 also inserts"
+   ]
+  },
+  "Bitfield insert unit": {
+   "id": "C378",
+   "repeat_of": null,
+   "reasons": [
+    "A: insert only; C354 does extract and insert",
+    "B: insert only; C354 also extracts"
+   ]
+  },
+  "Shifter operand unit with carry-out": {
+   "id": "C379",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds shifter carry-out flag",
+    "B: adds shift-type select and carry-out flag"
+   ]
+  },
+  "Floating-point alignment shifter": {
+   "id": "C380",
+   "repeat_of": null,
+   "reasons": [
+    "A: one-pass FP alignment with GRS; C212 is one bit per clock",
+    "B: first FP alignment shifter with guard/round/sticky"
+   ]
+  },
+  "Rounding right shifter": {
+   "id": "C381",
+   "repeat_of": null,
+   "reasons": [
+    "A: right shift with rounding increment is new",
+    "B: shift plus rounding increment; nothing earlier matches"
+   ]
+  },
+  "Saturating left shifter": {
+   "id": "C382",
+   "repeat_of": null,
+   "reasons": [
+    "A: saturating left shift is new",
+    "B: saturating shift is new"
+   ]
+  },
+  "Overrange-clamping shifter": {
+   "id": "C383",
+   "repeat_of": null,
+   "reasons": [
+    "A: special over-range shift handling changes behaviour",
+    "B: special handling of oversized shift amounts"
+   ]
+  },
+  "SIMD lane-partitioned shifter": {
+   "id": "C384",
+   "repeat_of": null,
+   "reasons": [
+    "A: independent lane shifting is new",
+    "B: lane-partitioned shifter is new"
+   ]
+  },
+  "Byte-lane load aligner": {
+   "id": "C385",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds zero/sign extension beyond C032 steering",
+    "B: adds sign/zero extension beyond C032 steering"
+   ]
+  },
+  "Store data steering rotator": {
+   "id": "C386",
+   "repeat_of": null,
+   "reasons": [
+    "A: combines data steering and byte strobes",
+    "B: combines steering with byte-enable generation"
+   ]
+  },
+  "Stream byte realigner": {
+   "id": "C387",
+   "repeat_of": null,
+   "reasons": [
+    "A: stream realigner with residue register is new",
+    "B: stream realigner with residue register is new"
+   ]
+  },
+  "Wide segmented shifter": {
+   "id": "C388",
+   "repeat_of": null,
+   "reasons": [
+    "A: segmented multi-word shifter is new",
+    "B: segmented multi-word shifter is new"
+   ]
+  },
+  "QC-LDPC circulant shifter": {
+   "id": "C389",
+   "repeat_of": null,
+   "reasons": [
+    "A: LDPC circulant shifter is new",
+    "B: LDPC circulant shifter is new"
+   ]
+  },
+  "Fixed multi-rotation XOR network": {
+   "id": "C390",
+   "repeat_of": null,
+   "reasons": [
+    "A: fixed rotation XOR network is new",
+    "B: fixed rotate-XOR network is new"
+   ]
+  },
+  "Vector element slide unit": {
+   "id": "C391",
+   "repeat_of": null,
+   "reasons": [
+    "A: vector element slide with fill is new",
+    "B: element slide with scalar fill is new"
+   ]
+  },
+  "Vector lane rotator": {
+   "id": "C392",
+   "repeat_of": "K051",
+   "reasons": [
+    "A: element-granular vector lane rotation is new",
+    "B: single-pass rotate, only granularity differs",
+    "decider: single-pass rotate; granularity only"
+   ]
+  },
+  "Inverse-butterfly rotator": {
+   "id": "C393",
+   "repeat_of": null,
+   "reasons": [
+    "A: inverse butterfly network, different build",
+    "B: different build: inverse butterfly network"
+   ]
+  },
+  "Reverse-shift-reverse shifter": {
+   "id": "C394",
+   "repeat_of": "K051",
+   "reasons": [
+    "A: barrel shifter; reversal trick for right shift is minor",
+    "B: different build: reversal stages around left shifter",
+    "decider: barrel shifter; reversal trick is build only"
+   ]
+  },
+  "Fused multiply-add unit": {
+   "id": "C395",
+   "repeat_of": null,
+   "reasons": [
+    "A: fused multiply-add is new",
+    "B: FP fused multiply-add differs from integer MAC"
+   ]
+  },
+  "Leading-zero anticipator": {
+   "id": "C396",
+   "repeat_of": null,
+   "reasons": [
+    "A: anticipates zeros before sum, unlike K061",
+    "B: predicts from operands, unlike leading-zero counter"
+   ]
+  },
+  "Alignment shifter with sticky generator": {
+   "id": "C397",
+   "repeat_of": "C380",
+   "reasons": [
+    "A: same FP alignment shifter with GRS bits",
+    "B: same FP alignment shifter with sticky bits"
+   ]
+  },
+  "Exponent compare and operand swap unit": {
+   "id": "C398",
+   "repeat_of": null,
+   "reasons": [
+    "A: exponent compare and swap is new",
+    "B: exponent compare and swap is new"
+   ]
+  },
+  "Near/far path adder selector": {
+   "id": "C399",
+   "repeat_of": null,
+   "reasons": [
+    "A: near/far path selector is new",
+    "B: dual-path FP adder is a different build"
+   ]
+  },
+  "Subnormal pre-normalizer": {
+   "id": "C400",
+   "repeat_of": "K075",
+   "reasons": [
+    "A: subnormal detect plus wider exponent beyond K075",
+    "B: leading-zero normalize with exponent adjust",
+    "decider: leading-zero normalize with exponent adjust"
+   ]
+  },
+  "Floating-point classify unit": {
+   "id": "C401",
+   "repeat_of": null,
+   "reasons": [
+    "A: FP classify is new",
+    "B: FP classify is new"
+   ]
+  },
+  "NaN propagation and canonicalization unit": {
+   "id": "C402",
+   "repeat_of": null,
+   "reasons": [
+    "A: NaN propagation is new",
+    "B: NaN propagation is new"
+   ]
+  },
+  "Floating-point min/max unit": {
+   "id": "C403",
+   "repeat_of": null,
+   "reasons": [
+    "A: FP min/max with NaN/zero rules differs from integer min/max",
+    "B: IEEE FP min/max differs from integer min/max"
+   ]
+  },
+  "Sign-injection unit": {
+   "id": "C404",
+   "repeat_of": null,
+   "reasons": [
+    "A: sign injection is new",
+    "B: sign injection is new"
+   ]
+  },
+  "Precision format converter": {
+   "id": "C405",
+   "repeat_of": null,
+   "reasons": [
+    "A: float-to-float format conversion is new",
+    "B: FP-to-FP format conversion is new"
+   ]
+  },
+  "Round-to-integral unit": {
+   "id": "C406",
+   "repeat_of": null,
+   "reasons": [
+    "A: round to integral float is new",
+    "B: round-to-integral is new"
+   ]
+  },
+  "Exponent scaling unit": {
+   "id": "C407",
+   "repeat_of": null,
+   "reasons": [
+    "A: exponent scaling is new",
+    "B: exponent scaling is new"
+   ]
+  },
+  "Exception flag accumulator": {
+   "id": "C408",
+   "repeat_of": "C185",
+   "reasons": [
+    "A: sticky exception flag register with clear",
+    "B: sticky error/status flag register"
+   ]
+  },
+  "Rounding mode control register": {
+   "id": "C409",
+   "repeat_of": null,
+   "reasons": [
+    "A: rounding-mode control register is new",
+    "B: rounding-mode register with override is new"
+   ]
+  },
+  "Underflow tininess detector": {
+   "id": "C410",
+   "repeat_of": null,
+   "reasons": [
+    "A: tininess detector is new",
+    "B: tininess detection is new"
+   ]
+  },
+  "Stochastic rounding unit": {
+   "id": "C411",
+   "repeat_of": null,
+   "reasons": [
+    "A: stochastic rounding is new",
+    "B: stochastic rounding is new"
+   ]
+  },
+  "Goldschmidt divide/square-root unit": {
+   "id": "C412",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds square root beyond C298 divider",
+    "B: adds square root to Goldschmidt divider C298"
+   ]
+  },
+  "Reciprocal square-root estimate unit": {
+   "id": "C413",
+   "repeat_of": null,
+   "reasons": [
+    "A: rsqrt seed differs from reciprocal seed",
+    "B: 1/sqrt seed differs from 1/x seed"
+   ]
+  },
+  "Floating-point log2 approximation unit": {
+   "id": "C414",
+   "repeat_of": null,
+   "reasons": [
+    "A: FP log2 is new",
+    "B: log2 unit is new"
+   ]
+  },
+  "Floating-point exp2 unit": {
+   "id": "C415",
+   "repeat_of": null,
+   "reasons": [
+    "A: FP exp2 is new",
+    "B: exp2 unit is new"
+   ]
+  },
+  "Horner polynomial evaluator": {
+   "id": "C416",
+   "repeat_of": null,
+   "reasons": [
+    "A: Horner evaluator is new",
+    "B: Horner evaluator is new"
+   ]
+  },
+  "Kulisch exact accumulator": {
+   "id": "C417",
+   "repeat_of": null,
+   "reasons": [
+    "A: Kulisch accumulator is new",
+    "B: exact wide accumulator is new"
+   ]
+  },
+  "Interleaved floating-point accumulator": {
+   "id": "C418",
+   "repeat_of": null,
+   "reasons": [
+    "A: interleaved partial-sum accumulator is new",
+    "B: interleaved partial-sum accumulator is new"
+   ]
+  },
+  "Packed SIMD floating-point adder": {
+   "id": "C419",
+   "repeat_of": null,
+   "reasons": [
+    "A: lane-split FP adder differs from K069",
+    "B: SIMD FP adder lanes differ from scalar FP adder"
+   ]
+  },
+  "Traffic light controller": {
+   "id": "C420",
+   "repeat_of": null,
+   "reasons": [
+    "A: traffic light FSM is new",
+    "B: traffic light is new"
+   ]
+  },
+  "Vending machine controller": {
+   "id": "C421",
+   "repeat_of": null,
+   "reasons": [
+    "A: vending machine FSM is new",
+    "B: vending machine is new"
+   ]
+  },
+  "Elevator controller": {
+   "id": "C422",
+   "repeat_of": null,
+   "reasons": [
+    "A: elevator controller is new",
+    "B: elevator is new"
+   ]
+  },
+  "Combination lock FSM": {
+   "id": "C423",
+   "repeat_of": null,
+   "reasons": [
+    "A: lock with attempts and lockout is new",
+    "B: has stored code, attempts and lockout"
+   ]
+  },
+  "Keypad matrix scanner": {
+   "id": "C424",
+   "repeat_of": "C115",
+   "reasons": [
+    "A: same keypad scan and key-code capture",
+    "B: same keypad scan-and-encode block"
+   ]
+  },
+  "Manchester encoder": {
+   "id": "C425",
+   "repeat_of": "C220",
+   "reasons": [
+    "A: same Manchester line encoder with half-bit phase",
+    "B: same Manchester encoder, only holding width differs"
+   ]
+  },
+  "HDLC bit-stuffing inserter": {
+   "id": "C426",
+   "repeat_of": "C219",
+   "reasons": [
+    "A: same zero-after-ones bit stuffer with stall",
+    "B: same zero-insertion bit stuffer"
+   ]
+  },
+  "Exponential backoff controller": {
+   "id": "C427",
+   "repeat_of": null,
+   "reasons": [
+    "A: backoff controller is new",
+    "B: backoff controller is new"
+   ]
+  },
+  "Link training state machine": {
+   "id": "C428",
+   "repeat_of": null,
+   "reasons": [
+    "A: link training FSM is new",
+    "B: link training is new"
+   ]
+  },
+  "Multi-rail power-up sequencer": {
+   "id": "C429",
+   "repeat_of": null,
+   "reasons": [
+    "A: multi-rail power-up sequencer is new",
+    "B: multi-rail power-up sequencing is new"
+   ]
+  },
+  "DRAM initialization sequencer": {
+   "id": "C430",
+   "repeat_of": null,
+   "reasons": [
+    "A: DRAM init sequencer is new",
+    "B: DRAM init sequence is new"
+   ]
+  },
+  "PLL lock detector": {
+   "id": "C431",
+   "repeat_of": null,
+   "reasons": [
+    "A: lock detector is new",
+    "B: PLL lock detector is new"
+   ]
+  },
+  "Frame delineation synchronizer": {
+   "id": "C432",
+   "repeat_of": null,
+   "reasons": [
+    "A: hunt/presync/sync framing is new",
+    "B: hunt/presync/sync framer is new"
+   ]
+  },
+  "Ethernet auto-negotiation arbiter": {
+   "id": "C433",
+   "repeat_of": null,
+   "reasons": [
+    "A: auto-negotiation is new",
+    "B: auto-negotiation is new"
+   ]
+  },
+  "I2C bus recovery FSM": {
+   "id": "C434",
+   "repeat_of": null,
+   "reasons": [
+    "A: I2C bus recovery is new",
+    "B: I2C bus recovery is new"
+   ]
+  },
+  "Transaction retry controller": {
+   "id": "C435",
+   "repeat_of": null,
+   "reasons": [
+    "A: retry controller is new",
+    "B: retry controller is new"
+   ]
+  },
+  "Token ring station controller": {
+   "id": "C436",
+   "repeat_of": null,
+   "reasons": [
+    "A: token ring station is new",
+    "B: token ring station is new"
+   ]
+  },
+  "Battery charge controller": {
+   "id": "C437",
+   "repeat_of": null,
+   "reasons": [
+    "A: battery charger FSM is new",
+    "B: battery charger FSM is new"
+   ]
+  },
+  "Hysteresis thermostat FSM": {
+   "id": "C438",
+   "repeat_of": "C324",
+   "reasons": [
+    "A: same two-threshold hysteresis output",
+    "B: same two-threshold hysteresis output"
+   ]
+  },
+  "Appliance cycle sequencer": {
+   "id": "C439",
+   "repeat_of": null,
+   "reasons": [
+    "A: timed program step sequencer is new",
+    "B: appliance step sequencer is new"
+   ]
+  },
+  "Startup calibration sequencer": {
+   "id": "C440",
+   "repeat_of": null,
+   "reasons": [
+    "A: trim calibration search is new",
+    "B: trim calibration search is new"
+   ]
+  },
+  "LED pattern sequencer": {
+   "id": "C441",
+   "repeat_of": null,
+   "reasons": [
+    "A: pattern playback sequencer is new",
+    "B: stored pattern playback with loop mode is new"
+   ]
+  },
+  "Morse code decoder": {
+   "id": "C442",
+   "repeat_of": null,
+   "reasons": [
+    "A: Morse decoder is new",
+    "B: Morse decoder is new"
+   ]
+  },
+  "Serial two's-complementer": {
+   "id": "C443",
+   "repeat_of": null,
+   "reasons": [
+    "A: serial negation differs from parallel K058",
+    "B: serial negation differs from parallel negator"
+   ]
+  },
+  "Serial divisibility-by-3 checker": {
+   "id": "C444",
+   "repeat_of": null,
+   "reasons": [
+    "A: divisibility flag only; C306 also outputs quotient",
+    "B: remainder-only check; C306 also outputs quotient"
+   ]
+  },
+  "Banked register file": {
+   "id": "C445",
+   "repeat_of": null,
+   "reasons": [
+    "A: banked register file is new",
+    "B: banked RF with conflict detect is new"
+   ]
+  },
+  "Windowed register file": {
+   "id": "C446",
+   "repeat_of": null,
+   "reasons": [
+    "A: windowed register file is new",
+    "B: windowed RF is new"
+   ]
+  },
+  "Rotating register file": {
+   "id": "C447",
+   "repeat_of": null,
+   "reasons": [
+    "A: rotating register file is new",
+    "B: rotating RF is new"
+   ]
+  },
+  "Unified physical register file": {
+   "id": "C448",
+   "repeat_of": null,
+   "reasons": [
+    "A: physical register file with ready bits is new",
+    "B: adds per-entry ready bits"
+   ]
+  },
+  "Vector register file": {
+   "id": "C449",
+   "repeat_of": null,
+   "reasons": [
+    "A: vector register file is new",
+    "B: lane-sliced vector RF with length config"
+   ]
+  },
+  "Predicate register file": {
+   "id": "C450",
+   "repeat_of": "K112",
+   "reasons": [
+    "A: predicate register file is new",
+    "B: plain register file, only width differs",
+    "decider: register file, only width differs"
+   ]
+  },
+  "Matrix tile register file": {
+   "id": "C451",
+   "repeat_of": null,
+   "reasons": [
+    "A: matrix tile register file is new",
+    "B: tile shape config and row access are new"
+   ]
+  },
+  "Mode-banked shadow register file": {
+   "id": "C452",
+   "repeat_of": null,
+   "reasons": [
+    "A: mode-banked shadow registers are new",
+    "B: partial mode banking is new"
+   ]
+  },
+  "Multithreaded context register file": {
+   "id": "C453",
+   "repeat_of": "K112",
+   "reasons": [
+    "A: per-thread full register copies are new",
+    "B: register file, only size/index differs",
+    "decider: register file, only index size differs"
+   ]
+  },
+  "Operand-collector register file": {
+   "id": "C454",
+   "repeat_of": null,
+   "reasons": [
+    "A: operand collector is new",
+    "B: operand collectors are new"
+   ]
+  },
+  "Register file cache": {
+   "id": "C455",
+   "repeat_of": null,
+   "reasons": [
+    "A: register file cache is new",
+    "B: RF cache is new"
+   ]
+  },
+  "Replicated register file": {
+   "id": "C456",
+   "repeat_of": null,
+   "reasons": [
+    "A: replicated read-port copies are new",
+    "B: replicated copies are a different build"
+   ]
+  },
+  "Live-value-table register file": {
+   "id": "C457",
+   "repeat_of": null,
+   "reasons": [
+    "A: live-value-table file is new",
+    "B: first live-value-table memory"
+   ]
+  },
+  "XOR-based multi-port register file": {
+   "id": "C458",
+   "repeat_of": null,
+   "reasons": [
+    "A: XOR multi-write file is new",
+    "B: first XOR multi-port memory"
+   ]
+  },
+  "Latch-based register file": {
+   "id": "C459",
+   "repeat_of": null,
+   "reasons": [
+    "A: addressable latch file, not one latch register",
+    "B: latch RF array differs from single latch register"
+   ]
+  },
+  "Write-through bypassed register file": {
+   "id": "C460",
+   "repeat_of": null,
+   "reasons": [
+    "A: write-to-read bypass register file is new",
+    "B: write bypass changes read behaviour"
+   ]
+  },
+  "Clustered register file": {
+   "id": "C461",
+   "repeat_of": null,
+   "reasons": [
+    "A: clustered register file is new",
+    "B: clustered RF is new"
+   ]
+  },
+  "Checkpointed register file": {
+   "id": "C462",
+   "repeat_of": null,
+   "reasons": [
+    "A: checkpointed register file is new",
+    "B: checkpointed RF is new"
+   ]
+  },
+  "Future file": {
+   "id": "C463",
+   "repeat_of": null,
+   "reasons": [
+    "A: future file is new",
+    "B: future file is new"
+   ]
+  },
+  "Retirement register file": {
+   "id": "C464",
+   "repeat_of": null,
+   "reasons": [
+    "A: retirement register file is new",
+    "B: retirement RF is new"
+   ]
+  },
+  "Stack-organized register file": {
+   "id": "C465",
+   "repeat_of": null,
+   "reasons": [
+    "A: stack-relative file with tags differs from K216",
+    "B: TOS-relative RF with tags differs from LIFO"
+   ]
+  },
+  "Belt register file": {
+   "id": "C466",
+   "repeat_of": null,
+   "reasons": [
+    "A: belt register file is new",
+    "B: belt is new"
+   ]
+  },
+  "DSP address register file": {
+   "id": "C467",
+   "repeat_of": null,
+   "reasons": [
+    "A: DSP address registers are new",
+    "B: DSP address registers are new"
+   ]
+  },
+  "Deferred-exception tagged register file": {
+   "id": "C468",
+   "repeat_of": null,
+   "reasons": [
+    "A: poison-bit register file is new",
+    "B: poison-bit RF is new"
+   ]
+  },
+  "Uniform scalar register file": {
+   "id": "C469",
+   "repeat_of": "K112",
+   "reasons": [
+    "A: uniform scalar register file is new",
+    "B: plain register file, only size/width differs",
+    "decider: register file, only size/width differs"
+   ]
+  },
+  "Asynchronous-read distributed RAM": {
+   "id": "C470",
+   "repeat_of": null,
+   "reasons": [
+    "A: async-read RAM is new",
+    "B: async read changes timing"
+   ]
+  },
+  "Byte-enable write RAM": {
+   "id": "C471",
+   "repeat_of": null,
+   "reasons": [
+    "A: byte-enable RAM is new",
+    "B: byte-enable writes are new for RAM"
+   ]
+  },
+  "Bit-mask write RAM": {
+   "id": "C472",
+   "repeat_of": "C471",
+   "reasons": [
+    "A: masked-write RAM; bit vs byte granularity only",
+    "B: same masked-write RAM, only mask granularity"
+   ]
+  },
+  "Registered-output pipelined RAM": {
+   "id": "C473",
+   "repeat_of": "K113",
+   "reasons": [
+    "A: extra output stage changes latency",
+    "B: sync RAM, extra output register is minor",
+    "decider: sync RAM; extra output stage is latency only"
+   ]
+  },
+  "Dual-clock simple dual-port RAM": {
+   "id": "C474",
+   "repeat_of": null,
+   "reasons": [
+    "A: two-clock RAM differs from K114",
+    "B: two clock domains change behaviour"
+   ]
+  },
+  "Asymmetric-width RAM": {
+   "id": "C475",
+   "repeat_of": null,
+   "reasons": [
+    "A: mixed-width ports are new",
+    "B: asymmetric port widths are new"
+   ]
+  },
+  "Quad-port RAM": {
+   "id": "C476",
+   "repeat_of": "K112",
+   "reasons": [
+    "A: multi-read multi-write array; port count only",
+    "B: multi-read multi-write array, only port count"
+   ]
+  },
+  "Live-value-table multi-write RAM": {
+   "id": "C477",
+   "repeat_of": "C457",
+   "reasons": [
+    "A: same live-value-table multi-write memory",
+    "B: same live-value-table multi-write memory"
+   ]
+  },
+  "XOR-encoded multi-port RAM": {
+   "id": "C478",
+   "repeat_of": "C458",
+   "reasons": [
+    "A: same XOR multi-write memory",
+    "B: same XOR multi-write memory"
+   ]
+  },
+  "Double-pumped time-multiplexed RAM": {
+   "id": "C479",
+   "repeat_of": null,
+   "reasons": [
+    "A: double-pumped RAM is new",
+    "B: double-pumped RAM is new"
+   ]
+  },
+  "Banked interleaved RAM": {
+   "id": "C480",
+   "repeat_of": "C445",
+   "reasons": [
+    "A: same banked storage with parallel bank access",
+    "B: same banked storage for parallel access"
+   ]
+  },
+  "Read-modify-write RAM with bypass": {
+   "id": "C481",
+   "repeat_of": null,
+   "reasons": [
+    "A: read-modify-write RAM with bypass is new",
+    "B: RMW RAM with bypass is new"
+   ]
+  },
+  "Counter memory": {
+   "id": "C482",
+   "repeat_of": "C481",
+   "reasons": [
+    "A: pipelined RMW memory with add op",
+    "B: RMW RAM with op fixed to increment/add"
+   ]
+  },
+  "Flash-clear valid-bit RAM": {
+   "id": "C483",
+   "repeat_of": null,
+   "reasons": [
+    "A: flash-clear valid bits are new",
+    "B: flash-clear valid bits are new"
+   ]
+  },
+  "Epoch-tagged RAM": {
+   "id": "C484",
+   "repeat_of": null,
+   "reasons": [
+    "A: epoch tag invalidation is new",
+    "B: epoch tags are a different mechanism"
+   ]
+  },
+  "Zero-initializing RAM": {
+   "id": "C485",
+   "repeat_of": null,
+   "reasons": [
+    "A: zero-init sweep RAM is new",
+    "B: zero-init sweep is new"
+   ]
+  },
+  "RAM-based delay line": {
+   "id": "C486",
+   "repeat_of": null,
+   "reasons": [
+    "A: RAM plus pointer, not a flop chain",
+    "B: RAM delay differs from flop-chain delay"
+   ]
+  },
+  "Checkpoint shadow RAM": {
+   "id": "C487",
+   "repeat_of": null,
+   "reasons": [
+    "A: copy-select shadow RAM differs from C462",
+    "B: same snapshot/rollback storage, count differs",
+    "decider: copy-select mechanism differs from C462 copies"
+   ]
+  },
+  "Paged RAM with bank register": {
+   "id": "C488",
+   "repeat_of": null,
+   "reasons": [
+    "A: paged RAM is new",
+    "B: paged RAM is new"
+   ]
+  },
+  "Auto-increment burst RAM": {
+   "id": "C489",
+   "repeat_of": null,
+   "reasons": [
+    "A: RAM with auto address and burst length is new",
+    "B: auto-increment burst RAM is new"
+   ]
+  },
+  "Bit-addressable RAM": {
+   "id": "C490",
+   "repeat_of": null,
+   "reasons": [
+    "A: bit-alias RAM differs from one register",
+    "B: bit-alias RAM region differs from single register"
+   ]
+  },
+  "Dirty-bit tracking RAM": {
+   "id": "C491",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-block dirty tracking is new",
+    "B: dirty-bit RAM is new"
+   ]
+  },
+  "Retention-mode low-power RAM": {
+   "id": "C492",
+   "repeat_of": null,
+   "reasons": [
+    "A: low-power mode RAM is new",
+    "B: low-power retention RAM is new"
+   ]
+  },
+  "Address-scrambled RAM": {
+   "id": "C493",
+   "repeat_of": null,
+   "reasons": [
+    "A: keyed address/data scrambling; nothing earlier",
+    "B: keyed address/data scrambling RAM; nothing earlier"
+   ]
+  },
+  "Posted-write RAM": {
+   "id": "C494",
+   "repeat_of": null,
+   "reasons": [
+    "A: one-entry posted write in front of RAM; new",
+    "B: one-entry posted write in front of RAM; new"
+   ]
+  },
+  "Quarter-wave sine ROM": {
+   "id": "C495",
+   "repeat_of": null,
+   "reasons": [
+    "A: folded quarter-wave table; NCO K238 has phase accumulator",
+    "B: quadrant sine ROM with folding; NCO K238 adds phase accumulator"
+   ]
+  },
+  "FFT twiddle factor ROM": {
+   "id": "C496",
+   "repeat_of": null,
+   "reasons": [
+    "A: coefficient storage, K236 only makes addresses",
+    "B: complex twiddle coefficient ROM; K236 only makes addresses"
+   ]
+  },
+  "FPGA k-input LUT cell": {
+   "id": "C497",
+   "repeat_of": "C043",
+   "reasons": [
+    "A: same config-bit LUT selected by inputs",
+    "B: same: inputs select config bits in small memory"
+   ]
+  },
+  "Reciprocal seed table": {
+   "id": "C498",
+   "repeat_of": "C322",
+   "reasons": [
+    "A: same reciprocal seed table from leading bits",
+    "B: same reciprocal seed table from leading divisor bits"
+   ]
+  },
+  "Inverse square-root seed table": {
+   "id": "C499",
+   "repeat_of": "C413",
+   "reasons": [
+    "A: same 1/sqrt seed table by exponent parity",
+    "B: same 1/sqrt seed table by exponent parity and leading bits"
+   ]
+  },
+  "Log2 lookup table": {
+   "id": "C500",
+   "repeat_of": "C414",
+   "reasons": [
+    "A: same log2 by exponent plus table",
+    "B: same log2 table approximation of mantissa plus exponent"
+   ]
+  },
+  "Antilog (exp2) lookup table": {
+   "id": "C501",
+   "repeat_of": "C415",
+   "reasons": [
+    "A: same 2^f table for exp2",
+    "B: same exp2 fractional-part table approximation"
+   ]
+  },
+  "Piecewise-linear interpolating LUT": {
+   "id": "C502",
+   "repeat_of": "K279",
+   "reasons": [
+    "A: piecewise table with interpolation, same block",
+    "B: same piecewise table with interpolation; function is a parameter"
+   ]
+  },
+  "Bipartite table function unit": {
+   "id": "C503",
+   "repeat_of": null,
+   "reasons": [
+    "A: two-table sum method; new",
+    "B: two-table bipartite method; new"
+   ]
+  },
+  "Boot ROM with lockout": {
+   "id": "C504",
+   "repeat_of": null,
+   "reasons": [
+    "A: ROM plus sticky lockout bit; new",
+    "B: boot ROM with sticky lockout bit changes behaviour"
+   ]
+  },
+  "AES S-box ROM": {
+   "id": "C505",
+   "repeat_of": null,
+   "reasons": [
+    "A: S-box table alone; not full AES round",
+    "B: cipher S-box table; K098 is full AES round"
+   ]
+  },
+  "Filter coefficient ROM": {
+   "id": "C506",
+   "repeat_of": null,
+   "reasons": [
+    "A: coefficient ROM with tap index; no multiplier",
+    "B: coefficient ROM with tap index counter; new"
+   ]
+  },
+  "Distributed-arithmetic LUT": {
+   "id": "C507",
+   "repeat_of": "C289",
+   "reasons": [
+    "A: same distributed-arithmetic table plus shift-accumulate",
+    "B: same distributed-arithmetic table plus shift-accumulate"
+   ]
+  },
+  "Programmable logic array": {
+   "id": "C508",
+   "repeat_of": null,
+   "reasons": [
+    "A: AND/OR plane PLA; new",
+    "B: AND/OR plane PLA differs from LUT"
+   ]
+  },
+  "Color palette LUT": {
+   "id": "C509",
+   "repeat_of": null,
+   "reasons": [
+    "A: palette index to RGB; different job from gamma",
+    "B: index-to-RGB palette, different job from gamma LUT"
+   ]
+  },
+  "Table-driven CRC lookup": {
+   "id": "C510",
+   "repeat_of": null,
+   "reasons": [
+    "A: table-driven CRC, built differently from K086",
+    "B: table-driven CRC built differently from K086 network"
+   ]
+  },
+  "Arbitrary waveform wavetable": {
+   "id": "C511",
+   "repeat_of": "K238",
+   "reasons": [
+    "A: phase accumulator plus waveform table, same as NCO",
+    "B: same phase accumulator plus waveform table (DDS)"
+   ]
+  },
+  "Device identification ROM": {
+   "id": "C512",
+   "repeat_of": null,
+   "reasons": [
+    "A: ID register constants; new",
+    "B: device ID register constants; specific job"
+   ]
+  },
+  "Sensor linearization calibration LUT": {
+   "id": "C513",
+   "repeat_of": "K248",
+   "reasons": [
+    "A: writable correction table, same as gamma LUT",
+    "B: same writable correction lookup table"
+   ]
+  },
+  "ROM patch unit": {
+   "id": "C514",
+   "repeat_of": null,
+   "reasons": [
+    "A: address-match word substitution; new",
+    "B: address match and word substitution; new"
+   ]
+  },
+  "Galois-field log/antilog ROM": {
+   "id": "C515",
+   "repeat_of": null,
+   "reasons": [
+    "A: log/antilog tables, built differently from K085",
+    "B: GF multiply via log tables, differs from K085"
+   ]
+  },
+  "Constant-coefficient LUT multiplier": {
+   "id": "C516",
+   "repeat_of": null,
+   "reasons": [
+    "A: table-based constant multiply, not CSD shift-add",
+    "B: nibble table constant multiply, differs from CSD/DA"
+   ]
+  },
+  "Quarter-square multiplier table": {
+   "id": "C517",
+   "repeat_of": "C290",
+   "reasons": [
+    "A: same quarter-square table multiplier",
+    "B: same quarter-square table multiplier"
+   ]
+  },
+  "CORDIC arctangent constant ROM": {
+   "id": "C518",
+   "repeat_of": "C506",
+   "reasons": [
+    "A: angle constant ROM only; new",
+    "B: same constant ROM stepped by an index counter",
+    "decider: constant ROM stepped by index counter"
+   ]
+  },
+  "Constellation mapper ROM": {
+   "id": "C519",
+   "repeat_of": null,
+   "reasons": [
+    "A: I/Q constellation tables; new",
+    "B: bits-to-I/Q constellation map; new"
+   ]
+  },
+  "Wrap-bit pointer FIFO": {
+   "id": "C520",
+   "repeat_of": null,
+   "reasons": [
+    "A: wrap bits instead of occupancy counter; state differs from K001",
+    "B: wrap-bit pointers, no counter; differs from K001"
+   ]
+  },
+  "Shift-register FIFO": {
+   "id": "C521",
+   "repeat_of": null,
+   "reasons": [
+    "A: shift-on-pop with fill level; differs from C206",
+    "B: shift-on-pop with fill level; differs from C206"
+   ]
+  },
+  "Fall-through bubble FIFO": {
+   "id": "C522",
+   "repeat_of": "C206",
+   "reasons": [
+    "A: same fall-through stage FIFO with per-stage valid",
+    "B: same fall-through stage FIFO with per-stage valid"
+   ]
+  },
+  "First-word-fall-through FIFO": {
+   "id": "C523",
+   "repeat_of": null,
+   "reasons": [
+    "A: RAM FIFO plus prefetch output register; new",
+    "B: prefetch output register FWFT; new"
+   ]
+  },
+  "Gray-pointer asynchronous FIFO": {
+   "id": "C524",
+   "repeat_of": null,
+   "reasons": [
+    "A: full async FIFO, K005 is only the synchronizer",
+    "B: full async FIFO; K005 is only the synchronizer"
+   ]
+  },
+  "Handshake-synchronized dual-clock FIFO": {
+   "id": "C525",
+   "repeat_of": null,
+   "reasons": [
+    "A: handshake pointer transfer; new",
+    "B: handshake pointer transfer; different from gray FIFO"
+   ]
+  },
+  "Token-ring mixed-clock FIFO": {
+   "id": "C526",
+   "repeat_of": null,
+   "reasons": [
+    "A: token ring dual-clock cells; new",
+    "B: token-ring mixed-clock cells; new"
+   ]
+  },
+  "Mesochronous FIFO": {
+   "id": "C527",
+   "repeat_of": null,
+   "reasons": [
+    "A: fixed-offset mesochronous ring; new",
+    "B: mesochronous fixed-offset ring; new"
+   ]
+  },
+  "Micropipeline asynchronous FIFO": {
+   "id": "C528",
+   "repeat_of": null,
+   "reasons": [
+    "A: clockless C-element pipeline; new",
+    "B: clockless C-element micropipeline; new"
+   ]
+  },
+  "Programmable-watermark FIFO": {
+   "id": "C529",
+   "repeat_of": null,
+   "reasons": [
+    "A: includes FIFO storage, C347 is only comparator",
+    "B: FIFO with watermarks; C347 is comparator only"
+   ]
+  },
+  "Commit/rollback packet FIFO": {
+   "id": "C530",
+   "repeat_of": null,
+   "reasons": [
+    "A: speculative and committed write pointers; new",
+    "B: speculative/committed write pointers; new"
+   ]
+  },
+  "Asymmetric-width FIFO": {
+   "id": "C531",
+   "repeat_of": null,
+   "reasons": [
+    "A: width-changing FIFO, C475 is a RAM",
+    "B: width-converting FIFO; C475 is a RAM"
+   ]
+  },
+  "Overwrite-oldest ring buffer": {
+   "id": "C532",
+   "repeat_of": null,
+   "reasons": [
+    "A: overwrite-oldest FIFO; no trigger like K153",
+    "B: overwrite-oldest with read pointer; differs from trace buffer"
+   ]
+  },
+  "Multi-push FIFO": {
+   "id": "C533",
+   "repeat_of": null,
+   "reasons": [
+    "A: multi-write-port FIFO; new",
+    "B: multiple writes per cycle; new"
+   ]
+  },
+  "Multi-pop FIFO": {
+   "id": "C534",
+   "repeat_of": null,
+   "reasons": [
+    "A: multi-read FIFO; new",
+    "B: multiple reads per cycle; new"
+   ]
+  },
+  "Peekable lookahead FIFO": {
+   "id": "C535",
+   "repeat_of": null,
+   "reasons": [
+    "A: peek by offset; new",
+    "B: peek by offset without dequeue; new"
+   ]
+  },
+  "Linked-list shared-buffer multi-queue": {
+   "id": "C536",
+   "repeat_of": null,
+   "reasons": [
+    "A: many queues in shared memory, more than K217",
+    "B: multi-queue linked list; K217 is free list only"
+   ]
+  },
+  "Virtual output queue set": {
+   "id": "C537",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-destination queue set; new",
+    "B: per-destination queue set; new"
+   ]
+  },
+  "Multicast multi-reader FIFO": {
+   "id": "C538",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-reader read pointers; new",
+    "B: per-reader read pointers; new"
+   ]
+  },
+  "Replay retransmission buffer": {
+   "id": "C539",
+   "repeat_of": null,
+   "reasons": [
+    "A: ack and replay pointers; new",
+    "B: ack and replay pointers; new"
+   ]
+  },
+  "Clock-compensation elastic buffer": {
+   "id": "C540",
+   "repeat_of": null,
+   "reasons": [
+    "A: skip insert/delete elastic buffer, not K021",
+    "B: skip insert/delete clock compensation; differs from K021"
+   ]
+  },
+  "Collapsing queue": {
+   "id": "C541",
+   "repeat_of": null,
+   "reasons": [
+    "A: remove-anywhere collapsing queue; new",
+    "B: remove-anywhere collapsing queue; new"
+   ]
+  },
+  "Double-ended queue": {
+   "id": "C542",
+   "repeat_of": null,
+   "reasons": [
+    "A: deque push/pop both ends; new",
+    "B: push/pop at both ends; new"
+   ]
+  },
+  "Timestamped delay queue": {
+   "id": "C543",
+   "repeat_of": null,
+   "reasons": [
+    "A: release-time gated queue; new",
+    "B: release-time gated queue; new"
+   ]
+  },
+  "Hybrid flop-SRAM cascaded FIFO": {
+   "id": "C544",
+   "repeat_of": null,
+   "reasons": [
+    "A: flop stages around SRAM FIFO; new",
+    "B: flop plus SRAM cascaded FIFO; new"
+   ]
+  },
+  "Longest-prefix-match engine": {
+   "id": "C545",
+   "repeat_of": null,
+   "reasons": [
+    "A: multi-entry longest prefix, C335 is single prefix",
+    "B: multi-entry longest prefix; C335 is single prefix"
+   ]
+  },
+  "Range-match CAM": {
+   "id": "C546",
+   "repeat_of": null,
+   "reasons": [
+    "A: low/high bound per entry; new",
+    "B: generic range match vector; C333/K200 have other outputs"
+   ]
+  },
+  "Precomputation-filter CAM": {
+   "id": "C547",
+   "repeat_of": null,
+   "reasons": [
+    "A: signature prefilter CAM; new",
+    "B: signature prefilter CAM; new"
+   ]
+  },
+  "Banked hierarchical CAM": {
+   "id": "C548",
+   "repeat_of": null,
+   "reasons": [
+    "A: bank-selected CAM; new",
+    "B: bank-selected CAM search; new"
+   ]
+  },
+  "Multi-match bitmap CAM": {
+   "id": "C549",
+   "repeat_of": "K116",
+   "reasons": [
+    "A: bitmap output instead of index; behaviour differs from K116",
+    "B: same parallel CAM search; only output encoding differs",
+    "decider: same parallel CAM; output encoding only"
+   ]
+  },
+  "Key-value associative memory": {
+   "id": "C550",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds paired value array to CAM",
+    "B: adds paired value array to CAM"
+   ]
+  },
+  "Sorted-array binary-search CAM emulator": {
+   "id": "C551",
+   "repeat_of": null,
+   "reasons": [
+    "A: sorted RAM binary search; new",
+    "B: binary search over sorted RAM; new"
+   ]
+  },
+  "SRAM bit-slice CAM emulator": {
+   "id": "C552",
+   "repeat_of": null,
+   "reasons": [
+    "A: sliced RAM match vectors; new",
+    "B: RAM slice match-vector CAM; new"
+   ]
+  },
+  "Hamming-distance approximate CAM": {
+   "id": "C553",
+   "repeat_of": null,
+   "reasons": [
+    "A: parallel over entries, C332 is a single compare",
+    "B: multi-entry approximate CAM; C332 is one pair"
+   ]
+  },
+  "Nearest-neighbor associative memory": {
+   "id": "C554",
+   "repeat_of": null,
+   "reasons": [
+    "A: closest-vector search; new",
+    "B: closest-vector search; new"
+   ]
+  },
+  "Global-mask search CAM": {
+   "id": "C555",
+   "repeat_of": null,
+   "reasons": [
+    "A: one global mask, not per-entry like K117",
+    "B: one global mask, not per-entry TCAM masks"
+   ]
+  },
+  "Age-stamped CAM": {
+   "id": "C556",
+   "repeat_of": null,
+   "reasons": [
+    "A: timestamps per entry; new",
+    "B: per-entry timestamps for age; new"
+   ]
+  },
+  "Round-robin replacement CAM": {
+   "id": "C557",
+   "repeat_of": null,
+   "reasons": [
+    "A: CAM with rotating insert pointer; new",
+    "B: CAM plus rotating insertion pointer; new"
+   ]
+  },
+  "Tag-broadcast wakeup array": {
+   "id": "C558",
+   "repeat_of": null,
+   "reasons": [
+    "A: tag wakeup only, no operand values like K141",
+    "B: tag wakeup only; K141 also holds operands"
+   ]
+  },
+  "Pipelined CAM": {
+   "id": "C559",
+   "repeat_of": null,
+   "reasons": [
+    "A: pipelined compare stages; new",
+    "B: pipelined partial-match stages; new"
+   ]
+  },
+  "Multi-port search CAM": {
+   "id": "C560",
+   "repeat_of": null,
+   "reasons": [
+    "A: several search ports; new",
+    "B: multiple simultaneous search ports; new"
+   ]
+  },
+  "Searchable FIFO": {
+   "id": "C561",
+   "repeat_of": null,
+   "reasons": [
+    "A: FIFO searchable by content; new",
+    "B: FIFO with content search; new"
+   ]
+  },
+  "Layer-2 MAC learning table": {
+   "id": "C562",
+   "repeat_of": null,
+   "reasons": [
+    "A: MAC learning with aging; new",
+    "B: MAC learning with aging; new"
+   ]
+  },
+  "Flow match table with hit counters": {
+   "id": "C563",
+   "repeat_of": null,
+   "reasons": [
+    "A: flow match with counters; new",
+    "B: flow match with hit counters; new"
+   ]
+  },
+  "Sliding-window string-match CAM": {
+   "id": "C564",
+   "repeat_of": null,
+   "reasons": [
+    "A: sliding window pattern match; new",
+    "B: sliding window pattern match; new"
+   ]
+  },
+  "Bit-serial associative processor": {
+   "id": "C565",
+   "repeat_of": null,
+   "reasons": [
+    "A: bit-column associative processor; new",
+    "B: bit-serial associative search; new"
+   ]
+  },
+  "Outstanding transaction ID CAM": {
+   "id": "C566",
+   "repeat_of": null,
+   "reasons": [
+    "A: ID tracking table; C060 routes responses",
+    "B: CAM over slots; C060 is tag-indexed routing table"
+   ]
+  },
+  "Heavy-hitter counting CAM": {
+   "id": "C567",
+   "repeat_of": null,
+   "reasons": [
+    "A: count and replace-lowest; new",
+    "B: count and replace-lowest CAM; new"
+   ]
+  },
+  "Search-and-update CAM": {
+   "id": "C568",
+   "repeat_of": null,
+   "reasons": [
+    "A: search plus in-place update; new",
+    "B: search plus in-place update; new"
+   ]
+  },
+  "Bidirectional associative map": {
+   "id": "C569",
+   "repeat_of": null,
+   "reasons": [
+    "A: search by either field; new",
+    "B: two searchable fields; new"
+   ]
+  },
+  "Fully-associative cache": {
+   "id": "C570",
+   "repeat_of": null,
+   "reasons": [
+    "A: fully associative main cache; new",
+    "B: fully associative cache; differs from K118/K119/K126"
+   ]
+  },
+  "Sector cache": {
+   "id": "C571",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-sub-block valid bits; new",
+    "B: per-sub-block valid/dirty sector cache; new"
+   ]
+  },
+  "Skewed-associative cache": {
+   "id": "C572",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-way hash index; new",
+    "B: per-way hashed index; new"
+   ]
+  },
+  "Column-associative cache": {
+   "id": "C573",
+   "repeat_of": null,
+   "reasons": [
+    "A: rehash bit, two probes; new",
+    "B: primary/rehash probe with rehash bit; new"
+   ]
+  },
+  "Write-back eviction buffer": {
+   "id": "C574",
+   "repeat_of": null,
+   "reasons": [
+    "A: drains dirty lines, unlike victim cache K126",
+    "B: evicted dirty line drain buffer; differs from victim cache"
+   ]
+  },
+  "Write-combining buffer": {
+   "id": "C575",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-line byte-mask merging, unlike K125",
+    "B: byte-mask burst merging; differs from K125"
+   ]
+  },
+  "MESI line state controller": {
+   "id": "C576",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-line MESI snooping, not directory K129",
+    "B: MESI per-line state; K129 is directory"
+   ]
+  },
+  "Snooping bus cache controller": {
+   "id": "C577",
+   "repeat_of": null,
+   "reasons": [
+    "A: duplicate-tag snoop controller, not K128 filter",
+    "B: snooping duplicate tags; K128 is presence filter"
+   ]
+  },
+  "Way predictor": {
+   "id": "C578",
+   "repeat_of": null,
+   "reasons": [
+    "A: way prediction table; new",
+    "B: way prediction table; new"
+   ]
+  },
+  "Next-line prefetcher": {
+   "id": "C579",
+   "repeat_of": null,
+   "reasons": [
+    "A: next-line, not stride K132",
+    "B: next-line prefetch; differs from stride K132"
+   ]
+  },
+  "Stream buffer": {
+   "id": "C580",
+   "repeat_of": null,
+   "reasons": [
+    "A: sequential line FIFO with data; new",
+    "B: stream buffer holds prefetched lines; new"
+   ]
+  },
+  "Loop buffer": {
+   "id": "C581",
+   "repeat_of": null,
+   "reasons": [
+    "A: loop capture and replay; new",
+    "B: loop capture and replay; new"
+   ]
+  },
+  "Trace cache": {
+   "id": "C582",
+   "repeat_of": null,
+   "reasons": [
+    "A: instruction trace lines; new",
+    "B: trace cache; new"
+   ]
+  },
+  "Micro-op cache": {
+   "id": "C583",
+   "repeat_of": null,
+   "reasons": [
+    "A: decoded micro-op cache; new",
+    "B: decoded micro-op cache; new"
+   ]
+  },
+  "Random replacement unit": {
+   "id": "C584",
+   "repeat_of": null,
+   "reasons": [
+    "A: pseudo-random victim; new",
+    "B: random replacement; differs from LRU kinds"
+   ]
+  },
+  "Round-robin replacement pointer": {
+   "id": "C585",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-set rotating victim pointer; new",
+    "B: per-set round-robin victim pointer; new"
+   ]
+  },
+  "RRIP replacement unit": {
+   "id": "C586",
+   "repeat_of": null,
+   "reasons": [
+    "A: RRIP counters; new",
+    "B: RRIP counters; new"
+   ]
+  },
+  "LFU replacement unit": {
+   "id": "C587",
+   "repeat_of": null,
+   "reasons": [
+    "A: frequency counters; new",
+    "B: frequency counters LFU; new"
+   ]
+  },
+  "Set-dueling policy monitor": {
+   "id": "C588",
+   "repeat_of": null,
+   "reasons": [
+    "A: set dueling selector; new",
+    "B: set dueling selector; new"
+   ]
+  },
+  "Dead-block predictor": {
+   "id": "C589",
+   "repeat_of": null,
+   "reasons": [
+    "A: dead-block prediction; new",
+    "B: dead-block prediction; new"
+   ]
+  },
+  "Cache maintenance engine": {
+   "id": "C590",
+   "repeat_of": null,
+   "reasons": [
+    "A: set/way walk engine; new",
+    "B: set/way walk maintenance engine; new"
+   ]
+  },
+  "Cache lockdown controller": {
+   "id": "C591",
+   "repeat_of": null,
+   "reasons": [
+    "A: line/way lock; new",
+    "B: line/way lock; new"
+   ]
+  },
+  "Way-partitioning controller": {
+   "id": "C592",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-class way masks; new",
+    "B: per-class way masks; new"
+   ]
+  },
+  "Inclusive back-invalidation unit": {
+   "id": "C593",
+   "repeat_of": null,
+   "reasons": [
+    "A: back-invalidate queue; new",
+    "B: back-invalidation queue; new"
+   ]
+  },
+  "Cache ECC scrubber": {
+   "id": "C594",
+   "repeat_of": null,
+   "reasons": [
+    "A: background cache scrub; new",
+    "B: cache background ECC scrub; new"
+   ]
+  },
+  "FR-FCFS DRAM command scheduler": {
+   "id": "C595",
+   "repeat_of": null,
+   "reasons": [
+    "A: FR-FCFS scheduler; new",
+    "B: FR-FCFS request scheduling; new"
+   ]
+  },
+  "Open-row bank state table": {
+   "id": "C596",
+   "repeat_of": null,
+   "reasons": [
+    "A: open-row table only, K273 issues commands",
+    "B: open-row table only; K273 also issues commands"
+   ]
+  },
+  "DRAM timing constraint tracker": {
+   "id": "C597",
+   "repeat_of": null,
+   "reasons": [
+    "A: multi-timer constraint tracker; more than K273",
+    "B: per-bank timing timers only; differs from K273"
+   ]
+  },
+  "Four-activate window (tFAW) tracker": {
+   "id": "C598",
+   "repeat_of": null,
+   "reasons": [
+    "A: four-activate window history; new",
+    "B: four-activate window history; new"
+   ]
+  },
+  "Bus turnaround controller": {
+   "id": "C599",
+   "repeat_of": null,
+   "reasons": [
+    "A: bus turnaround gaps; new",
+    "B: bus turnaround gaps; new"
+   ]
+  },
+  "DDR initialization sequencer": {
+   "id": "C600",
+   "repeat_of": "C430",
+   "reasons": [
+    "A: same DRAM power-up command sequencer",
+    "B: same DRAM power-up command sequencer"
+   ]
+  },
+  "Mode register programming unit": {
+   "id": "C601",
+   "repeat_of": null,
+   "reasons": [
+    "A: mode register shadows and writes; new",
+    "B: mode register shadows and updates; new"
+   ]
+  },
+  "Physical address mapper": {
+   "id": "C602",
+   "repeat_of": null,
+   "reasons": [
+    "A: address field split and hash; new",
+    "B: address field split with hashing; new"
+   ]
+  },
+  "Write-drain watermark controller": {
+   "id": "C603",
+   "repeat_of": "C324",
+   "reasons": [
+    "A: read/write mode switch by watermarks; new",
+    "B: same two-threshold hysteresis with state bit",
+    "decider: two-threshold hysteresis with state bit"
+   ]
+  },
+  "Read-after-write hazard detector": {
+   "id": "C604",
+   "repeat_of": null,
+   "reasons": [
+    "A: read vs queued write match; new",
+    "B: read vs write-queue address match; new"
+   ]
+  },
+  "Read response reorder buffer": {
+   "id": "C605",
+   "repeat_of": "K140",
+   "reasons": [
+    "A: memory read data reorder, not instruction ROB K140",
+    "B: same in-order retire of out-of-order completions",
+    "decider: in-order retire of out-of-order completions"
+   ]
+  },
+  "Adaptive page-close timer": {
+   "id": "C606",
+   "repeat_of": null,
+   "reasons": [
+    "A: idle page-close timer; new",
+    "B: adaptive idle page close; new"
+   ]
+  },
+  "Power-down and self-refresh controller": {
+   "id": "C607",
+   "repeat_of": null,
+   "reasons": [
+    "A: power-down/self-refresh; new",
+    "B: DRAM low-power state control; differs from K172"
+   ]
+  },
+  "ZQ calibration scheduler": {
+   "id": "C608",
+   "repeat_of": null,
+   "reasons": [
+    "A: ZQ calibration, different job from refresh K274",
+    "B: periodic ZQ with blocking timer; differs from K274"
+   ]
+  },
+  "Temperature-compensated refresh adjuster": {
+   "id": "C609",
+   "repeat_of": null,
+   "reasons": [
+    "A: temperature-based refresh rate; new",
+    "B: temperature-scaled refresh rate; new"
+   ]
+  },
+  "Row-hammer activation counter table": {
+   "id": "C610",
+   "repeat_of": null,
+   "reasons": [
+    "A: row activation counters; new",
+    "B: row activation counters; new"
+   ]
+  },
+  "Write leveling training engine": {
+   "id": "C611",
+   "repeat_of": null,
+   "reasons": [
+    "A: write leveling sweep; new",
+    "B: write leveling sweep; new"
+   ]
+  },
+  "Read DQS gate training unit": {
+   "id": "C612",
+   "repeat_of": null,
+   "reasons": [
+    "A: DQS gate training; differs from C611",
+    "B: DQS gate window search; new"
+   ]
+  },
+  "Read eye centering unit": {
+   "id": "C613",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-bit eye centering; new",
+    "B: per-bit eye edge centering; new"
+   ]
+  },
+  "DFI PHY interface aligner": {
+   "id": "C614",
+   "repeat_of": null,
+   "reasons": [
+    "A: DFI latency alignment; new",
+    "B: DFI latency alignment; new"
+   ]
+  },
+  "Command/address parity retry unit": {
+   "id": "C615",
+   "repeat_of": null,
+   "reasons": [
+    "A: parity plus command replay; differs from C539",
+    "B: parity plus command replay; new"
+   ]
+  },
+  "Data bus inversion encoder": {
+   "id": "C616",
+   "repeat_of": null,
+   "reasons": [
+    "A: no earlier data bus inversion block",
+    "B: data bus inversion; nothing earlier"
+   ]
+  },
+  "Memory patrol scrubber": {
+   "id": "C617",
+   "repeat_of": "C594",
+   "reasons": [
+    "A: same background ECC scrubber; memory vs cache target only",
+    "B: same background ECC scrub: address pointer, interval timer, error count"
+   ]
+  },
+  "Asynchronous SRAM/NOR bus controller": {
+   "id": "C618",
+   "repeat_of": null,
+   "reasons": [
+    "A: external async memory wait-state controller is new",
+    "B: async SRAM/NOR wait-state controller is new"
+   ]
+  },
+  "HyperBus/PSRAM controller": {
+   "id": "C619",
+   "repeat_of": null,
+   "reasons": [
+    "A: HyperBus/PSRAM protocol controller is new",
+    "B: HyperBus/PSRAM controller is new"
+   ]
+  },
+  "Odd-ratio 50% duty divider": {
+   "id": "C620",
+   "repeat_of": null,
+   "reasons": [
+    "A: odd divider with falling-edge retime differs from plain divider",
+    "B: odd-ratio 50% duty uses falling-edge flops, unlike K030"
+   ]
+  },
+  "Half-integer clock divider": {
+   "id": "C621",
+   "repeat_of": null,
+   "reasons": [
+    "A: half-integer edge-select divider is new",
+    "B: half-integer divider is new"
+   ]
+  },
+  "Fractional-N modulus controller": {
+   "id": "C622",
+   "repeat_of": null,
+   "reasons": [
+    "A: sigma-delta divide-ratio modulator is new",
+    "B: sigma-delta fractional-N is new"
+   ]
+  },
+  "Rational M/N clock-enable generator": {
+   "id": "C623",
+   "repeat_of": null,
+   "reasons": [
+    "A: M/N error-accumulator enable differs from baud generator",
+    "B: Bresenham M/N enable differs from baud generator"
+   ]
+  },
+  "Ripple toggle-flop divider chain": {
+   "id": "C624",
+   "repeat_of": "C223",
+   "reasons": [
+    "A: same ripple chain of toggle flops",
+    "B: same chain of toggle flops each clocked by previous stage"
+   ]
+  },
+  "Programmable divider with shadowed ratio": {
+   "id": "C625",
+   "repeat_of": null,
+   "reasons": [
+    "A: shadowed ratio adds state over modulo counter",
+    "B: shadowed ratio adds state over plain divider"
+   ]
+  },
+  "Quadrature clock generator": {
+   "id": "C626",
+   "repeat_of": "K282",
+   "reasons": [
+    "A: twisted-ring (Johnson) counter producing phases",
+    "B: twisted-ring of flops is a Johnson counter"
+   ]
+  },
+  "Multi-output phase-offset clock generator": {
+   "id": "C627",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-output phase-offset divider is new",
+    "B: per-output phase offsets is new"
+   ]
+  },
+  "Phase-frequency detector": {
+   "id": "C628",
+   "repeat_of": null,
+   "reasons": [
+    "A: phase-frequency detector is new",
+    "B: phase-frequency detector is new"
+   ]
+  },
+  "Bang-bang phase detector": {
+   "id": "C629",
+   "repeat_of": null,
+   "reasons": [
+    "A: bang-bang phase detector is new",
+    "B: bang-bang phase detector is new"
+   ]
+  },
+  "Digitally controlled oscillator control word": {
+   "id": "C630",
+   "repeat_of": null,
+   "reasons": [
+    "A: DCO tuning code block is new",
+    "B: DCO tuning code registers is new"
+   ]
+  },
+  "DCO band calibration engine": {
+   "id": "C631",
+   "repeat_of": null,
+   "reasons": [
+    "A: successive-approximation band search differs from linear trim sweep",
+    "B: successive-approximation band search differs from C440 stepping"
+   ]
+  },
+  "Frequency-locked loop counter comparator": {
+   "id": "C632",
+   "repeat_of": null,
+   "reasons": [
+    "A: closed-loop code nudging differs from frequency meter",
+    "B: closed-loop code nudging differs from frequency meter"
+   ]
+  },
+  "PLL startup sequencer": {
+   "id": "C633",
+   "repeat_of": null,
+   "reasons": [
+    "A: PLL-specific startup sequence",
+    "B: PLL startup sequencer is new"
+   ]
+  },
+  "Spread-spectrum clock modulator": {
+   "id": "C634",
+   "repeat_of": null,
+   "reasons": [
+    "A: spread-spectrum triangular sweep is new",
+    "B: spread-spectrum modulator is new"
+   ]
+  },
+  "Missing-clock detector": {
+   "id": "C635",
+   "repeat_of": null,
+   "reasons": [
+    "A: cross-clock missing-clock timeout is new",
+    "B: first missing-clock detector"
+   ]
+  },
+  "Clock failover switch controller": {
+   "id": "C636",
+   "repeat_of": null,
+   "reasons": [
+    "A: clock failover with switch-in-progress differs from data failover mux",
+    "B: clock switch with switch-in-progress differs from data failover mux"
+   ]
+  },
+  "Ring oscillator clock source": {
+   "id": "C637",
+   "repeat_of": null,
+   "reasons": [
+    "A: ring-oscillator clock source differs from entropy harvester",
+    "B: ring oscillator clock source differs from entropy harvester"
+   ]
+  },
+  "Edge-combining frequency doubler": {
+   "id": "C638",
+   "repeat_of": null,
+   "reasons": [
+    "A: XOR frequency doubler is new",
+    "B: frequency doubler is new"
+   ]
+  },
+  "Clock pulse swallower": {
+   "id": "C639",
+   "repeat_of": null,
+   "reasons": [
+    "A: pattern-based clock pulse removal is new",
+    "B: pattern-based clock swallower differs from pulse-swallow counter"
+   ]
+  },
+  "Adaptive clock stretcher": {
+   "id": "C640",
+   "repeat_of": null,
+   "reasons": [
+    "A: droop-triggered clock stretcher is new",
+    "B: first droop clock stretcher"
+   ]
+  },
+  "Clock burst generator": {
+   "id": "C641",
+   "repeat_of": null,
+   "reasons": [
+    "A: N-pulse clock burst is new",
+    "B: clock burst generator is new"
+   ]
+  },
+  "Single-bit level synchronizer": {
+   "id": "C642",
+   "repeat_of": "K005",
+   "reasons": [
+    "A: plain single-bit sync differs from gray pointer sync",
+    "B: same flop-chain synchronizer, differs only in width",
+    "decider: flop-chain synchronizer; width only"
+   ]
+  },
+  "Toggle pulse synchronizer": {
+   "id": "C643",
+   "repeat_of": null,
+   "reasons": [
+    "A: single toggle pulse sync, not a routing demux",
+    "B: plain toggle pulse sync; C069 adds routing"
+   ]
+  },
+  "Two-phase (NRZ) handshake synchronizer": {
+   "id": "C644",
+   "repeat_of": null,
+   "reasons": [
+    "A: two-phase toggle handshake differs from four-phase",
+    "B: two-phase handshake differs from four-phase K003"
+   ]
+  },
+  "Mux-recirculation data synchronizer": {
+   "id": "C645",
+   "repeat_of": null,
+   "reasons": [
+    "A: mux-recirculation bus sync is new",
+    "B: first mux-recirculation data synchronizer"
+   ]
+  },
+  "MCP bus synchronizer with acknowledge feedback": {
+   "id": "C646",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds ack feedback to data sync",
+    "B: adds acknowledge feedback over C645"
+   ]
+  },
+  "Feedback pulse synchronizer with busy": {
+   "id": "C647",
+   "repeat_of": "C644",
+   "reasons": [
+    "A: same two-phase toggle req/ack across domains",
+    "B: adds ack and busy over C643",
+    "decider: two-phase toggle req/ack; busy is derived"
+   ]
+  },
+  "Asynchronous FIFO flag generator": {
+   "id": "C648",
+   "repeat_of": null,
+   "reasons": [
+    "A: flag generator only, not a full async FIFO",
+    "B: flag logic only, not a whole FIFO"
+   ]
+  },
+  "Gray-coded event counter synchronizer": {
+   "id": "C649",
+   "repeat_of": "K005",
+   "reasons": [
+    "A: gray-coded count synced across domains",
+    "B: gray-coded count synchronized across domains, same as K005"
+   ]
+  },
+  "Clock-gate enable synchronizer": {
+   "id": "C650",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds synchronizer stage to clock-gate latch",
+    "B: adds synchronizer stage over clock gating cell"
+   ]
+  },
+  "Metastability-detecting synchronizer": {
+   "id": "C651",
+   "repeat_of": null,
+   "reasons": [
+    "A: parallel same-edge sampling differs from delayed-clock Razor",
+    "B: same-clock parallel sampling differs from delayed-clock Razor"
+   ]
+  },
+  "Mesochronous phase-select synchronizer": {
+   "id": "C652",
+   "repeat_of": null,
+   "reasons": [
+    "A: phase-select capture differs from mesochronous pointer FIFO",
+    "B: phase-select capture differs from pointer-ring mesochronous FIFO"
+   ]
+  },
+  "Ratiochronous transfer-window scheduler": {
+   "id": "C653",
+   "repeat_of": null,
+   "reasons": [
+    "A: ratiochronous window scheduling is new",
+    "B: ratiochronous window scheduler is new"
+   ]
+  },
+  "Sticky status bit synchronizer with clear handshake": {
+   "id": "C654",
+   "repeat_of": null,
+   "reasons": [
+    "A: sticky bit with cross-domain clear handshake is new",
+    "B: cross-domain sticky bit with clear handshake is new"
+   ]
+  },
+  "Quasi-static configuration synchronizer": {
+   "id": "C655",
+   "repeat_of": "C645",
+   "reasons": [
+    "A: same source hold reg + synced load strobe to dest reg",
+    "B: source register copied to destination on synchronized load strobe"
+   ]
+  },
+  "Snapshot capture synchronizer": {
+   "id": "C656",
+   "repeat_of": null,
+   "reasons": [
+    "A: destination-requested cross-domain snapshot is new",
+    "B: destination-requested snapshot is new"
+   ]
+  },
+  "Pulse-pending counter synchronizer": {
+   "id": "C657",
+   "repeat_of": null,
+   "reasons": [
+    "A: pending pulse counter drained by handshake is new",
+    "B: pending pulse counter is new"
+   ]
+  },
+  "Asynchronous-set wakeup synchronizer": {
+   "id": "C658",
+   "repeat_of": null,
+   "reasons": [
+    "A: async-set wakeup flop sync is new",
+    "B: async-set wakeup flop is new"
+   ]
+  },
+  "Cross-domain register access bridge": {
+   "id": "C659",
+   "repeat_of": null,
+   "reasons": [
+    "A: cross-domain read/write bus bridge is new",
+    "B: cross-domain register bridge differs from mailbox"
+   ]
+  },
+  "Clock-presence detector": {
+   "id": "C660",
+   "repeat_of": "C635",
+   "reasons": [
+    "A: same toggle-sync plus timeout clock-loss detector",
+    "B: same toggle sample plus timeout counter clock-loss detector"
+   ]
+  },
+  "Token-ring pointer FIFO synchronizer": {
+   "id": "C661",
+   "repeat_of": "C526",
+   "reasons": [
+    "A: same dual-clock FIFO with one-hot token pointers",
+    "B: same one-hot token-ring dual-clock FIFO"
+   ]
+  },
+  "Source-synchronous input capture": {
+   "id": "C662",
+   "repeat_of": null,
+   "reasons": [
+    "A: forwarded-clock capture plus buffer is new",
+    "B: forwarded-clock capture is new"
+   ]
+  },
+  "Johnson-code pointer synchronizer": {
+   "id": "C663",
+   "repeat_of": null,
+   "reasons": [
+    "A: Johnson encoding changes state vs gray pointer",
+    "B: Johnson code changes state encoding vs gray"
+   ]
+  },
+  "Pausible clock controller": {
+   "id": "C664",
+   "repeat_of": null,
+   "reasons": [
+    "A: pausible clock controller is new",
+    "B: pausible clock is new"
+   ]
+  },
+  "Mutual-exclusion request arbiter": {
+   "id": "C665",
+   "repeat_of": null,
+   "reasons": [
+    "A: first mutex element",
+    "B: first mutual-exclusion element"
+   ]
+  },
+  "Multi-domain reset sequencer": {
+   "id": "C666",
+   "repeat_of": null,
+   "reasons": [
+    "A: reset release ordering differs from power-rail sequencing",
+    "B: reset release order differs from rail sequencer"
+   ]
+  },
+  "Reset cause recorder": {
+   "id": "C667",
+   "repeat_of": null,
+   "reasons": [
+    "A: always-on cause flags survive reset",
+    "B: always-on reset cause flags is new"
+   ]
+  },
+  "Software reset control block": {
+   "id": "C668",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-block software reset bits are new",
+    "B: per-peripheral reset bits is new"
+   ]
+  },
+  "Reset glitch filter": {
+   "id": "C669",
+   "repeat_of": "K017",
+   "reasons": [
+    "A: same min-duration sample-count debouncer",
+    "B: minimum-hold filter is a debouncer"
+   ]
+  },
+  "Reset escalation controller": {
+   "id": "C670",
+   "repeat_of": null,
+   "reasons": [
+    "A: reset escalation with decay is new",
+    "B: reset escalation is new"
+   ]
+  },
+  "Warm reset quiesce handshaker": {
+   "id": "C671",
+   "repeat_of": null,
+   "reasons": [
+    "A: quiesce-before-reset handshake is new",
+    "B: quiesce handshake is new"
+   ]
+  },
+  "Reset domain crossing gate": {
+   "id": "C672",
+   "repeat_of": null,
+   "reasons": [
+    "A: reset-state clamp differs from power isolation sequencer",
+    "B: reset-based clamp differs from power isolation controller"
+   ]
+  },
+  "Brown-out detector filter": {
+   "id": "C673",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds threshold select and sticky status to debounce",
+    "B: adds threshold select and event status over debouncer"
+   ]
+  },
+  "Power-good qualifier": {
+   "id": "C674",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-rail sync plus stability qualification",
+    "B: multi-rail sync and stability counters is new"
+   ]
+  },
+  "State retention controller": {
+   "id": "C675",
+   "repeat_of": null,
+   "reasons": [
+    "A: retention-only part, not full power gating sequence",
+    "B: retention-only sequencing, narrower than K172"
+   ]
+  },
+  "SRAM low-power mode controller": {
+   "id": "C676",
+   "repeat_of": "C492",
+   "reasons": [
+    "A: same SRAM low-power mode register plus wake counter",
+    "B: same memory low-power mode control with wake delay counter"
+   ]
+  },
+  "Staggered power-switch enabler": {
+   "id": "C677",
+   "repeat_of": null,
+   "reasons": [
+    "A: segmented switch enable chain is new",
+    "B: staggered switch enable is new"
+   ]
+  },
+  "Power mode state machine": {
+   "id": "C678",
+   "repeat_of": null,
+   "reasons": [
+    "A: sleep-mode FSM differs from DVFS",
+    "B: chip power mode FSM is new"
+   ]
+  },
+  "Wake-up event controller": {
+   "id": "C679",
+   "repeat_of": null,
+   "reasons": [
+    "A: wake source mask/pending with polarity is new",
+    "B: wake source mask and polarity is new"
+   ]
+  },
+  "Always-on wake timer": {
+   "id": "C680",
+   "repeat_of": "K219",
+   "reasons": [
+    "A: counter plus compare plus fired flag timer",
+    "B: counter plus compare register plus fired flag timer"
+   ]
+  },
+  "Low-power interface channel controller": {
+   "id": "C681",
+   "repeat_of": null,
+   "reasons": [
+    "A: Q/P-channel handshake is new",
+    "B: Q/P-channel handshake is new"
+   ]
+  },
+  "Idle-based auto power-down unit": {
+   "id": "C682",
+   "repeat_of": null,
+   "reasons": [
+    "A: generic idle power-down timer is new",
+    "B: generic idle power-down is new"
+   ]
+  },
+  "Power domain dependency tracker": {
+   "id": "C683",
+   "repeat_of": null,
+   "reasons": [
+    "A: reference-count domain tracker is new",
+    "B: domain reference counting is new"
+   ]
+  },
+  "Adaptive voltage scaling monitor": {
+   "id": "C684",
+   "repeat_of": null,
+   "reasons": [
+    "A: speed-monitor AVS differs from load-based DVFS",
+    "B: speed-monitor AVS differs from load-based DVFS"
+   ]
+  },
+  "Voltage ramp sequencer": {
+   "id": "C685",
+   "repeat_of": null,
+   "reasons": [
+    "A: slew-limited setpoint ramp is new",
+    "B: voltage slew stepping is new"
+   ]
+  },
+  "Power capping throttle controller": {
+   "id": "C686",
+   "repeat_of": null,
+   "reasons": [
+    "A: energy budget throttle is new",
+    "B: power capping is new"
+   ]
+  },
+  "Voltage droop response unit": {
+   "id": "C687",
+   "repeat_of": "C640",
+   "reasons": [
+    "A: same droop-triggered clock stretching",
+    "B: same droop-triggered clock stretching"
+   ]
+  },
+  "Body-bias controller": {
+   "id": "C688",
+   "repeat_of": null,
+   "reasons": [
+    "A: body-bias control is new",
+    "B: body bias is new"
+   ]
+  },
+  "Power-switch acknowledge monitor": {
+   "id": "C689",
+   "repeat_of": null,
+   "reasons": [
+    "A: power-switch ack chain monitor is new",
+    "B: power-switch ack monitor is new"
+   ]
+  },
+  "Debug power request handler": {
+   "id": "C690",
+   "repeat_of": null,
+   "reasons": [
+    "A: debug keep-alive power request is new",
+    "B: debug power keep-alive is new"
+   ]
+  },
+  "Matrix arbiter": {
+   "id": "C691",
+   "repeat_of": null,
+   "reasons": [
+    "A: matrix arbiter differs from LRU replacement and RR arbiter",
+    "B: matrix arbiter differs from round-robin"
+   ]
+  },
+  "Weighted round-robin arbiter": {
+   "id": "C692",
+   "repeat_of": null,
+   "reasons": [
+    "A: weights and slot counter change RR behavior",
+    "B: weights add state over round-robin"
+   ]
+  },
+  "Deficit round-robin scheduler": {
+   "id": "C693",
+   "repeat_of": null,
+   "reasons": [
+    "A: deficit counters differ from WFQ virtual time",
+    "B: deficit counters are new"
+   ]
+  },
+  "Lottery arbiter": {
+   "id": "C694",
+   "repeat_of": null,
+   "reasons": [
+    "A: random ticket arbiter is new",
+    "B: lottery arbiter is new"
+   ]
+  },
+  "Age-based oldest-first arbiter": {
+   "id": "C695",
+   "repeat_of": "C119",
+   "reasons": [
+    "A: same per-input wait-age counter oldest-first pick",
+    "B: same per-input wait-age counter picking oldest"
+   ]
+  },
+  "FIFO queuing arbiter": {
+   "id": "C696",
+   "repeat_of": null,
+   "reasons": [
+    "A: arrival-order queue arbiter is new",
+    "B: arrival-order queue arbiter is new"
+   ]
+  },
+  "Programmable priority arbiter": {
+   "id": "C697",
+   "repeat_of": "C108",
+   "reasons": [
+    "A: same per-input programmable priority selection",
+    "B: same per-input programmable priority level selection"
+   ]
+  },
+  "Hierarchical tree arbiter": {
+   "id": "C698",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-node rotating pointers differ from fixed tree encoder",
+    "B: tree with per-node pointers is new"
+   ]
+  },
+  "Separable input-first switch allocator": {
+   "id": "C699",
+   "repeat_of": null,
+   "reasons": [
+    "A: separable switch allocator is new",
+    "B: separable switch allocator is new"
+   ]
+  },
+  "iSLIP allocator": {
+   "id": "C700",
+   "repeat_of": null,
+   "reasons": [
+    "A: iSLIP iterative matching differs from separable allocator",
+    "B: iSLIP iterative matching differs"
+   ]
+  },
+  "Wavefront allocator": {
+   "id": "C701",
+   "repeat_of": null,
+   "reasons": [
+    "A: wavefront allocator is new",
+    "B: wavefront allocator is new"
+   ]
+  },
+  "TDMA slot arbiter": {
+   "id": "C702",
+   "repeat_of": null,
+   "reasons": [
+    "A: schedule table owner mapping differs from TDM slot mux",
+    "B: programmable slot-owner table differs from fixed TDM mux"
+   ]
+  },
+  "Bus parking arbiter": {
+   "id": "C703",
+   "repeat_of": null,
+   "reasons": [
+    "A: bus parking arbiter is new",
+    "B: bus parking is new"
+   ]
+  },
+  "Token-passing ring arbiter": {
+   "id": "C704",
+   "repeat_of": null,
+   "reasons": [
+    "A: token hold-until-release differs from plain RR",
+    "B: stepwise token passing differs from round-robin"
+   ]
+  },
+  "Aging-promotion priority arbiter": {
+   "id": "C705",
+   "repeat_of": null,
+   "reasons": [
+    "A: starvation promotion arbiter is new",
+    "B: priority with aging promotion differs from oldest-first"
+   ]
+  },
+  "Burst-hold arbiter": {
+   "id": "C706",
+   "repeat_of": null,
+   "reasons": [
+    "A: beat counter hold differs from lock-bit arbiter",
+    "B: beat-count hold differs from lock-bit arbiter"
+   ]
+  },
+  "Mutual-exclusion element": {
+   "id": "C707",
+   "repeat_of": "C665",
+   "reasons": [
+    "A: same cross-coupled latch mutex element",
+    "B: same cross-coupled latch mutex"
+   ]
+  },
+  "K-of-N multi-grant arbiter": {
+   "id": "C708",
+   "repeat_of": null,
+   "reasons": [
+    "A: multi-grant arbiter is new",
+    "B: multi-grant arbiter is new"
+   ]
+  },
+  "FR-FCFS DRAM command arbiter": {
+   "id": "C709",
+   "repeat_of": "C595",
+   "reasons": [
+    "A: same FR-FCFS row-hit-then-oldest DRAM scheduler",
+    "B: same FR-FCFS row-hit then oldest scheduling"
+   ]
+  },
+  "Earliest-deadline-first arbiter": {
+   "id": "C710",
+   "repeat_of": null,
+   "reasons": [
+    "A: EDF deadline arbiter is new",
+    "B: deadline arbiter is new"
+   ]
+  },
+  "Read/write turnaround arbiter": {
+   "id": "C711",
+   "repeat_of": null,
+   "reasons": [
+    "A: batch-length direction switch differs from watermark drain",
+    "B: batch counter differs from watermark drain"
+   ]
+  },
+  "Banked memory conflict arbiter": {
+   "id": "C712",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-bank conflict arbiter is new",
+    "B: per-bank arbitration is new"
+   ]
+  },
+  "Exponential backoff arbiter": {
+   "id": "C713",
+   "repeat_of": null,
+   "reasons": [
+    "A: multi-requester arbitration differs from single-station backoff",
+    "B: multi-requester arbiter, not single station backoff"
+   ]
+  },
+  "Stride proportional-share scheduler": {
+   "id": "C714",
+   "repeat_of": "K210",
+   "reasons": [
+    "A: pass/stride is weight plus virtual-time fair scheduler",
+    "B: stride scheduling is new",
+    "decider: per-requester virtual time advanced by weight"
+   ]
+  },
+  "Bandwidth-regulated QoS arbiter": {
+   "id": "C715",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-period byte budget priority arbiter is new",
+    "B: period byte budgets differ from token bucket"
+   ]
+  },
+  "Wishbone shared-bus intercon": {
+   "id": "C716",
+   "repeat_of": null,
+   "reasons": [
+    "A: Wishbone shared bus intercon is new",
+    "B: Wishbone shared bus is new"
+   ]
+  },
+  "Wishbone-to-AXI bridge": {
+   "id": "C717",
+   "repeat_of": null,
+   "reasons": [
+    "A: Wishbone-to-AXI bridge is new",
+    "B: Wishbone-to-AXI bridge is new"
+   ]
+  },
+  "AHB-to-AXI bridge": {
+   "id": "C718",
+   "repeat_of": null,
+   "reasons": [
+    "A: AHB-to-AXI bridge is new",
+    "B: AHB-to-AXI bridge is new"
+   ]
+  },
+  "AHB multilayer input stage": {
+   "id": "C719",
+   "repeat_of": null,
+   "reasons": [
+    "A: AHB matrix input holding stage is new",
+    "B: AHB input stage is new"
+   ]
+  },
+  "AHB default slave": {
+   "id": "C720",
+   "repeat_of": null,
+   "reasons": [
+    "A: AHB default slave is new",
+    "B: AHB default slave is new"
+   ]
+  },
+  "AXI default slave": {
+   "id": "C721",
+   "repeat_of": null,
+   "reasons": [
+    "A: AXI default slave with burst countdown differs from AHB",
+    "B: AXI default slave has burst countdown, differs"
+   ]
+  },
+  "AXI4-Lite to AXI4 upconverter": {
+   "id": "C722",
+   "repeat_of": null,
+   "reasons": [
+    "A: AXI-Lite upconverter is new",
+    "B: Lite-to-full upconverter is new"
+   ]
+  },
+  "AXI4-to-AXI4-Lite downconverter": {
+   "id": "C723",
+   "repeat_of": null,
+   "reasons": [
+    "A: AXI burst-to-Lite downconverter is new",
+    "B: burst-splitting downconverter is new"
+   ]
+  },
+  "AXI ID remapper": {
+   "id": "C724",
+   "repeat_of": null,
+   "reasons": [
+    "A: ID remap table is new",
+    "B: ID remapper is new"
+   ]
+  },
+  "AXI data-width upsizer": {
+   "id": "C725",
+   "repeat_of": null,
+   "reasons": [
+    "A: AXI upsizer is new",
+    "B: AXI upsizer is new"
+   ]
+  },
+  "AXI data-width downsizer": {
+   "id": "C726",
+   "repeat_of": null,
+   "reasons": [
+    "A: AXI downsizer is new",
+    "B: downsizer is opposite direction"
+   ]
+  },
+  "AXI clock-domain crossing bridge": {
+   "id": "C727",
+   "repeat_of": null,
+   "reasons": [
+    "A: five-channel AXI CDC bridge is new",
+    "B: five-channel bus CDC bridge, not a single FIFO"
+   ]
+  },
+  "AXI 4KB boundary burst splitter": {
+   "id": "C728",
+   "repeat_of": null,
+   "reasons": [
+    "A: 4KB burst splitter is new",
+    "B: 4KB splitter is new"
+   ]
+  },
+  "AXI write-channel ordering queue": {
+   "id": "C729",
+   "repeat_of": null,
+   "reasons": [
+    "A: W-channel order queue is new",
+    "B: W-routing order queue is new"
+   ]
+  },
+  "AXI response router": {
+   "id": "C730",
+   "repeat_of": "C044",
+   "reasons": [
+    "A: same ID-to-source-port response routing table",
+    "B: same ID table routing responses to source port"
+   ]
+  },
+  "AXI outstanding-transaction limiter": {
+   "id": "C731",
+   "repeat_of": "K002",
+   "reasons": [
+    "A: separate read/write outstanding limits with AXI throttling",
+    "B: outstanding counter with limit is a credit counter",
+    "decider: outstanding counters with limit = credit counter"
+   ]
+  },
+  "AXI exclusive access monitor": {
+   "id": "C732",
+   "repeat_of": null,
+   "reasons": [
+    "A: exclusive reservation monitor is new",
+    "B: exclusive reservation monitor is new"
+   ]
+  },
+  "AXI-Stream switch": {
+   "id": "C733",
+   "repeat_of": null,
+   "reasons": [
+    "A: N-by-M packet-locked switch, not a single mux",
+    "B: N-by-M packet switch, not single mux or demux"
+   ]
+  },
+  "AXI-Stream broadcaster": {
+   "id": "C734",
+   "repeat_of": "C059",
+   "reasons": [
+    "A: same copy-to-all with per-output delivered mask",
+    "B: same copy-to-outputs with delivered flags"
+   ]
+  },
+  "AXI QoS regulator": {
+   "id": "C735",
+   "repeat_of": null,
+   "reasons": [
+    "A: rate/burst budget plus latency target QoS is new",
+    "B: adds latency regulation beyond token bucket"
+   ]
+  },
+  "Bus firewall": {
+   "id": "C736",
+   "repeat_of": "C333",
+   "reasons": [
+    "A: same base/limit/permission region access checker",
+    "B: same base/limit/permission region check"
+   ]
+  },
+  "Bus timeout monitor": {
+   "id": "C737",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-transaction bus timeout differs from watchdog",
+    "B: per-transaction timeout with error response is new"
+   ]
+  },
+  "Bus performance monitor": {
+   "id": "C738",
+   "repeat_of": null,
+   "reasons": [
+    "A: fixed bus statistics differ from event-select perf counters",
+    "B: fixed bus metrics with latency differ from event counters"
+   ]
+  },
+  "Address remap unit": {
+   "id": "C739",
+   "repeat_of": null,
+   "reasons": [
+    "A: rewrites addresses via windows; decoders only route",
+    "B: address rewriting windows; no earlier match"
+   ]
+  },
+  "AHB split-transaction controller": {
+   "id": "C740",
+   "repeat_of": null,
+   "reasons": [
+    "A: AHB SPLIT handling is new",
+    "B: AHB split handling is new"
+   ]
+  },
+  "DAMQ input buffer": {
+   "id": "C741",
+   "repeat_of": "C536",
+   "reasons": [
+    "A: shared-memory linked-list multi-queue with free list",
+    "B: same linked-list shared-buffer multi-queue"
+   ]
+  },
+  "Virtual-channel state table": {
+   "id": "C742",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-VC state table, not the allocator (K207)",
+    "B: tracks VC state, does not allocate"
+   ]
+  },
+  "Output VC status register": {
+   "id": "C743",
+   "repeat_of": null,
+   "reasons": [
+    "A: output VC reservation/owner table is new",
+    "B: output VC reservation record; new"
+   ]
+  },
+  "Separable switch allocator": {
+   "id": "C744",
+   "repeat_of": "C699",
+   "reasons": [
+    "A: same two-stage separable allocator with RR pointers",
+    "B: same separable two-stage switch allocator"
+   ]
+  },
+  "Speculative switch allocator": {
+   "id": "C745",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds speculative request class",
+    "B: adds speculative request class"
+   ]
+  },
+  "Table-based routing lookup": {
+   "id": "C746",
+   "repeat_of": null,
+   "reasons": [
+    "A: table lookup vs computed route (K208)",
+    "B: table lookup, not computed route"
+   ]
+  },
+  "Lookahead route computation unit": {
+   "id": "C747",
+   "repeat_of": null,
+   "reasons": [
+    "A: computes next-hop port, writes into header",
+    "B: computes next-hop port; differs from K208"
+   ]
+  },
+  "Odd-even adaptive output selector": {
+   "id": "C748",
+   "repeat_of": null,
+   "reasons": [
+    "A: adaptive odd-even selection is new",
+    "B: adaptive odd-even selection is new"
+   ]
+  },
+  "Source-route header shifter": {
+   "id": "C749",
+   "repeat_of": null,
+   "reasons": [
+    "A: source-route popping is new",
+    "B: source-route shifting is new"
+   ]
+  },
+  "Output port wormhole lock": {
+   "id": "C750",
+   "repeat_of": "C743",
+   "reasons": [
+    "A: same per-output reserved flag plus owner held head to tail",
+    "B: owner plus lock held until packet end"
+   ]
+  },
+  "Flit type decoder": {
+   "id": "C751",
+   "repeat_of": null,
+   "reasons": [
+    "A: flit type classification differs from header parser",
+    "B: flit classifier differs from header parser"
+   ]
+  },
+  "Packetizer network interface": {
+   "id": "C752",
+   "repeat_of": null,
+   "reasons": [
+    "A: splits messages into flits with seq number",
+    "B: flit packetizer with sequence number; new"
+   ]
+  },
+  "Deflection port assigner": {
+   "id": "C753",
+   "repeat_of": null,
+   "reasons": [
+    "A: bufferless deflection is new",
+    "B: deflection routing is new"
+   ]
+  },
+  "Age-based arbiter": {
+   "id": "C754",
+   "repeat_of": null,
+   "reasons": [
+    "A: injection timestamps + global clock vs per-requester wait counters (C695)",
+    "B: timestamps plus clock, not age counters"
+   ]
+  },
+  "Escape VC controller": {
+   "id": "C755",
+   "repeat_of": null,
+   "reasons": [
+    "A: escape VC deadlock avoidance is new",
+    "B: escape VC deadlock logic is new"
+   ]
+  },
+  "Bubble flow control gate": {
+   "id": "C756",
+   "repeat_of": null,
+   "reasons": [
+    "A: bubble admission rule beyond plain credits",
+    "B: bubble admission rule differs from credits"
+   ]
+  },
+  "Multicast replication unit": {
+   "id": "C757",
+   "repeat_of": "C059",
+   "reasons": [
+    "A: bitmask multicast copy with ports-remaining register",
+    "B: same bitmask multicast copy with served mask"
+   ]
+  },
+  "Regional congestion monitor": {
+   "id": "C758",
+   "repeat_of": null,
+   "reasons": [
+    "A: congestion aggregation is new",
+    "B: congestion aggregation is new"
+   ]
+  },
+  "Link retransmission buffer": {
+   "id": "C759",
+   "repeat_of": "C539",
+   "reasons": [
+    "A: same hold-until-ack replay buffer",
+    "B: same replay-until-acked buffer"
+   ]
+  },
+  "Express bypass latch": {
+   "id": "C760",
+   "repeat_of": null,
+   "reasons": [
+    "A: router bypass latch is new",
+    "B: router bypass latch is new"
+   ]
+  },
+  "TDM slot table": {
+   "id": "C761",
+   "repeat_of": "C702",
+   "reasons": [
+    "A: slot counter indexing programmable schedule table",
+    "B: slot counter plus slot-to-owner table"
+   ]
+  },
+  "Link fault status register": {
+   "id": "C762",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-link fault bits and error counters",
+    "B: link fault bits and counters; new"
+   ]
+  },
+  "On/off flow control signaler": {
+   "id": "C763",
+   "repeat_of": "C324",
+   "reasons": [
+    "A: flow-control signaler; not a generic comparator",
+    "B: two-threshold hysteresis with state bit",
+    "decider: two-threshold hysteresis with state bit"
+   ]
+  },
+  "Ring stop interface": {
+   "id": "C764",
+   "repeat_of": null,
+   "reasons": [
+    "A: ring insertion with starvation counter",
+    "B: ring insertion with starvation; new"
+   ]
+  },
+  "1-Wire bus master": {
+   "id": "C765",
+   "repeat_of": null,
+   "reasons": [
+    "A: 1-Wire timing master is new",
+    "B: 1-Wire protocol is new"
+   ]
+  },
+  "UART auto-baud detector": {
+   "id": "C766",
+   "repeat_of": null,
+   "reasons": [
+    "A: measures baud; K177 only divides",
+    "B: measures baud; differs from K177"
+   ]
+  },
+  "UART break detector": {
+   "id": "C767",
+   "repeat_of": null,
+   "reasons": [
+    "A: break detection is new",
+    "B: line-low duration detector is new"
+   ]
+  },
+  "UART hardware flow control unit": {
+   "id": "C768",
+   "repeat_of": null,
+   "reasons": [
+    "A: RTS thresholds plus CTS gating",
+    "B: adds CTS transmit gating"
+   ]
+  },
+  "UART line status block": {
+   "id": "C769",
+   "repeat_of": "C185",
+   "reasons": [
+    "A: sticky error flags until cleared, plus a mask",
+    "B: sticky status bits plus interrupt mask"
+   ]
+  },
+  "UART receive idle timeout": {
+   "id": "C770",
+   "repeat_of": null,
+   "reasons": [
+    "A: idle character-time timeout is new",
+    "B: idle timeout only while data waits"
+   ]
+  },
+  "UART multidrop address matcher": {
+   "id": "C771",
+   "repeat_of": null,
+   "reasons": [
+    "A: 9-bit multidrop address match is new",
+    "B: 9-bit address match is new"
+   ]
+  },
+  "IrDA SIR encoder/decoder": {
+   "id": "C772",
+   "repeat_of": null,
+   "reasons": [
+    "A: IrDA pulse coding is new",
+    "B: IrDA pulse coding is new"
+   ]
+  },
+  "LIN bus controller": {
+   "id": "C773",
+   "repeat_of": null,
+   "reasons": [
+    "A: LIN frame controller is new",
+    "B: LIN framing is new"
+   ]
+  },
+  "I2C start/stop condition detector": {
+   "id": "C774",
+   "repeat_of": null,
+   "reasons": [
+    "A: START/STOP detection is new",
+    "B: start/stop condition detect is new"
+   ]
+  },
+  "I2C spike suppression filter": {
+   "id": "C775",
+   "repeat_of": null,
+   "reasons": [
+    "A: shift-register window vs counter debouncer (K017)",
+    "B: shift-register filter, not counter debouncer"
+   ]
+  },
+  "I2C multi-master arbitration monitor": {
+   "id": "C776",
+   "repeat_of": null,
+   "reasons": [
+    "A: arbitration-loss monitor is new",
+    "B: arbitration loss monitor is new"
+   ]
+  },
+  "I2C clock-stretch handler": {
+   "id": "C777",
+   "repeat_of": null,
+   "reasons": [
+    "A: clock-stretch handling is new",
+    "B: clock-stretch handling is new"
+   ]
+  },
+  "SMBus timeout and PEC unit": {
+   "id": "C778",
+   "repeat_of": null,
+   "reasons": [
+    "A: SMBus timeout plus PEC is new",
+    "B: timeout plus PEC combo is new"
+   ]
+  },
+  "I3C dynamic address assignment unit": {
+   "id": "C779",
+   "repeat_of": null,
+   "reasons": [
+    "A: I3C dynamic addressing is new",
+    "B: I3C address assignment is new"
+   ]
+  },
+  "SPI chip-select sequencer": {
+   "id": "C780",
+   "repeat_of": null,
+   "reasons": [
+    "A: chip-select timing sequencer is new",
+    "B: chip-select timing sequencer is new"
+   ]
+  },
+  "SPI daisy-chain controller": {
+   "id": "C781",
+   "repeat_of": "K178",
+   "reasons": [
+    "A: SPI master with a longer frame length",
+    "B: SPI master with longer frame only"
+   ]
+  },
+  "Microwire interface": {
+   "id": "C782",
+   "repeat_of": null,
+   "reasons": [
+    "A: Microwire phase protocol differs",
+    "B: Microwire phases are new"
+   ]
+  },
+  "MDIO management master": {
+   "id": "C783",
+   "repeat_of": null,
+   "reasons": [
+    "A: MDIO frame master is new",
+    "B: MDIO frames are new"
+   ]
+  },
+  "Serial Wire Debug target port": {
+   "id": "C784",
+   "repeat_of": null,
+   "reasons": [
+    "A: SWD target port is new",
+    "B: SWD target is new"
+   ]
+  },
+  "Manchester decoder": {
+   "id": "C785",
+   "repeat_of": null,
+   "reasons": [
+    "A: decoder; earlier items only encode",
+    "B: decoder, not the earlier encoders"
+   ]
+  },
+  "RS-485 driver-enable controller": {
+   "id": "C786",
+   "repeat_of": null,
+   "reasons": [
+    "A: driver-enable turnaround is new",
+    "B: driver-enable guard timing is new"
+   ]
+  },
+  "Modbus RTU frame-gap timer": {
+   "id": "C787",
+   "repeat_of": "C770",
+   "reasons": [
+    "A: same line-silence counter, threshold and flag",
+    "B: same serial silence timer with threshold"
+   ]
+  },
+  "WS2812 single-wire LED encoder": {
+   "id": "C788",
+   "repeat_of": null,
+   "reasons": [
+    "A: WS2812 pulse encoder is new",
+    "B: LED pulse encoder is new"
+   ]
+  },
+  "Block lock state machine": {
+   "id": "C789",
+   "repeat_of": "C432",
+   "reasons": [
+    "A: good/bad header counters hunting for lock",
+    "B: header-based lock with good/bad counters"
+   ]
+  },
+  "Multi-lane deskew buffer": {
+   "id": "C790",
+   "repeat_of": null,
+   "reasons": [
+    "A: multi-lane deskew is new",
+    "B: multi-lane deskew is new"
+   ]
+  },
+  "PCIe LTSSM": {
+   "id": "C791",
+   "repeat_of": "C428",
+   "reasons": [
+    "A: same detect/polling/config link training FSM",
+    "B: same link training state machine"
+   ]
+  },
+  "PRBS pattern generator": {
+   "id": "C792",
+   "repeat_of": "K015",
+   "reasons": [
+    "A: LFSR with selectable polynomial",
+    "B: LFSR with selectable polynomial"
+   ]
+  },
+  "PRBS checker with error counter": {
+   "id": "C793",
+   "repeat_of": null,
+   "reasons": [
+    "A: self-syncing checker with error count",
+    "B: self-syncing checker with errors; new"
+   ]
+  },
+  "Phase interpolator controller": {
+   "id": "C794",
+   "repeat_of": null,
+   "reasons": [
+    "A: vote integrator driving phase code",
+    "B: phase-code accumulator loop differs from K162"
+   ]
+  },
+  "DFE tap adaptation engine": {
+   "id": "C795",
+   "repeat_of": null,
+   "reasons": [
+    "A: LMS tap adaptation is new",
+    "B: LMS tap adaptation is new"
+   ]
+  },
+  "TX FIR de-emphasis unit": {
+   "id": "C796",
+   "repeat_of": "K231",
+   "reasons": [
+    "A: short FIR on bit history",
+    "B: small FIR: bit history times coefficients"
+   ]
+  },
+  "Eye scan monitor": {
+   "id": "C797",
+   "repeat_of": null,
+   "reasons": [
+    "A: eye scan is new",
+    "B: eye scan is new"
+   ]
+  },
+  "Lane polarity detector": {
+   "id": "C798",
+   "repeat_of": null,
+   "reasons": [
+    "A: polarity detect is new",
+    "B: polarity detect is new"
+   ]
+  },
+  "Lane reversal mapper": {
+   "id": "C799",
+   "repeat_of": null,
+   "reasons": [
+    "A: lane reversal map is new",
+    "B: lane reversal mapping is new"
+   ]
+  },
+  "128b/130b encoder": {
+   "id": "C800",
+   "repeat_of": null,
+   "reasons": [
+    "A: header prepend, not a gearbox (K191)",
+    "B: header prepend, no gearbox buffer"
+   ]
+  },
+  "Bit slip aligner": {
+   "id": "C801",
+   "repeat_of": "C211",
+   "reasons": [
+    "A: same one-bit slip word aligner",
+    "B: same bit-slip word alignment"
+   ]
+  },
+  "Multi-lane byte striper": {
+   "id": "C802",
+   "repeat_of": "C056",
+   "reasons": [
+    "A: round-robin distribution across outputs",
+    "B: round-robin distribution across outputs"
+   ]
+  },
+  "NRZI encoder": {
+   "id": "C803",
+   "repeat_of": "C157",
+   "reasons": [
+    "A: NRZI line encoder is new",
+    "B: toggle-on-input bit is a T flip-flop",
+    "decider: toggle-on-input bit = T flop"
+   ]
+  },
+  "MLT-3 encoder": {
+   "id": "C804",
+   "repeat_of": null,
+   "reasons": [
+    "A: MLT-3 is new",
+    "B: three-level line coding is new"
+   ]
+  },
+  "4b/5b encoder": {
+   "id": "C805",
+   "repeat_of": null,
+   "reasons": [
+    "A: no running disparity; differs from 8b/10b",
+    "B: no disparity; differs from 8b/10b"
+   ]
+  },
+  "PAM4 Gray symbol mapper": {
+   "id": "C806",
+   "repeat_of": null,
+   "reasons": [
+    "A: PAM4 mapping with precoder is new",
+    "B: PAM4 mapping with precoder is new"
+   ]
+  },
+  "Bit stuffing unit": {
+   "id": "C807",
+   "repeat_of": "C219",
+   "reasons": [
+    "A: zero after run of ones with stall",
+    "B: same zero insertion after ones run"
+   ]
+  },
+  "Link replay buffer": {
+   "id": "C808",
+   "repeat_of": "C539",
+   "reasons": [
+    "A: same hold-until-ack replay buffer",
+    "B: same replay-until-acked buffer"
+   ]
+  },
+  "Ethernet auto-negotiation engine": {
+   "id": "C809",
+   "repeat_of": "C433",
+   "reasons": [
+    "A: same Ethernet auto-negotiation",
+    "B: same Ethernet auto-negotiation"
+   ]
+  },
+  "Memory-to-memory copy engine": {
+   "id": "C810",
+   "repeat_of": "K029",
+   "reasons": [
+    "A: DMA burst transfer engine",
+    "B: basic DMA burst copy with count"
+   ]
+  },
+  "2D strided transfer engine": {
+   "id": "C811",
+   "repeat_of": null,
+   "reasons": [
+    "A: 2D strided DMA is new",
+    "B: 2D strided addressing is new"
+   ]
+  },
+  "3D tensor transfer engine": {
+   "id": "C812",
+   "repeat_of": "C811",
+   "reasons": [
+    "A: strided DMA, one more dimension",
+    "B: strided transfer with one more dimension"
+   ]
+  },
+  "Circular buffer DMA channel": {
+   "id": "C813",
+   "repeat_of": null,
+   "reasons": [
+    "A: ring-wrapping DMA channel is new",
+    "B: wrapping ring DMA is new"
+   ]
+  },
+  "Transfer interrupt generator": {
+   "id": "C814",
+   "repeat_of": "K270",
+   "reasons": [
+    "A: pending/mask/clear interrupt status",
+    "B: pending plus mask interrupt status"
+   ]
+  },
+  "Byte realignment unit": {
+   "id": "C815",
+   "repeat_of": "C387",
+   "reasons": [
+    "A: byte realigner with residue and offset",
+    "B: same byte realignment with residue"
+   ]
+  },
+  "Data width packer/unpacker": {
+   "id": "C816",
+   "repeat_of": "C725",
+   "reasons": [
+    "A: narrow/wide lane packing and unpacking",
+    "B: same pack/unpack width converter"
+   ]
+  },
+  "Pattern fill engine": {
+   "id": "C817",
+   "repeat_of": null,
+   "reasons": [
+    "A: pattern fill DMA is new",
+    "B: pattern fill is new"
+   ]
+  },
+  "Endianness byte-swap stage": {
+   "id": "C818",
+   "repeat_of": "C195",
+   "reasons": [
+    "A: mode-selected byte swap",
+    "B: same selectable byte swap"
+   ]
+  },
+  "Completion ring writer": {
+   "id": "C819",
+   "repeat_of": null,
+   "reasons": [
+    "A: completion ring producer is new",
+    "B: completion ring producer is new"
+   ]
+  },
+  "Descriptor prefetch cache": {
+   "id": "C820",
+   "repeat_of": null,
+   "reasons": [
+    "A: descriptor cache, more than fetch (K271)",
+    "B: descriptor prefetch cache is new"
+   ]
+  },
+  "Write response tracker": {
+   "id": "C821",
+   "repeat_of": "K019",
+   "reasons": [
+    "A: outstanding issued-vs-acked count",
+    "B: per-channel outstanding count plus errors",
+    "decider: issued vs acked outstanding count per channel"
+   ]
+  },
+  "Channel context store": {
+   "id": "C822",
+   "repeat_of": null,
+   "reasons": [
+    "A: save/restore context swap",
+    "B: context save/restore is new"
+   ]
+  },
+  "Burst boundary splitter": {
+   "id": "C823",
+   "repeat_of": "C728",
+   "reasons": [
+    "A: split bursts at boundary limits",
+    "B: same split at address boundary"
+   ]
+  },
+  "Indexed gather engine": {
+   "id": "C824",
+   "repeat_of": null,
+   "reasons": [
+    "A: indexed gather is new",
+    "B: indexed gather is new"
+   ]
+  },
+  "Peripheral watermark trigger": {
+   "id": "C825",
+   "repeat_of": "C347",
+   "reasons": [
+    "A: fill level vs programmable watermarks",
+    "B: FIFO level vs threshold registers"
+   ]
+  },
+  "Channel control register block": {
+   "id": "C826",
+   "repeat_of": null,
+   "reasons": [
+    "A: per-channel control register block",
+    "B: channel control block; no close match"
+   ]
+  },
+  "DMA error capture unit": {
+   "id": "C827",
+   "repeat_of": null,
+   "reasons": [
+    "A: first-error detail capture is new",
+    "B: first-error capture is new"
+   ]
+  },
+  "Memory search/compare engine": {
+   "id": "C828",
+   "repeat_of": null,
+   "reasons": [
+    "A: memory scan/compare is new",
+    "B: memory scan/compare is new"
+   ]
+  },
+  "Stream-to-memory writer": {
+   "id": "C829",
+   "repeat_of": null,
+   "reasons": [
+    "A: stream-to-memory writer is new",
+    "B: stream-to-memory writer is new"
+   ]
+  },
+  "Memory-to-stream reader": {
+   "id": "C830",
+   "repeat_of": null,
+   "reasons": [
+    "A: reverse direction of C829",
+    "B: opposite direction from C829"
+   ]
+  },
+  "Cache maintenance injector": {
+   "id": "C831",
+   "repeat_of": null,
+   "reasons": [
+    "A: walks address range, not set/way (C590)",
+    "B: address range, not set/way walk"
+   ]
+  },
+  "Address mode generator": {
+   "id": "C832",
+   "repeat_of": "K204",
+   "reasons": [
+    "A: per-beat address generation by mode",
+    "B: counter stepping by programmed stride"
+   ]
+  },
+  "DMA trigger routing matrix": {
+   "id": "C833",
+   "repeat_of": null,
+   "reasons": [
+    "A: event crossbar with pending latches",
+    "B: per-channel trigger select matrix; new"
+   ]
+  },
+  "Edge-triggered interrupt latch": {
+   "id": "C834",
+   "repeat_of": null,
+   "reasons": [
+    "A: edge detect plus sticky pending combined",
+    "B: edge detect plus sticky pending; new"
+   ]
+  },
+  "Level-sensitive interrupt gate": {
+   "id": "C835",
+   "repeat_of": null,
+   "reasons": [
+    "A: level gate with polarity is new",
+    "B: level gate with polarity is new"
+   ]
+  },
+  "Interrupt mask register bank": {
+   "id": "C836",
+   "repeat_of": "C158",
+   "reasons": [
+    "A: register with separate set and clear ports",
+    "B: mask with set/clear gating; no toggle",
+    "decider: per-bit set/clear bits = SR, width only"
+   ]
+  },
+  "Programmable priority level array": {
+   "id": "C837",
+   "repeat_of": null,
+   "reasons": [
+    "A: priority storage only, no selection",
+    "B: priority storage only, no selection"
+   ]
+  },
+  "Priority threshold filter": {
+   "id": "C838",
+   "repeat_of": "C092",
+   "reasons": [
+    "A: block priorities at or below current level",
+    "B: blocks priorities at or below level"
+   ]
+  },
+  "In-service register stack": {
+   "id": "C839",
+   "repeat_of": null,
+   "reasons": [
+    "A: in-service nesting tracker",
+    "B: in-service nesting tracker is new"
+   ]
+  },
+  "Claim/complete gateway": {
+   "id": "C840",
+   "repeat_of": null,
+   "reasons": [
+    "A: claim/complete gateway is new",
+    "B: claim/complete flow is new"
+   ]
+  },
+  "Vectored interrupt address generator": {
+   "id": "C841",
+   "repeat_of": null,
+   "reasons": [
+    "A: computed vector vs table (K149)",
+    "B: computed vector, not table K149"
+   ]
+  },
+  "Interrupt routing table": {
+   "id": "C842",
+   "repeat_of": null,
+   "reasons": [
+    "A: route interrupts to target cores",
+    "B: per-source target mask; new",
+    "decider: per-source multicast table, no pending state"
+   ]
+  },
+  "Inter-processor interrupt generator": {
+   "id": "C843",
+   "repeat_of": "K269",
+   "reasons": [
+    "A: remote-set pending bits",
+    "B: remote-set pending bits like doorbell"
+   ]
+  },
+  "Message-signaled interrupt decoder": {
+   "id": "C844",
+   "repeat_of": "K269",
+   "reasons": [
+    "A: write to doorbell sets pending",
+    "B: write-to-interrupt decode is new",
+    "decider: remote write sets pending bits = doorbell"
+   ]
+  },
+  "MSI-X vector table": {
+   "id": "C845",
+   "repeat_of": null,
+   "reasons": [
+    "A: generates MSI-X messages",
+    "B: MSI-X table is new"
+   ]
+  },
+  "Interrupt translation service": {
+   "id": "C846",
+   "repeat_of": null,
+   "reasons": [
+    "A: interrupt translation is new",
+    "B: translation service is new"
+   ]
+  },
+  "Locality-specific peripheral interrupt pending table": {
+   "id": "C847",
+   "repeat_of": null,
+   "reasons": [
+    "A: memory-backed pending table",
+    "B: memory-backed pending table is new"
+   ]
+  },
+  "Interrupt coalescing timer": {
+   "id": "C848",
+   "repeat_of": null,
+   "reasons": [
+    "A: count-or-time coalescing is new",
+    "B: count-or-time coalescing is new"
+   ]
+  },
+  "Interrupt rate moderator": {
+   "id": "C849",
+   "repeat_of": null,
+   "reasons": [
+    "A: minimum-interval moderation",
+    "B: minimum interval moderator is new"
+   ]
+  },
+  "Fast interrupt request bypass": {
+   "id": "C850",
+   "repeat_of": "C026",
+   "reasons": [
+    "A: FIQ bypass around priority logic",
+    "B: registered-select mux plus enable",
+    "decider: registered-select mux plus enable"
+   ]
+  },
+  "Non-maskable interrupt latch": {
+   "id": "C851",
+   "repeat_of": null,
+   "reasons": [
+    "A: NMI pending plus in-progress",
+    "B: pending plus in-progress block; new"
+   ]
+  },
+  "Daisy-chain interrupt acknowledge cell": {
+   "id": "C852",
+   "repeat_of": null,
+   "reasons": [
+    "A: daisy-chain acknowledge is new",
+    "B: daisy-chain acknowledge is new"
+   ]
+  },
+  "Cascaded slave controller link": {
+   "id": "C853",
+   "repeat_of": null,
+   "reasons": [
+    "A: cascade link is new",
+    "B: cascade link is new"
+   ]
+  },
+  "Interrupt preemption and tail-chaining unit": {
+   "id": "C854",
+   "repeat_of": null,
+   "reasons": [
+    "A: preemption/tail-chaining is new",
+    "B: preemption/tail-chain is new"
+   ]
+  },
+  "Wake-up interrupt controller": {
+   "id": "C855",
+   "repeat_of": "C679",
+   "reasons": [
+    "A: wake-enable mask plus latched wake source",
+    "B: same wake mask plus latched source"
+   ]
+  },
+  "Virtual interrupt list register file": {
+   "id": "C856",
+   "repeat_of": null,
+   "reasons": [
+    "A: virtual interrupt list is new",
+    "B: virtual interrupt list is new"
+   ]
+  },
+  "Interrupt pending snapshot register": {
+   "id": "C857",
+   "repeat_of": "K270",
+   "reasons": [
+    "A: raw plus masked pending status",
+    "B: raw and masked pending status"
+   ]
+  },
+  "Spurious interrupt detector": {
+   "id": "C858",
+   "repeat_of": null,
+   "reasons": [
+    "A: spurious vector handling is new",
+    "B: spurious vector detect is new"
+   ]
+  },
+  "Windowed watchdog": {
+   "id": "C859",
+   "repeat_of": null,
+   "reasons": [
+    "A: early-service fault differs from K016",
+    "B: early fault differs from K016"
+   ]
+  },
+  "Center-aligned PWM generator": {
+   "id": "C860",
+   "repeat_of": null,
+   "reasons": [
+    "A: up/down counting differs from K018",
+    "B: up/down counting differs from K018"
+   ]
+  },
+  "Dead-time complementary PWM": {
+   "id": "C861",
+   "repeat_of": null,
+   "reasons": [
+    "A: dead-time complementary pair is new",
+    "B: dead-time pair is new"
+   ]
+  },
+  "Input capture unit": {
+   "id": "C862",
+   "repeat_of": null,
+   "reasons": [
+    "A: edge-select capture with overcapture flag; not just a snapshot register",
+    "B: edge-select capture with overcapture flag; not just a snapshot register"
+   ]
+  },
+  "Output compare unit": {
+   "id": "C863",
+   "repeat_of": null,
+   "reasons": [
+    "A: drives a pin with set/clear/toggle actions, more than a match flag",
+    "B: drives pin with set/clear/toggle modes, unlike match-flag units"
+   ]
+  },
+  "One-shot monostable timer": {
+   "id": "C864",
+   "repeat_of": "K168",
+   "reasons": [
+    "A: same fixed-width pulse on trigger with a reload counter (one-shot)",
+    "B: one-shot pulse of set width after trigger = pulse stretcher"
+   ]
+  },
+  "Auto-reload timer with preload": {
+   "id": "C865",
+   "repeat_of": null,
+   "reasons": [
+    "A: same period counter with shadow/active period copied at the boundary",
+    "B: timer with shadow period/compare preload; distinct from plain auto-reload or divider",
+    "decider: adds shadowed compare channel beyond C625"
+   ]
+  },
+  "System tick timer": {
+   "id": "C866",
+   "repeat_of": "K219",
+   "reasons": [
+    "A: basic reload timer with control register and interrupt flag",
+    "B: periodic reload down counter tick = auto-reload down counter"
+   ]
+  },
+  "Timer event queue": {
+   "id": "C867",
+   "repeat_of": null,
+   "reasons": [
+    "A: picks the earliest deadline from an array; not a FIFO or heap",
+    "B: earliest-deadline selection among unordered entries"
+   ]
+  },
+  "Hierarchical timing wheel": {
+   "id": "C868",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: hierarchical timing wheel",
+    "B: multi-level timing wheel is new"
+   ]
+  },
+  "Pulse-width measurement unit": {
+   "id": "C869",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: measures high time and period",
+    "B: measures high time and period; new"
+   ]
+  },
+  "Missing-pulse detector": {
+   "id": "C870",
+   "repeat_of": "K016",
+   "reasons": [
+    "A: timeout counter restarted by each pulse, alarm on expiry = watchdog",
+    "B: pulse restarts timeout, alarm on expiry = watchdog"
+   ]
+  },
+  "Bus transaction timeout monitor": {
+   "id": "C871",
+   "repeat_of": "C737",
+   "reasons": [
+    "A: same per-transaction bus timeout monitor",
+    "B: same per-transaction bus timeout monitor"
+   ]
+  },
+  "Spread-spectrum PWM": {
+   "id": "C872",
+   "repeat_of": null,
+   "reasons": [
+    "A: random period dither on PWM; new",
+    "B: random period dither adds PRNG state"
+   ]
+  },
+  "Dithered high-resolution PWM": {
+   "id": "C873",
+   "repeat_of": null,
+   "reasons": [
+    "A: fractional duty accumulator; new",
+    "B: fractional duty error accumulator; new"
+   ]
+  },
+  "Pulse-train burst generator": {
+   "id": "C874",
+   "repeat_of": "C641",
+   "reasons": [
+    "A: same N-pulse burst on request; spacing is a parameter",
+    "B: emit N pulses then stop = clock burst generator"
+   ]
+  },
+  "Programmable delay pulse generator": {
+   "id": "C875",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds a delay phase before the pulse; new",
+    "B: adds programmable delay phase before pulse"
+   ]
+  },
+  "Multi-phase interleaved PWM": {
+   "id": "C876",
+   "repeat_of": null,
+   "reasons": [
+    "A: phase-shifted PWM channels with duty; not a clock divider",
+    "B: phase-shifted PWM channels with duty; not divided clocks"
+   ]
+  },
+  "PWM fault trip latch": {
+   "id": "C877",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: fault trip latch",
+    "B: fault-trip safe-state latch; new"
+   ]
+  },
+  "Servo pulse generator": {
+   "id": "C878",
+   "repeat_of": "K018",
+   "reasons": [
+    "A: PWM with a fixed frame period; only the parameters differ",
+    "B: servo pulse = PWM with period counter and width register"
+   ]
+  },
+  "LED breathing engine": {
+   "id": "C879",
+   "repeat_of": null,
+   "reasons": [
+    "A: duty ramp with a direction bit; new",
+    "B: duty ramp up/down adds state"
+   ]
+  },
+  "Gated event counter": {
+   "id": "C880",
+   "repeat_of": null,
+   "reasons": [
+    "A: external gate, no gate timer; differs from frequency meter",
+    "B: external gate input; frequency meter times its own gate"
+   ]
+  },
+  "Stopwatch lap timer": {
+   "id": "C881",
+   "repeat_of": "K221",
+   "reasons": [
+    "A: running counter plus snapshot capture; run/stop is just an enable",
+    "B: running count with capture on trigger; run/stop is minor enable"
+   ]
+  },
+  "Low-power wake-up timer": {
+   "id": "C882",
+   "repeat_of": "C680",
+   "reasons": [
+    "A: same always-on slow-clock wake timer",
+    "B: same always-on slow-clock wake timer"
+   ]
+  },
+  "CRC residue checker": {
+   "id": "C883",
+   "repeat_of": null,
+   "reasons": [
+    "A: checks the CRC residue with an error flag; job differs from generator",
+    "B: checker with end-of-frame error decision vs generator"
+   ]
+  },
+  "Table-driven parallel CRC engine": {
+   "id": "C884",
+   "repeat_of": "C510",
+   "reasons": [
+    "A: same table-driven CRC; only bytes per cycle differ",
+    "B: table-driven CRC; only bytes per cycle differs"
+   ]
+  },
+  "Fletcher checksum unit": {
+   "id": "C885",
+   "repeat_of": null,
+   "reasons": [
+    "A: two running sums; differs from one's-complement checksum",
+    "B: two running sums; differs from single one's-complement sum"
+   ]
+  },
+  "Adler-32 checksum unit": {
+   "id": "C886",
+   "repeat_of": "C885",
+   "reasons": [
+    "A: Adler-32 is Fletcher with a different modulus",
+    "B: Adler-32 is Fletcher with different modulus"
+   ]
+  },
+  "Reed-Solomon syndrome calculator": {
+   "id": "C887",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: RS syndrome calc",
+    "B: RS syndrome evaluation; new"
+   ]
+  },
+  "Berlekamp-Massey solver": {
+   "id": "C888",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: Berlekamp-Massey",
+    "B: Berlekamp-Massey; new"
+   ]
+  },
+  "Chien search unit": {
+   "id": "C889",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: Chien search",
+    "B: Chien search; new"
+   ]
+  },
+  "Forney error evaluator": {
+   "id": "C890",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: Forney",
+    "B: Forney evaluator; new"
+   ]
+  },
+  "BCH encoder": {
+   "id": "C891",
+   "repeat_of": "K086",
+   "reasons": [
+    "A: same LFSR polynomial-division remainder; only the polynomial differs",
+    "B: LFSR polynomial division remainder = CRC generator, other polynomial"
+   ]
+  },
+  "Golay code encoder/decoder": {
+   "id": "C892",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: Golay code",
+    "B: Golay codec; new"
+   ]
+  },
+  "LDPC check-node processor": {
+   "id": "C893",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: LDPC check node",
+    "B: LDPC check node; new"
+   ]
+  },
+  "LDPC variable-node processor": {
+   "id": "C894",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: LDPC variable node",
+    "B: LDPC variable node; new"
+   ]
+  },
+  "Viterbi branch metric unit": {
+   "id": "C895",
+   "repeat_of": null,
+   "reasons": [
+    "A: branch metrics, not ACS",
+    "B: branch metric unit distinct from ACS"
+   ]
+  },
+  "Viterbi traceback unit": {
+   "id": "C896",
+   "repeat_of": null,
+   "reasons": [
+    "A: traceback, not ACS",
+    "B: traceback unit distinct from ACS"
+   ]
+  },
+  "Turbo SISO decoder": {
+   "id": "C897",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: turbo SISO",
+    "B: turbo SISO; new"
+   ]
+  },
+  "Polar successive-cancellation decoder": {
+   "id": "C898",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: polar SC decoder",
+    "B: polar SC decoder; new"
+   ]
+  },
+  "Convolutional interleaver": {
+   "id": "C899",
+   "repeat_of": null,
+   "reasons": [
+    "A: convolutional, not block, interleaver",
+    "B: convolutional, not block, interleaver"
+   ]
+  },
+  "Memory scrubber": {
+   "id": "C900",
+   "repeat_of": "C594",
+   "reasons": [
+    "A: same scrubber: address pointer, interval timer, error count",
+    "B: background ECC scrub with pointer, timer, error count"
+   ]
+  },
+  "ECC error logger": {
+   "id": "C901",
+   "repeat_of": null,
+   "reasons": [
+    "A: ECC log with counters; new",
+    "B: ECC error capture/log; new"
+   ]
+  },
+  "Two-dimensional parity checker": {
+   "id": "C902",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: 2D parity",
+    "B: row/column parity correction; new"
+   ]
+  },
+  "Chipkill symbol-correcting decoder": {
+   "id": "C903",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: chipkill",
+    "B: chipkill symbol correction; new"
+   ]
+  },
+  "RAID-6 P+Q parity engine": {
+   "id": "C904",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: RAID-6 P+Q",
+    "B: RAID-6 P+Q; new"
+   ]
+  },
+  "ARQ retransmission controller": {
+   "id": "C905",
+   "repeat_of": "C539",
+   "reasons": [
+    "A: same keep-until-ack retransmit buffer",
+    "B: retransmit buffer with seq numbers, timer, retry count = link replay buffer"
+   ]
+  },
+  "Lockstep duplicate-and-compare checker": {
+   "id": "C906",
+   "repeat_of": null,
+   "reasons": [
+    "A: duplicate-and-compare, not a TMR voter",
+    "B: duplicate-compare detects, TMR votes"
+   ]
+  },
+  "Residue-code arithmetic checker": {
+   "id": "C907",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: residue checker",
+    "B: residue arithmetic checker; new"
+   ]
+  },
+  "Composite-field AES S-box": {
+   "id": "C908",
+   "repeat_of": null,
+   "reasons": [
+    "A: built from logic, not a ROM; different build",
+    "B: composite-field logic, not table ROM"
+   ]
+  },
+  "GHASH multiplier": {
+   "id": "C909",
+   "repeat_of": null,
+   "reasons": [
+    "A: running GHASH tag with chaining; more than a plain GF multiply",
+    "B: GF multiply-accumulate with tag, not plain multiplier"
+   ]
+  },
+  "XTS tweak generator": {
+   "id": "C910",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: XTS tweak",
+    "B: XTS tweak generator; new"
+   ]
+  },
+  "CBC chaining controller": {
+   "id": "C911",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: CBC chaining",
+    "B: CBC chaining; new"
+   ]
+  },
+  "CTR counter-block generator": {
+   "id": "C912",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: CTR block gen",
+    "B: CTR counter blocks; new"
+   ]
+  },
+  "Keccak-f permutation core": {
+   "id": "C913",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: Keccak",
+    "B: Keccak-f; new"
+   ]
+  },
+  "Sponge absorb/squeeze controller": {
+   "id": "C914",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: sponge controller",
+    "B: sponge controller; new"
+   ]
+  },
+  "SHA-2 message schedule expander": {
+   "id": "C915",
+   "repeat_of": null,
+   "reasons": [
+    "A: schedule only, a part of the SHA core",
+    "B: standalone schedule expander, not full SHA core"
+   ]
+  },
+  "Hash padding unit": {
+   "id": "C916",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: hash padding",
+    "B: hash padding; new"
+   ]
+  },
+  "HMAC sequencer": {
+   "id": "C917",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: HMAC sequencer",
+    "B: HMAC sequencer; new"
+   ]
+  },
+  "MD5 round core": {
+   "id": "C918",
+   "repeat_of": null,
+   "reasons": [
+    "A: different algorithm from SHA-256",
+    "B: MD5; new"
+   ]
+  },
+  "DES Feistel round unit": {
+   "id": "C919",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: DES",
+    "B: DES; new"
+   ]
+  },
+  "SM4 round unit": {
+   "id": "C920",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: SM4",
+    "B: SM4; new"
+   ]
+  },
+  "BLAKE2 G-function core": {
+   "id": "C921",
+   "repeat_of": null,
+   "reasons": [
+    "A: hash with chaining/offset state; not ChaCha core",
+    "B: BLAKE2 hash mixing with message words, not ChaCha core"
+   ]
+  },
+  "Trivium stream cipher core": {
+   "id": "C922",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: Trivium",
+    "B: Trivium specific cipher; new"
+   ]
+  },
+  "Poly1305 accumulator": {
+   "id": "C923",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: Poly1305",
+    "B: Poly1305; new"
+   ]
+  },
+  "Elliptic-curve point adder/doubler": {
+   "id": "C924",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: EC point add",
+    "B: EC point add/double; new"
+   ]
+  },
+  "Montgomery ladder scalar multiplier": {
+   "id": "C925",
+   "repeat_of": null,
+   "reasons": [
+    "A: EC ladder, not modular exponentiation",
+    "B: EC ladder, not modular exponentiation"
+   ]
+  },
+  "RSA CRT recombination unit": {
+   "id": "C926",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: CRT recombine",
+    "B: CRT recombination; new"
+   ]
+  },
+  "NTT butterfly unit": {
+   "id": "C927",
+   "repeat_of": null,
+   "reasons": [
+    "A: modular-integer butterfly, not complex FFT",
+    "B: modular NTT butterfly vs complex FFT butterfly"
+   ]
+  },
+  "TRNG health-test monitor": {
+   "id": "C928",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: TRNG health test",
+    "B: entropy health tests; new"
+   ]
+  },
+  "Von Neumann debiaser": {
+   "id": "C929",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: Von Neumann debiaser",
+    "B: Von Neumann debiaser; new"
+   ]
+  },
+  "CTR_DRBG state engine": {
+   "id": "C930",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: DRBG",
+    "B: full DRBG state engine; new"
+   ]
+  },
+  "Secure key slot vault": {
+   "id": "C931",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: key vault",
+    "B: key slot vault; new"
+   ]
+  },
+  "Halfband interpolator": {
+   "id": "C932",
+   "repeat_of": "K234",
+   "reasons": [
+    "A: a 2x polyphase interpolator; ratio is a parameter",
+    "B: halfband zero-tap structure, not generic resampler",
+    "decider: 2x polyphase interpolator; zero taps are build only"
+   ]
+  },
+  "Lattice filter": {
+   "id": "C933",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: lattice filter",
+    "B: lattice filter; new"
+   ]
+  },
+  "LMS adaptive filter": {
+   "id": "C934",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: LMS adaptive",
+    "B: adaptive LMS; new"
+   ]
+  },
+  "Goertzel tone detector": {
+   "id": "C935",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: Goertzel",
+    "B: Goertzel tone detector; new"
+   ]
+  },
+  "Hilbert transformer": {
+   "id": "C936",
+   "repeat_of": null,
+   "reasons": [
+    "A: two outputs (I/Q) with matched delay; more than a plain FIR",
+    "B: Hilbert quadrature job; new"
+   ]
+  },
+  "Complex digital mixer": {
+   "id": "C937",
+   "repeat_of": null,
+   "reasons": [
+    "A: 4-product mixer vs 3-mult Gauss multiplier; different build",
+    "B: 4-product mixer vs Gauss 3-mult complex multiplier"
+   ]
+  },
+  "DC-blocking filter": {
+   "id": "C938",
+   "repeat_of": null,
+   "reasons": [
+    "A: first-order high-pass; not a biquad",
+    "B: first-order DC blocker; new"
+   ]
+  },
+  "Farrow fractional-delay interpolator": {
+   "id": "C939",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: Farrow",
+    "B: Farrow; new"
+   ]
+  },
+  "Costas loop phase discriminator": {
+   "id": "C940",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: Costas",
+    "B: Costas discriminator; new"
+   ]
+  },
+  "Gardner timing error detector": {
+   "id": "C941",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: Gardner",
+    "B: Gardner TED; new"
+   ]
+  },
+  "Sliding DFT bin": {
+   "id": "C942",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: sliding DFT",
+    "B: sliding DFT; new"
+   ]
+  },
+  "R2SDF FFT stage": {
+   "id": "C943",
+   "repeat_of": null,
+   "reasons": [
+    "A: adds feedback delay memory; more than a butterfly",
+    "B: SDF FFT stage with feedback delay; new"
+   ]
+  },
+  "Alpha-max-beta-min magnitude estimator": {
+   "id": "C944",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: magnitude estimate",
+    "B: magnitude estimator; new"
+   ]
+  },
+  "RMS power meter": {
+   "id": "C945",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: RMS meter",
+    "B: RMS meter; new"
+   ]
+  },
+  "Exponential moving-average filter": {
+   "id": "C946",
+   "repeat_of": null,
+   "reasons": [
+    "A: leaky integrator; not a boxcar average",
+    "B: leaky integrator vs windowed moving average"
+   ]
+  },
+  "Feedback comb filter": {
+   "id": "C947",
+   "repeat_of": null,
+   "reasons": [
+    "A: feedback around a delay; not a plain delay line",
+    "B: feedback comb; new"
+   ]
+  },
+  "Schroeder allpass section": {
+   "id": "C948",
+   "repeat_of": null,
+   "reasons": [
+    "A: allpass behaviour differs from comb",
+    "B: allpass; new"
+   ]
+  },
+  "TPDF dither generator": {
+   "id": "C949",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: TPDF dither",
+    "B: TPDF dither; new"
+   ]
+  },
+  "Overlap-add block convolver": {
+   "id": "C950",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: overlap-add",
+    "B: overlap-add; new"
+   ]
+  },
+  "Zero-crossing pitch estimator": {
+   "id": "C951",
+   "repeat_of": null,
+   "reasons": [
+    "A: sign-change period on samples; new",
+    "B: sample sign-change period estimate; new"
+   ]
+  },
+  "IQ imbalance corrector": {
+   "id": "C952",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: IQ corrector",
+    "B: IQ correction; new"
+   ]
+  },
+  "Constellation slicer": {
+   "id": "C953",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: slicer",
+    "B: slicer is opposite of mapper"
+   ]
+  },
+  "Welch spectral averager": {
+   "id": "C954",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: spectral averager",
+    "B: spectral averager; new"
+   ]
+  },
+  "Dynamic range compressor": {
+   "id": "C955",
+   "repeat_of": null,
+   "reasons": [
+    "A: threshold/ratio compressor, not a feedback AGC",
+    "B: threshold/ratio compressor vs target-level AGC"
+   ]
+  },
+  "Distributed arithmetic filter": {
+   "id": "C956",
+   "repeat_of": "C289",
+   "reasons": [
+    "A: same DA bit-serial ROM shift-accumulate",
+    "B: same distributed-arithmetic bit-serial LUT sum of products"
+   ]
+  },
+  "Tournament branch predictor": {
+   "id": "C957",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: tournament",
+    "B: tournament predictor; new"
+   ]
+  },
+  "TAGE branch predictor": {
+   "id": "C958",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: TAGE",
+    "B: TAGE; new"
+   ]
+  },
+  "Perceptron branch predictor": {
+   "id": "C959",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: perceptron",
+    "B: perceptron; new"
+   ]
+  },
+  "Loop predictor": {
+   "id": "C960",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: loop predictor",
+    "B: loop predictor; new"
+   ]
+  },
+  "Indirect target predictor": {
+   "id": "C961",
+   "repeat_of": null,
+   "reasons": [
+    "A: path-history indirect predictor; not a BTB",
+    "B: path-history indirect predictor vs plain BTB"
+   ]
+  },
+  "Speculative history checkpoint unit": {
+   "id": "C962",
+   "repeat_of": null,
+   "reasons": [
+    "A: history plus snapshots; new",
+    "B: history with checkpoint restore; new"
+   ]
+  },
+  "Fetch target queue": {
+   "id": "C963",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: FTQ",
+    "B: fetch target queue; new"
+   ]
+  },
+  "Next-line predictor": {
+   "id": "C964",
+   "repeat_of": null,
+   "reasons": [
+    "A: next-line/way guess; differs from way predictor",
+    "B: next-line/way fetch predictor; new"
+   ]
+  },
+  "Compressed instruction expander": {
+   "id": "C965",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: compressed expander",
+    "B: compressed expander; new"
+   ]
+  },
+  "Instruction length decoder": {
+   "id": "C966",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: length decoder",
+    "B: length decoder; new"
+   ]
+  },
+  "Macro-op fusion unit": {
+   "id": "C967",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: macro-op fusion",
+    "B: macro-op fusion; new"
+   ]
+  },
+  "Loop stream buffer": {
+   "id": "C968",
+   "repeat_of": "C581",
+   "reasons": [
+    "A: same loop capture-and-replay buffer",
+    "B: loop capture and replay buffer"
+   ]
+  },
+  "Branch mask allocator": {
+   "id": "C969",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: branch mask",
+    "B: branch mask allocator; new"
+   ]
+  },
+  "Age matrix selector": {
+   "id": "C970",
+   "repeat_of": null,
+   "reasons": [
+    "A: age-on-insert matrix, not grant-recency",
+    "B: allocation-order age matrix vs grant-updated matrix arbiter"
+   ]
+  },
+  "Dependency matrix wakeup unit": {
+   "id": "C971",
+   "repeat_of": null,
+   "reasons": [
+    "A: matrix build vs tag CAM; different build",
+    "B: dependency matrix vs tag-broadcast CAM wakeup"
+   ]
+  },
+  "Register busy-bit table": {
+   "id": "C972",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: busy bits",
+    "B: busy-bit table; new"
+   ]
+  },
+  "Store-set dependence predictor": {
+   "id": "C973",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: store sets",
+    "B: store-set predictor; new"
+   ]
+  },
+  "Load replay unit": {
+   "id": "C974",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: load replay",
+    "B: load replay; new"
+   ]
+  },
+  "Branch resolution unit": {
+   "id": "C975",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: branch resolution",
+    "B: branch resolution; new"
+   ]
+  },
+  "Value predictor": {
+   "id": "C976",
+   "repeat_of": null,
+   "reasons": [
+    "A: predicts values, not prefetch addresses",
+    "B: value prediction job vs prefetch issue"
+   ]
+  },
+  "Fine-grained thread scheduler": {
+   "id": "C977",
+   "repeat_of": null,
+   "reasons": [
+    "A: thread selection with per-thread PCs; new",
+    "B: per-thread PCs plus rotation; new"
+   ]
+  },
+  "Zero-overhead loop controller": {
+   "id": "C978",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: zero-overhead loop",
+    "B: hardware loop fetch redirect; new"
+   ]
+  },
+  "LL/SC reservation monitor": {
+   "id": "C979",
+   "repeat_of": "C732",
+   "reasons": [
+    "A: same reservation address/valid cleared on writes",
+    "B: reservation address cleared by writes = exclusive monitor"
+   ]
+  },
+  "Writeback port arbiter": {
+   "id": "C980",
+   "repeat_of": null,
+   "reasons": [
+    "A: new: writeback slot booking",
+    "B: writeback slot reservation shift register; new"
+   ]
+  }
+ }
+}
