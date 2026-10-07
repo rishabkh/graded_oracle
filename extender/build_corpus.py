@@ -187,7 +187,7 @@ def flatten_record(record, idx, prefix="g0"):
             "invariant_templates": [template(x) for x in invariants],
         },
     }
-    for key in ("constructs_file", "scale"):
+    for key in ("constructs_file", "scale", "seed_weights", "model"):
         if key in record:
             row[key] = record[key]
     return row
@@ -251,6 +251,11 @@ def main(argv=None):
     p.add_argument("--id-prefix", default="g0",
                    help='row id prefix; the catalog run uses "c0"')
     args = p.parse_args(argv)
+    if args.source and not args.out:
+        # 8 Oct 2026: --source alone rebuilt v2's corpus from the catalog
+        # log and replaced all 228 of its first-generation rows
+        sys.exit("--source needs --out: a separate log must not be written "
+                 "into extender/corpus.jsonl; nothing was written")
     source = Path(args.source) if args.source else SOURCE_LOG
     corpus = Path(args.out) if args.out else CORPUS
 

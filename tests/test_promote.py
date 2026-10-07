@@ -107,3 +107,49 @@ def test_fixable_excludes_machinery_failures():
                         "reason": "with-invariants grade is ERROR, not PROVEN"})
     assert fixable({"verdict": "NOT_PROVEN",
                     "reason": "with-invariants grade is NOT_INDUCTIVE, not PROVEN"})
+
+
+# --- a separate corpus keeps its own names (8 Oct 2026) -----------------
+# A child of catalog design c0_000 used to be named g1_000, a name v2's
+# corpus already uses for a different design.
+
+def test_a_child_keeps_its_parents_letter():
+    c0 = dict(PARENT, id="c0_000")
+    _, rows = promote([c0], [rec(parent_id="c0_000")], compute_metrics=False)
+    assert rows[0]["id"] == "c1_000"
+    c1 = dict(rows[0])
+    # a grandchild must need a kind of fact its parent did not (ratchet)
+    _, rows2 = promote([c0, c1], [rec(parent_id="c1_000",
+                                      child_verilog=CHILD_V.replace(
+                                          "endmodule",
+                                          "always @(*) assert (b); endmodule"),
+                                      invariants=["deep == (a >= 1)",
+                                                  "b != c"],
+                                      extension_id="z")],
+                       compute_metrics=False)
+    assert rows2[0]["id"] == "c2_000"
+
+
+def test_letters_count_separately():
+    g1 = dict(PARENT, id="g1_004", generation=1)
+    c0 = dict(PARENT, id="c0_000")
+    _, rows = promote([g1, c0], [rec(parent_id="c0_000")],
+                      compute_metrics=False)
+    assert rows[0]["id"] == "c1_000"          # not c1_005: g's count is g's
+
+
+def test_promote_writes_only_when_told_to(tmp_path, monkeypatch):
+    """Found 8 Oct 2026: run with no options it would add 115 old rows to
+    v2's corpus. Writing now needs --write; the default only reports."""
+    import promote as P
+    corpus = tmp_path / "corpus.jsonl"
+    corpus.write_text(json.dumps(PARENT) + "\n")
+    log = tmp_path / "ext.jsonl"
+    log.write_text(json.dumps(rec()) + "\n")
+    monkeypatch.setattr(P, "CORPUS", corpus)
+    monkeypatch.setattr(P, "EXT_LOG", log)
+    before = corpus.read_text()
+    P.main([])
+    assert corpus.read_text() == before
+    P.main(["--write", "--no-metrics"])
+    assert len(corpus.read_text().splitlines()) == 2

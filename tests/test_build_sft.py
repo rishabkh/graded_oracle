@@ -381,3 +381,50 @@ def test_clean_and_preference_files_are_written(tmp_path):
     assert len(a) == 1 and set(a[0]) == {"prompt", "completion", "holdout"}
     assert len(b) == 1 and {"prompt", "chosen", "rejected", "holdout",
                             "id", "dropped", "counterexample"} <= set(b[0])
+
+
+# --- v2's rows plus a separate corpus (the catalog run, 8 Oct 2026) ------
+# Appending new rows to v2's file would silently re-pick the held-back
+# set (measured: 60 of v2's 66 held-back rows would be trained on). The
+# combined file marks every row instead: v2's keep v2's marks, new rows
+# are all trained on.
+
+import build_sft as bs                                           # noqa: E402
+
+
+def _rows(prefix, n):
+    return [dict(ROW, id=f"{prefix}_{i:03d}",
+                 verilog=ROW["verilog"].replace("endmodule",
+                                                f"// {prefix} {i}\nendmodule"))
+            for i in range(n)]
+
+
+def test_the_combined_file_keeps_v2s_marks_and_trains_every_new_row():
+    v2, new = _rows("g0", 30), _rows("c0", 5)
+    pairs = bs.build_combined_pairs(v2, new)
+    held = bs.held_back(v2)
+    v2_part = pairs[:30]
+    assert [p["holdout"] for p in v2_part] == [p["prompt"] in held
+                                               for p in bs.build_pairs(v2)]
+    assert [p["prompt"] for p in v2_part] == [p["prompt"] for p in
+                                              bs.build_pairs(v2)]
+    assert all(p["holdout"] is False for p in pairs[30:]) and len(pairs) == 35
+
+
+def test_a_new_question_equal_to_a_v2_question_is_refused():
+    import pytest
+    v2 = _rows("g0", 3)
+    with pytest.raises(ValueError):
+        bs.build_combined_pairs(v2, [dict(v2[1], id="c0_000")])
+
+
+def test_the_command_writes_a_fully_marked_file(tmp_path):
+    v2, new = tmp_path / "v2.jsonl", tmp_path / "new.jsonl"
+    v2.write_text("".join(json.dumps(r) + "\n" for r in _rows("g0", 20)))
+    new.write_text("".join(json.dumps(r) + "\n" for r in _rows("c0", 4)))
+    out = tmp_path / "combined.jsonl"
+    bs.main(["--corpus", str(v2), "--extra-corpus", str(new), "--out", str(out)])
+    lines = [json.loads(l) for l in out.read_text().splitlines()]
+    assert len(lines) == 24 and all(set(l) == {"prompt", "completion", "holdout"}
+                                    for l in lines)
+    assert sum(not l["holdout"] for l in lines[20:]) == 4

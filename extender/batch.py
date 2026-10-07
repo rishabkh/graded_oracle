@@ -40,6 +40,7 @@ from distractor import (Spinner, dump, OUT_LOG, MODEL, EFFORT,    # noqa: E402
                         build_prompt as distractor_prompt,
                         call_model as distractor_call, grade_extension)
 from promote import FIXER_QUEUE, promote, ratchet, route         # noqa: E402
+import distractor                                                # noqa: E402
 
 import contextlib
 
@@ -356,9 +357,26 @@ def main(argv=None):
                    help="corpus to read and append to. Point it at a copy "
                         "to run a probe without writing into the corpus the "
                         "training file is built from")
+    p.add_argument("--log-dir", type=Path, default=None,
+                   help="write the extension, queue and fixer logs here "
+                        "instead of extender/logs; required with any "
+                        "--corpus other than extender/corpus.jsonl")
     p.add_argument("--dry", action="store_true",
                    help="print the planned first tasks, call nothing")
     args = p.parse_args(argv)
+    # 8 Oct 2026: --corpus used to change only the corpus. The logs stayed
+    # v2's, so a later promote or fix run could copy another corpus's
+    # designs into v2's corpus under clashing names.
+    global QUEUE_LOG, FIXER_QUEUE
+    if not args.dry and args.log_dir is None and \
+            args.corpus.resolve() != CORPUS.resolve():
+        sys.exit("a corpus other than extender/corpus.jsonl needs its own "
+                 "--log-dir; nothing was run")
+    if args.log_dir is not None:
+        args.log_dir.mkdir(parents=True, exist_ok=True)
+        distractor.OUT_LOG = args.log_dir / "extensions.jsonl"
+        QUEUE_LOG = args.log_dir / "batch_queue.jsonl"
+        FIXER_QUEUE = args.log_dir / "fixer_queue.jsonl"
 
     corpus_rows = [json.loads(l)
                    for l in args.corpus.read_text().splitlines() if l.strip()]
@@ -416,7 +434,7 @@ def main(argv=None):
                             order=args.order, per_family=args.per_family)
     print(f"\nrun complete: {len(new_rows)} promoted "
           f"(corpus now {len(corpus_rows) + len(new_rows)} rows); "
-          f"log: {OUT_LOG.name}")
+          f"log: {distractor.OUT_LOG}")
 
 
 if __name__ == "__main__":

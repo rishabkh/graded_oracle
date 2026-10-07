@@ -308,3 +308,44 @@ def test_batch_record_keeps_the_models_reasoning(monkeypatch, ext_type):
     batch._real_executor(task, corpus)
     for field, text in REASONING[ext_type].items():
         assert rec.get(field) == text, f"{field} not saved"
+
+
+# --- a separate corpus gets separate logs (8 Oct 2026) -------------------
+# --corpus used to change only the corpus: the extension, queue and fixer
+# logs stayed v2's, so a later promote or fix run could copy catalog
+# designs into v2's corpus.
+
+def _logs(monkeypatch, tmp_path):
+    import json
+    import batch as B
+    import distractor as D
+    monkeypatch.setattr(D, "OUT_LOG", tmp_path / "v2_extensions.jsonl")
+    monkeypatch.setattr(B, "QUEUE_LOG", tmp_path / "v2_queue.jsonl")
+    monkeypatch.setattr(B, "FIXER_QUEUE", tmp_path / "v2_fixer.jsonl")
+    corpus = tmp_path / "corpus_catalog.jsonl"
+    corpus.write_text(json.dumps({"id": "c0_000", "generation": 0}) + "\n")
+
+    def fake_loop(rows, executor, **kw):
+        kw["on_task"]({"task_id": "t1"})
+        D.dump({"extension_id": "e1"})
+        kw["on_fixer"]({"extension_id": "e1"})
+        return []
+    monkeypatch.setattr(B, "run_loop", fake_loop)
+    return B, corpus
+
+
+def test_another_corpus_without_its_own_logs_is_refused(monkeypatch, tmp_path):
+    import pytest
+    B, corpus = _logs(monkeypatch, tmp_path)
+    with pytest.raises(SystemExit):
+        B.main(["--max-calls", "1", "--corpus", str(corpus)])
+    assert not list(tmp_path.glob("v2_*"))
+
+
+def test_a_log_dir_takes_all_three_logs(monkeypatch, tmp_path):
+    B, corpus = _logs(monkeypatch, tmp_path)
+    logs = tmp_path / "catalog_logs"
+    B.main(["--max-calls", "1", "--corpus", str(corpus), "--log-dir", str(logs)])
+    assert sorted(p.name for p in logs.iterdir()) == [
+        "batch_queue.jsonl", "extensions.jsonl", "fixer_queue.jsonl"]
+    assert not list(tmp_path.glob("v2_*"))

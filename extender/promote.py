@@ -19,8 +19,8 @@ broken hardware and that must be known before a Fixer papers over it.
 Idempotent: children are deduped by content hash, so re-running promote
 over the same log never double-writes.
 
-  venv/bin/python extender/promote.py          # rates + promote (needs yosys)
-  venv/bin/python extender/promote.py --dry    # rates only, write nothing
+  venv/bin/python extender/promote.py --write  # rates + promote (needs yosys)
+  venv/bin/python extender/promote.py          # rates only, write nothing
 """
 import argparse
 import hashlib
@@ -131,12 +131,15 @@ def promote(corpus_rows, ext_records, compute_metrics=True):
     by_id = {r["id"]: r for r in corpus_rows}
     seen_hashes = {r["content_hash"] for r in corpus_rows
                    if "content_hash" in r}
+    # names count per (letter, generation): a child keeps its parent's
+    # letter, so the catalog corpus's c0_000 has children c1_..., never
+    # v2's g1_... names (8 Oct 2026)
     next_seq = Counter()
     for r in corpus_rows:
-        m = re.fullmatch(r"g(\d+)_(\d+)", r["id"])
+        m = re.fullmatch(r"([a-z])(\d+)_(\d+)", r["id"])
         if m:
-            gen, seq = int(m.group(1)), int(m.group(2))
-            next_seq[gen] = max(next_seq[gen], seq + 1)
+            key = (m.group(1), int(m.group(2)))
+            next_seq[key] = max(next_seq[key], int(m.group(3)) + 1)
 
     buckets = {a: [] for a in
                ("accept", "reject", "fixer", "drop", "retire", "reformat")}
@@ -157,13 +160,14 @@ def promote(corpus_rows, ext_records, compute_metrics=True):
             continue
         seen_hashes.add(h)
         gen = parent.get("generation", 0) + 1
-        seq = next_seq[gen]
-        next_seq[gen] += 1
+        letter = parent["id"][0] if re.match(r"[a-z]\d", parent["id"]) else "g"
+        seq = next_seq[(letter, gen)]
+        next_seq[(letter, gen)] += 1
         wrapper_type = rec.get("ext_type") in ("replicate", "compose")
         top = child_top(rec, parent)
         invariants = rec.get("invariants", [])
         row = {
-            "id": f"g{gen}_{seq:03d}",
+            "id": f"{letter}{gen}_{seq:03d}",
             "generation": gen,
             "parent": rec.get("parent_id"),
             "parent2": rec.get("parent2_id"),
@@ -194,17 +198,26 @@ def promote(corpus_rows, ext_records, compute_metrics=True):
     return buckets, new_rows
 
 
-def main():
+def main(argv=None):
+    """Reports by default. Writing needs --write: found 8 Oct 2026, a plain
+    run would have added 115 old rows to extender/corpus.jsonl, because
+    batch.py already promotes as it goes and the log holds records whose
+    rows were since rebuilt."""
     p = argparse.ArgumentParser()
     p.add_argument("--dry", action="store_true",
-                   help="print rates, write nothing")
-    args = p.parse_args()
+                   help="print rates, write nothing (the default)")
+    p.add_argument("--write", action="store_true",
+                   help="append the promoted rows to the corpus")
+    p.add_argument("--no-metrics", action="store_true",
+                   help="skip yosys metrics on promoted rows")
+    args = p.parse_args(argv)
+    args.dry = args.dry or not args.write
 
     corpus_rows = [json.loads(l) for l in CORPUS.read_text().splitlines()]
     ext_records = [json.loads(l) for l in EXT_LOG.read_text().splitlines()]
 
     buckets, new_rows = promote(corpus_rows, ext_records,
-                                compute_metrics=not args.dry)
+                                compute_metrics=not (args.dry or args.no_metrics))
 
     total = sum(len(v) for v in buckets.values())
     print(f"{total} extension records routed:")

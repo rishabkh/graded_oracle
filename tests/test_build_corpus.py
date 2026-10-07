@@ -245,3 +245,25 @@ def test_main_builds_a_separate_corpus_from_a_separate_log(tmp_path,
     rows = [json.loads(l) for l in out.read_text().splitlines()]
     assert [r["id"] for r in rows] == ["c0_000"] and rows[0]["scale"] == "s"
     assert not (tmp_path / "main_corpus.jsonl").exists()
+
+
+def test_a_separate_log_without_an_output_file_is_refused(tmp_path,
+                                                          monkeypatch):
+    """Found 8 Oct 2026: --source without --out rebuilt v2's corpus from
+    the catalog log and replaced all 228 of its first-generation rows."""
+    import pytest
+    import extender.build_corpus as bc
+    main_corpus = tmp_path / "main_corpus.jsonl"
+    main_corpus.write_text('{"id": "g0_000", "generation": 0}\n')
+    monkeypatch.setattr(bc, "CORPUS", main_corpus)
+    log = tmp_path / "catalog_log.jsonl"
+    log.write_text(json.dumps(RECORD) + "\n")
+    with pytest.raises(SystemExit):
+        bc.main(["--no-yosys", "--source", str(log), "--id-prefix", "c0"])
+    assert main_corpus.read_text() == '{"id": "g0_000", "generation": 0}\n'
+
+
+def test_a_row_records_the_model_that_wrote_it():
+    assert flatten_record(dict(RECORD, model="claude-opus-5-5"), 0)["model"] \
+        == "claude-opus-5-5"
+    assert "model" not in flatten_record(RECORD, 0)

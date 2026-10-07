@@ -42,6 +42,7 @@ from sft_data import split                                   # noqa: E402
 
 CORPUS = HERE.parent / "extender" / "corpus.jsonl"
 FIXER_LOG = HERE.parent / "extender" / "logs" / "fixer_attempts.jsonl"
+V2_FILE = HERE.parent / "extender" / "sft_train_v2.jsonl"
 REGEN_KIND = "regen"
 
 REPAIR_PROMPT = """\
@@ -244,6 +245,22 @@ def held_back(rows):
     return {p["prompt"] for p in split(build_pairs(rows))[1]}
 
 
+def build_combined_pairs(rows, extra_rows):
+    """v2's pairs with v2's held-back marks, then a separate corpus's pairs
+    (the catalog run, 8 Oct 2026), all trained on. Appending unmarked rows
+    to v2's file would make the trainer re-pick the held-back set (60 of
+    v2's 66 held-back rows would be trained on); every row is marked
+    instead. A new question equal to a v2 question is refused."""
+    held = held_back(rows)
+    base = [dict(p, holdout=p["prompt"] in held) for p in build_pairs(rows)]
+    known = {p["prompt"] for p in base}
+    extra = build_pairs(extra_rows)
+    clash = [p["id"] for p in extra if p["prompt"] in known]
+    if clash:
+        raise ValueError(f"questions already in v2's file: {clash[:5]}")
+    return base + [dict(p, holdout=False) for p in extra]
+
+
 def build_clean_pairs(rows, passing):
     """Run 4a: v2's pairs, keeping only answers that pass the 1-step rule
     (training/one_step.py). 207 of 665 do not: by the benchmark's own
@@ -340,7 +357,13 @@ def main(argv=None):
     p.add_argument("--preference", default=None,
                    help="with --one-step: chosen/rejected pairs, one per "
                         "needed fact (run 4b)")
+    p.add_argument("--extra-corpus", default=None,
+                   help="with --out: v2's rows with v2's held-back marks, "
+                        "plus every row of this corpus trained on (the "
+                        "catalog run); every row carries a holdout mark")
     args = p.parse_args(argv)
+    if args.extra_corpus and not args.out:
+        sys.exit("--extra-corpus needs --out")
     if (args.clean or args.preference) and not args.one_step:
         sys.exit("--clean and --preference need --one-step")
 
@@ -360,6 +383,29 @@ def main(argv=None):
         write_one_step_files(args, rows)
     elif args.reasoning:
         write_reasoning_file(args, rows)
+    elif args.extra_corpus:
+        extra = [json.loads(l) for l in
+                 Path(args.extra_corpus).read_text().splitlines() if l.strip()]
+        combined = build_combined_pairs(rows, extra)
+        n_base = len(pairs)
+        if Path(args.corpus).resolve() == CORPUS.resolve() and V2_FILE.exists():
+            v2_lines = V2_FILE.read_text().splitlines()
+            same = len(v2_lines) == n_base and all(
+                json.dumps({"prompt": q["prompt"],
+                            "completion": q["completion"]}) == v2_lines[i]
+                for i, q in enumerate(combined[:n_base]))
+            if not same:
+                sys.exit(f"the v2 part differs from {V2_FILE.name}; "
+                         "nothing was written")
+            print(f"  v2 part matches {V2_FILE.name} line for line")
+        Path(args.out).write_text(
+            "".join(json.dumps({"prompt": q["prompt"],
+                                "completion": q["completion"],
+                                "holdout": q["holdout"]}) + "\n"
+                    for q in combined))
+        print(f"  {n_base} v2 pairs ({sum(q['holdout'] for q in combined)} "
+              f"held back) + {len(combined) - n_base} new pairs, all trained "
+              f"-> {args.out}")
     elif args.out:
         Path(args.out).write_text(
             "".join(json.dumps({"prompt": p["prompt"],

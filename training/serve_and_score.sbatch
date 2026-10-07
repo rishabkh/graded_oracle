@@ -40,6 +40,9 @@ export NCCL_DEBUG=WARN
 
 cd "$HOME/graded_oracle"
 mkdir -p runs
+# which code this job ran: a git pull during a job changes the scorer
+# between passes (v4b's last pass, 6 Oct 2026)
+echo "code $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 MODEL="${MODEL:-Qwen/Qwen2.5-Coder-32B-Instruct}"
 PASSES="${PASSES:-5}"
 # the benchmark authors' repair loop (initiator/repair_loop.py); 0 = one answer

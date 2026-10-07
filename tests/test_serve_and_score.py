@@ -174,3 +174,12 @@ def test_repair_checks_use_the_cores_the_job_was_given():
     """6 Oct 2026: 4 checks at once left most of the allocation idle while
     EBMC ran; use all but two cores (the server keeps two)."""
     assert 'REPAIR="--rounds $ROUNDS --ebmc-workers $(( ${SLURM_CPUS_PER_TASK:-8} - 2 ))"' in SCORE
+
+
+def test_every_scoring_log_names_the_code_it_ran(tmp_path):
+    """v4b's scoring changed grader halfway (a git pull during the job
+    brought in the enum fix before its last pass); every log now says
+    which commit it ran."""
+    r, calls = run_job(tmp_path, PASSES="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert any(l.startswith("code ") for l in r.stdout.splitlines())
