@@ -53,14 +53,14 @@ sys.path.insert(0, str(HERE.parent / "extender"))
 
 import llm_client                                             # noqa: E402
 from distractor import Spinner                                # noqa: E402
-from regen_reasoning import (append, assertions, cost, now,  # noqa: E402
-                             read_log, require_key, say)
+from regen_reasoning import (append, assertions, cost,        # noqa: E402
+                             line_cost, now, read_log, require_key, say)
 
 CORPUS = HERE.parent / "extender" / "corpus.jsonl"
 ONE_STEP = HERE.parent / "extender" / "logs" / "one_step.jsonl"
 LOG = HERE.parent / "extender" / "logs" / "fix_weak.jsonl"
 
-MODEL = "claude-opus-5"
+MODEL = "claude-opus-5-5"
 LOOKS_BACK = ("$past", "$stable")
 SCHEMA = {
     "type": "object",
@@ -302,7 +302,7 @@ def report(log_path, ids):
     first_try = sum(1 for i, r in accepted.items() if r["attempt"] == first[i])
     tokens_in = sum((r.get("usage") or {}).get("input", 0) for r in lines)
     tokens_out = sum((r.get("usage") or {}).get("output", 0) for r in lines)
-    dollars = cost(tokens_in, tokens_out)
+    dollars = sum(line_cost(r) for r in lines)
     print("attempts by verdict: " + (", ".join(
         f"{v} {c}" for v, c in verdicts.most_common()) or "none"))
     print(f"rows: {first_try} fixed first try, {len(accepted) - first_try} "
@@ -379,7 +379,7 @@ def main(argv=None):
     def refresh():
         spinner.label = progress_label(
             running["done"], len(todo), running["active"],
-            cost(running["input"], running["output"]))
+            cost(running["input"], running["output"], MODEL))
 
     def one(item):
         row, cex = item
@@ -399,7 +399,7 @@ def main(argv=None):
             say(f"[{running['done']}/{len(todo)}] {row['id']}  "
                 f"{out['attempts']} attempt(s)  {out['verdict']}  "
                 f"fixed so far {running['fixed']}  "
-                f"${cost(running['input'], running['output']):.2f}")
+                f"${cost(running['input'], running['output'], MODEL):.2f}")
             refresh()
         return out
 

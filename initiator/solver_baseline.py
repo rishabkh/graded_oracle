@@ -42,7 +42,7 @@ SOURCE_LOG = HERE / "logs" / "attempts.jsonl"
 CORPUS = HERE.parent / "extender" / "corpus.jsonl"
 OUT_LOG = HERE / "logs" / "solver_baseline.jsonl"
 GRADE_KWARGS = dict(timeout_s=120)
-OPUS_MODEL = "claude-opus-5"
+OPUS_MODEL = "claude-opus-5-5"
 
 # The bare prompt — the hard direction, no planting scaffold, no
 # exemplars. Byte-identical for both solver models.

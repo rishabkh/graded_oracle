@@ -208,8 +208,13 @@ def _fake_run(monkeypatch, tmp_path):
                          " always @(posedge clk) if (armed) assert (1);\n"
                          "endmodule\n", "invariants": ["1"]}
     monkeypatch.setattr(R, "assert_exemplar_pool", lambda ex: None)
-    monkeypatch.setattr(R, "call_model", lambda msg: (
-        json.dumps(triple), {"input": 1, "output": 1}, "ok"))
+    asked = []
+
+    def call_model(msg, model=None):
+        asked.append(model)
+        return json.dumps(triple), {"input": 1, "output": 1}, "ok"
+    monkeypatch.setattr(R, "call_model", call_model)
+    R._asked = asked
     monkeypatch.setattr(R, "grade_triple_generated", lambda raw, **kw:
                         _Graded(NecessityVerdict.NECESSARY, "ok"))
     monkeypatch.setattr(R, "LOG_PATH", tmp_path / "main_log.jsonl")
@@ -252,3 +257,170 @@ def test_pilot_takes_the_kinds_sizes_and_log_options(monkeypatch, tmp_path):
     R.main()
     assert seen["n"] == 5 and seen["constructs_path"] == "k.txt"
     assert seen["scales_path"] == "s.txt" and seen["log_path"] == "l.jsonl"
+
+
+def test_a_run_calls_and_records_the_model_it_was_given(monkeypatch, tmp_path):
+    """Opus 5.5 (Oct 2026) is 20% cheaper than Opus 5: $4/$20 per million
+    tokens against $5/$25. The catalog run may use it; every row must
+    say which model wrote it."""
+    R = _fake_run(monkeypatch, tmp_path)
+    R.run_attempts(2, cmd="pilot", model="claude-opus-5-5")
+    rows = [json.loads(l) for l in
+            (tmp_path / "main_log.jsonl").read_text().splitlines()]
+    assert R._asked == ["claude-opus-5-5"] * 2
+    assert all(r["model"] == "claude-opus-5-5" for r in rows)
+
+
+def test_without_a_model_the_run_uses_the_default_opus_5_5(monkeypatch,
+                                                         tmp_path):
+    R = _fake_run(monkeypatch, tmp_path)
+    R.run_attempts(1, cmd="pilot")
+    [row] = [json.loads(l) for l in
+             (tmp_path / "main_log.jsonl").read_text().splitlines()]
+    assert R._asked == ["claude-opus-5-5"] and row["model"] == "claude-opus-5-5"
+
+
+def test_pilot_takes_a_model_option(monkeypatch):
+    import run as R
+    seen = {}
+    monkeypatch.setattr(R, "run_attempts", lambda n, **kw: seen.update(n=n, **kw))
+    monkeypatch.setattr(sys, "argv", ["run.py", "pilot", "--n", "2",
+                                      "--model", "claude-opus-5-5"])
+    R.main()
+    assert seen["model"] == "claude-opus-5-5"
+
+
+# --- even seed weights (8 Oct 2026) ---------------------------------------
+# styles.txt, patterns.txt and scopes.txt repeat lines to weight them, and
+# their own notes say the weights came from counting the evaluation sets
+# (written 20 Sep, before the rule against shaping data on the tests). The
+# catalog run draws every distinct line equally often instead.
+
+def test_even_weights_keep_each_distinct_line_once_in_first_seen_order():
+    import run as R
+    pools = R.load_pools(even=True)
+    styles, patterns, scopes = pools[3], pools[4], pools[5]
+    weighted = R.load_pools()
+    for even, full in ((styles, weighted[3]), (patterns, weighted[4]),
+                       (scopes, weighted[5])):
+        assert even == list(dict.fromkeys(full))
+        assert len(even) < len(full)          # the files really repeat lines
+
+
+def test_a_run_with_even_weights_says_so_in_every_row(monkeypatch, tmp_path):
+    R = _fake_run(monkeypatch, tmp_path)
+    R.run_attempts(2, cmd="pilot", even_seeds=True)
+    rows = [json.loads(l) for l in
+            (tmp_path / "main_log.jsonl").read_text().splitlines()]
+    assert all(r["seed_weights"] == "even" for r in rows)
+    R.run_attempts(1, cmd="pilot")
+    last = json.loads((tmp_path / "main_log.jsonl").read_text()
+                      .splitlines()[-1])
+    assert "seed_weights" not in last                 # a plain run as before
+
+
+def test_pilot_takes_an_even_seeds_option(monkeypatch):
+    import run as R
+    seen = {}
+    monkeypatch.setattr(R, "run_attempts", lambda n, **kw: seen.update(n=n, **kw))
+    monkeypatch.setattr(sys, "argv", ["run.py", "pilot", "--n", "2",
+                                      "--even-seeds"])
+    R.main()
+    assert seen["even_seeds"] is True
+
+
+# --- batch mode for the generator (8 Oct 2026): half price ---------------
+
+def _fake_batch(monkeypatch, R, outcome=None, fail_submit=False):
+    triple = json.dumps({"top_module": "m", "antecedents": ["armed"],
+                         "verilog": "module m(input clk);\n reg armed = 0;\n"
+                                    " always @(posedge clk) if (armed) assert (1);\n"
+                                    "endmodule\n", "invariants": ["1"]})
+    state = {"submitted": None}
+
+    def submit(items):
+        if fail_submit:
+            raise RuntimeError("network down")
+        state["submitted"] = items
+        return "batch_1"
+
+    def results(bid):
+        for cid, kw in state["submitted"]:
+            yield cid, (outcome or {}).get(cid, ("ok", triple, {"input": 1, "output": 1}, triple))
+    monkeypatch.setattr(R.llm_client, "batch_submit", submit)
+    monkeypatch.setattr(R.llm_client, "batch_status", lambda bid: ("ended", {"succeeded": 3}))
+    monkeypatch.setattr(R.llm_client, "batch_results", results)
+    return state
+
+
+DROP = {"timestamp", "run_id", "cmd", "batch_id", "custom_id", "batch",
+        "grade_wall_s"}
+
+
+def test_a_batch_run_judges_every_answer_exactly_like_a_direct_run(monkeypatch,
+                                                                   tmp_path):
+    import random
+    R = _fake_run(monkeypatch, tmp_path)
+    direct, batched = tmp_path / "direct.jsonl", tmp_path / "batched.jsonl"
+    random.seed(7)
+    R.run_attempts(3, cmd="pilot", log_path=direct)
+    _fake_batch(monkeypatch, R)
+    random.seed(7)
+    R.run_batch(3, cmd="pilot", log_path=batched, poll_s=0)
+    a = [json.loads(l) for l in direct.read_text().splitlines()]
+    b = [json.loads(l) for l in batched.read_text().splitlines()]
+    strip = lambda r: {k: v for k, v in r.items() if k not in DROP}
+    assert [strip(r) for r in a] == [strip(r) for r in b]
+    assert all(r["batch"] is True and r["batch_id"] == "batch_1" for r in b)
+
+
+def test_the_question_list_is_saved_before_anything_is_paid(monkeypatch,
+                                                            tmp_path):
+    import pytest
+    R = _fake_run(monkeypatch, tmp_path)
+    _fake_batch(monkeypatch, R, fail_submit=True)
+    with pytest.raises(RuntimeError):
+        R.run_batch(3, cmd="pilot", log_path=tmp_path / "log.jsonl", poll_s=0)
+    [manifest] = list(tmp_path.glob("batch_*.json"))
+    m = json.loads(manifest.read_text())
+    assert m["batch_id"] is None and len(m["attempts"]) == 3
+    assert all(a["user_msg"] and a["record"]["construct"] for a in m["attempts"])
+    assert not (tmp_path / "log.jsonl").exists()
+
+
+def test_collecting_again_never_logs_an_answer_twice(monkeypatch, tmp_path):
+    R = _fake_run(monkeypatch, tmp_path)
+    _fake_batch(monkeypatch, R)
+    log = tmp_path / "log.jsonl"
+    R.run_batch(3, cmd="pilot", log_path=log, poll_s=0)
+    [manifest] = list(tmp_path.glob("batch_*.json"))
+    R.collect(manifest, poll_s=0)
+    assert len(log.read_text().splitlines()) == 3
+
+
+def test_a_failed_request_is_logged_as_an_error_not_dropped(monkeypatch,
+                                                            tmp_path):
+    R = _fake_run(monkeypatch, tmp_path)
+    _fake_batch(monkeypatch, R, outcome={
+        "a0001": ("error:overloaded_error", None, {"input": 0, "output": 0}, None),
+        "a0002": ("refusal", None, {"input": 5, "output": 0}, "")})
+    log = tmp_path / "log.jsonl"
+    R.run_batch(3, cmd="pilot", log_path=log, poll_s=0)
+    rows = {r["custom_id"]: r for r in map(json.loads, log.read_text().splitlines())}
+    assert rows["a0000"]["verdict"] == "NECESSARY"
+    assert rows["a0001"]["error"] == "batch error:overloaded_error"
+    assert rows["a0002"]["verdict"] == "REFUSED"
+
+
+def test_pilot_batch_and_collect_options(monkeypatch):
+    import run as R
+    seen = {}
+    monkeypatch.setattr(R, "run_batch", lambda n, **kw: seen.update(n=n, **kw))
+    monkeypatch.setattr(R, "collect", lambda m, **kw: seen.update(manifest=m))
+    monkeypatch.setattr(sys, "argv", ["run.py", "pilot", "--n", "4", "--batch",
+                                      "--even-seeds"])
+    R.main()
+    assert seen["n"] == 4 and seen["even_seeds"] is True
+    monkeypatch.setattr(sys, "argv", ["run.py", "collect", "--manifest", "m.json"])
+    R.main()
+    assert seen["manifest"] == "m.json"

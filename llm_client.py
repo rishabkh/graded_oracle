@@ -45,6 +45,24 @@ def model_label(anthropic_model):
     return anthropic_model
 
 
+# Published list prices, dollars per million tokens (input, output).
+# Opus 5.5 replaced Opus 5 for every call on 8 Oct 2026 at 20% less.
+PRICES = {"claude-opus-5": (5.0, 25.0), "claude-opus-5-5": (4.0, 20.0)}
+
+
+def dollars(model, tokens_in, tokens_out, batch=False):
+    """What a call cost at its own model's list price, halved for the
+    Message Batches API. A logged label ("openrouter:anthropic/claude-opus-5")
+    prices like the bare id; an unknown model raises, so a new one is
+    never priced silently wrong."""
+    key = str(model).split("/")[-1].split(":")[-1]
+    if key not in PRICES:
+        raise ValueError(f"no list price for {model!r}; add it to PRICES")
+    p_in, p_out = PRICES[key]
+    cost = tokens_in * p_in / 1e6 + tokens_out * p_out / 1e6
+    return cost / 2 if batch else cost
+
+
 def extract_json(text):
     """First complete JSON object in `text`, or None. Balanced-brace scan,
     string- and escape-aware, so prose or fences around the object are
@@ -90,11 +108,10 @@ def call_claude(*, model, max_tokens, user, system=None, schema=None,
                            system=system, schema=schema, effort=effort)
 
 
-def _call_anthropic(*, model, max_tokens, user, system, schema, effort):
-    global _an_client
-    import anthropic
-    if _an_client is None:
-        _an_client = anthropic.Anthropic()
+def request_kwargs(*, model, max_tokens, user, system=None, schema=None,
+                   effort=None):
+    """The Messages API request, built once for both the direct call and a
+    batch entry, so the two cannot drift apart."""
     output_config = {}
     if effort:
         output_config["effort"] = effort
@@ -106,20 +123,82 @@ def _call_anthropic(*, model, max_tokens, user, system, schema, effort):
         kwargs["output_config"] = output_config
     if system:
         kwargs["system"] = system
-    # stream, not create: the SDK refuses a plain create() whose max_tokens
-    # could run past ten minutes, which is every call at our 32k budget
-    with _an_client.messages.stream(**kwargs) as s:
-        resp = s.get_final_message()
+    return kwargs
+
+
+def read_message(resp):
+    """One reply read the same way in both modes: (raw_json_text | None,
+    usage, stop, raw_text) with stop "ok", "refusal" or "length" (cut off
+    with no complete JSON object). raw_text keeps what came back even
+    when it is unusable, so a paid answer can still be logged."""
     usage = {"input": resp.usage.input_tokens,
              "output": resp.usage.output_tokens}
     if resp.stop_reason == "refusal":
-        return None, usage, "refusal"
-    global LAST_RAW
+        return None, usage, "refusal", None
     text = next((b.text for b in resp.content if b.type == "text"), "")
-    LAST_RAW = text
     if resp.stop_reason == "max_tokens" and extract_json(text) is None:
-        return None, usage, "length"
-    return text, usage, "ok"
+        return None, usage, "length", text
+    return text, usage, "ok", text
+
+
+def _client():
+    global _an_client
+    if _an_client is None:
+        import anthropic
+        _an_client = anthropic.Anthropic()
+    return _an_client
+
+
+def _call_anthropic(*, model, max_tokens, user, system, schema, effort):
+    kwargs = request_kwargs(model=model, max_tokens=max_tokens, user=user,
+                            system=system, schema=schema, effort=effort)
+    # stream, not create: the SDK refuses a plain create() whose max_tokens
+    # could run past ten minutes, which is every call at our 32k budget
+    with _client().messages.stream(**kwargs) as s:
+        resp = s.get_final_message()
+    global LAST_RAW
+    text, usage, stop, raw = read_message(resp)
+    # None on a refusal: before 8 Oct 2026 it kept the previous reply, so
+    # a refused attempt was logged with another attempt's text
+    LAST_RAW = raw
+    return text, usage, stop
+
+
+# --- Message Batches API: the same requests at half price, answered within
+# 24 hours (usually under one). Anthropic direct only.
+
+def batch_submit(items):
+    """items: [(custom_id, request_kwargs(...))]. Returns the batch id."""
+    batch = _client().messages.batches.create(
+        requests=[{"custom_id": cid, "params": kw} for cid, kw in items])
+    return batch.id
+
+
+def batch_status(batch_id):
+    """("in_progress" | "canceling" | "ended", request counts)."""
+    b = _client().messages.batches.retrieve(batch_id)
+    c = b.request_counts
+    return b.processing_status, {k: getattr(c, k, 0) for k in (
+        "processing", "succeeded", "errored", "canceled", "expired")}
+
+
+def batch_results(batch_id):
+    """Yields (custom_id, (stop, raw_json_text | None, usage, raw_text)),
+    a succeeded entry read exactly as a direct reply (read_message); an
+    errored, canceled or expired one as stop "error:<kind>"."""
+    zero = {"input": 0, "output": 0}
+    for r in _client().messages.batches.results(batch_id):
+        kind = r.result.type
+        if kind == "succeeded":
+            text, usage, stop, raw = read_message(r.result.message)
+            yield r.custom_id, (stop, text, usage, raw)
+        elif kind == "errored":
+            err = getattr(r.result, "error", None)
+            etype = getattr(getattr(err, "error", None), "type", None) \
+                or getattr(err, "type", None) or "unknown"
+            yield r.custom_id, (f"error:{etype}", None, zero, None)
+        else:
+            yield r.custom_id, (f"error:{kind}", None, zero, None)
 
 
 def _call_openrouter(*, model, max_tokens, user, system, schema, effort):

@@ -9,7 +9,8 @@ stages in order, cheapest first:
   venv/bin/python initiator/run.py grade-one         # one API call + grade (needs both)
   venv/bin/python initiator/run.py pilot --n 10      # the loop (asserts exemplar pool first)
 
-Model: claude-opus-5. Temperature is not a parameter on this model
+Model: claude-opus-5-5 (claude-opus-5 before 8 Oct 2026; every row
+records which). Temperature is not a parameter on this model
 (the API rejects it); diversity comes from seed rotation + adaptive
 thinking, and the log records model + effort instead. Server-side
 refusal fallbacks are deliberately NOT enabled: a corpus row must record
@@ -41,7 +42,7 @@ import llm_client                                            # noqa: E402
 from oracle import NecessityVerdict, grade_triple_generated  # noqa: E402
 from oracle.contract import parse_generator_output           # noqa: E402
 
-MODEL = "claude-opus-5"
+MODEL = "claude-opus-5-5"
 EFFORT = "high"
 # 32000 suits a frontier model with a huge window. A locally served 32k
 # model has no room for it: prompt plus budget is then over the limit and
@@ -99,9 +100,13 @@ def _pool(path):
             if s.strip() and not s.startswith("#")]
 
 
-def load_pools(constructs_path=None):
+def load_pools(constructs_path=None, even=False):
     """`constructs_path` swaps in another kinds file (the catalog run's
-    picked kinds); the default is our 32."""
+    picked kinds); the default is our 32. `even` keeps each distinct
+    style, pattern and scope line once: the files weight lines by
+    repeating them, and their own notes say the weights came from
+    counting the evaluation sets (written 20 Sep 2026, before the rule
+    against shaping training data on the tests)."""
     exemplars = json.loads((HERE / "exemplars.json").read_text())
     constructs = [s.strip() for s in
                   Path(constructs_path or HERE / "constructs.txt")
@@ -112,6 +117,9 @@ def load_pools(constructs_path=None):
     styles = _pool(HERE / "styles.txt")
     patterns = _pool(HERE / "patterns.txt")
     scopes = _pool(HERE / "scopes.txt")
+    if even:
+        styles, patterns, scopes = (list(dict.fromkeys(x))
+                                    for x in (styles, patterns, scopes))
     return exemplars, constructs, readmes, styles, patterns, scopes
 
 
@@ -203,11 +211,11 @@ def build_user_msg(readme, construct, style, pattern, scope, exemplar,
     return msg
 
 
-def call_model(user_msg):
+def call_model(user_msg, model=None):
     """One API call (Anthropic direct or OpenRouter, per CLAUDE_PROVIDER).
     Returns (raw_json_text or None, usage, stop)."""
     return llm_client.call_claude(
-        model=MODEL, max_tokens=MAX_TOKENS, system=SYSTEM_PROMPT,
+        model=model or MODEL, max_tokens=MAX_TOKENS, system=SYSTEM_PROMPT,
         user=user_msg, schema=TRIPLE_SCHEMA, effort=EFFORT)
 
 
@@ -264,17 +272,13 @@ def sample_seeds(readme_s, construct_s, style_s, pattern_s, scope_s,
     return readme, construct, style, pattern, scope, ex_id, exemplar
 
 
-def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
-                 scales_path=None, log_path=None):
-    """`constructs_path`, `scales_path` and `log_path` are the catalog run's
-    (task 5): its own kinds, a size seed per attempt, and its own log, so
-    its designs never enter the main corpus. Unset, a run is as before."""
+def plan_attempts(n, *, cmd, grade, model, constructs_path, scales_path,
+                  even_seeds):
+    """Draw every attempt's seeds and build its question, before any call.
+    Returns (exemplars, run_id, [(record, user_msg, scope)])."""
     exemplars, constructs, readmes, styles, patterns, scopes = load_pools(
-        constructs_path)
+        constructs_path, even=even_seeds)
     scale_s = BalancedSampler(_pool(Path(scales_path))) if scales_path else None
-    if grade:
-        assert_exemplar_pool(exemplars)
-
     # One id per invocation: attempts from different runs (one, grade-one,
     # pilot, the 200) all append to the same file and stay separable.
     # e.g. "2026-08-14_15h30m42s" (local wall clock; cmd is its own field).
@@ -283,10 +287,9 @@ def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
                if os.environ.get("OPENROUTER_BASE_URL") else None)
     print(f"run_id: {run_id}"
           + (f"   serving: {serving}" if serving else ""))
-
     samplers = make_samplers(exemplars, constructs, readmes, styles,
                              patterns, scopes)
-    tally = {}
+    plans = []
     for i in range(n):
         (readme, construct, style, pattern, scope, ex_id,
          exemplar) = sample_seeds(*samplers)
@@ -297,7 +300,7 @@ def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
             "attempt": i,
             "graded": grade,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "model": llm_client.model_label(MODEL), "effort": EFFORT,
+            "model": llm_client.model_label(model), "effort": EFFORT,
             "served_model": serving,
             "temperature": "n/a: removed from the API on this model; "
                            "effort + seed rotation are the diversity knobs",
@@ -310,54 +313,172 @@ def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
             record["constructs_file"] = Path(constructs_path).name
         if scale:
             record["scale"] = scale
+        if even_seeds:
+            record["seed_weights"] = "even"
+        plans.append((record, build_user_msg(readme, construct, style,
+                                             pattern, scope, exemplar, scale),
+                      scope))
+    return exemplars, run_id, plans
+
+
+def finish_attempt(i, record, raw_json, usage, stop, raw_text, *, grade,
+                   show_raw, log_path, tally):
+    """Everything after the model answered: the same for a direct call and
+    a batch entry, so a batch design is judged exactly like any other."""
+    scope = record["scope"]
+    record["usage"] = usage
+    if raw_json is None:
+        record["verdict"] = {"refusal": "REFUSED",
+                             "length": "TRUNCATED"}.get(stop, "UNPARSEABLE")
+        record["raw_text"] = raw_text
+        dump(record, log_path)
+        print(f"[{i}] {record['verdict']} - logged, continuing")
+        return
+    record["raw_json"] = raw_json
+    if show_raw:
+        print(json.dumps(json.loads(raw_json), indent=2))
+
+    reason = scope_gate(scope, json.loads(raw_json))
+    if reason:
+        record["verdict"] = "SCOPE_UNARMED"
+        record["reason"] = reason
+        tally["SCOPE_UNARMED"] = tally.get("SCOPE_UNARMED", 0) + 1
+        dump(record, log_path)
+        print(f"[{i}] SCOPE_UNARMED - {reason[:70]}")
+        return
+
+    if grade:
+        t0 = time.monotonic()
+        with Spinner(f"[{i}] oracle grading"):
+            result = grade_triple_generated(raw_json, **GRADE_KWARGS)
+        record["grade_wall_s"] = round(time.monotonic() - t0, 2)
+        record["verdict"] = result.verdict.name
+        record["result"] = asdict(result)
+        tally[result.verdict.name] = tally.get(result.verdict.name, 0) + 1
+        print(f"[{i}] {result.verdict.name:12s} ({record['grade_wall_s']}s) "
+              f"- {result.reason[:100]}")
+    dump(record, log_path)
+
+
+def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
+                 scales_path=None, log_path=None, model=None,
+                 even_seeds=False):
+    """`constructs_path`, `scales_path` and `log_path` are the catalog run's
+    (task 5): its own kinds, a size seed per attempt, and its own log, so
+    its designs never enter the main corpus. `model` swaps the writer
+    (Opus 5.5 is $4/$20 per million tokens against Opus 5's $5/$25);
+    `even_seeds` draws each style, pattern and scope equally often.
+    Unset, a run is as before."""
+    model = model or MODEL
+    exemplars, run_id, plans = plan_attempts(
+        n, cmd=cmd, grade=grade, model=model, constructs_path=constructs_path,
+        scales_path=scales_path, even_seeds=even_seeds)
+    if grade:
+        assert_exemplar_pool(exemplars)
+    tally = {}
+    for i, (record, user_msg, scope) in enumerate(plans):
         try:
-            with Spinner(f"[{i}] {llm_client.model_label(MODEL)} writing a triple"):
-                raw_json, usage, stop = call_model(
-                    build_user_msg(readme, construct, style, pattern, scope,
-                                   exemplar, scale))
+            with Spinner(f"[{i}] {llm_client.model_label(model)} writing a triple"):
+                raw_json, usage, stop = call_model(user_msg, model=model)
         except Exception as exc:
             record["error"] = f"{type(exc).__name__}: {exc}"
             dump(record, log_path)
             print(f"[{i}] API error: {type(exc).__name__} - logged, continuing")
             time.sleep(5)
             continue
-
-        record["usage"] = usage
-        if raw_json is None:
-            record["verdict"] = {"refusal": "REFUSED",
-                                 "length": "TRUNCATED"}.get(stop, "UNPARSEABLE")
-            record["raw_text"] = llm_client.LAST_RAW
-            dump(record, log_path)
-            print(f"[{i}] refusal - logged, continuing")
-            continue
-        record["raw_json"] = raw_json
-        if show_raw:
-            print(json.dumps(json.loads(raw_json), indent=2))
-
-        reason = scope_gate(scope, json.loads(raw_json))
-        if reason:
-            record["verdict"] = "SCOPE_UNARMED"
-            record["reason"] = reason
-            tally["SCOPE_UNARMED"] = tally.get("SCOPE_UNARMED", 0) + 1
-            dump(record, log_path)
-            print(f"[{i}] SCOPE_UNARMED - {reason[:70]}")
-            continue
-
-        if grade:
-            t0 = time.monotonic()
-            with Spinner(f"[{i}] oracle grading"):
-                result = grade_triple_generated(raw_json, **GRADE_KWARGS)
-            record["grade_wall_s"] = round(time.monotonic() - t0, 2)
-            record["verdict"] = result.verdict.name
-            record["result"] = asdict(result)
-            tally[result.verdict.name] = tally.get(result.verdict.name, 0) + 1
-            print(f"[{i}] {result.verdict.name:12s} ({record['grade_wall_s']}s) "
-                  f"- {result.reason[:100]}")
-        dump(record, log_path)
+        finish_attempt(i, record, raw_json, usage, stop, llm_client.LAST_RAW,
+                       grade=grade, show_raw=show_raw, log_path=log_path,
+                       tally=tally)
 
     if grade and tally:
         print("\nverdict distribution:", dict(sorted(tally.items())))
 
+
+# --- batch mode (8 Oct 2026): the same questions through the Message
+# Batches API at half price. Every question and its seeds are saved in a
+# manifest BEFORE the batch is sent, so a crash can never lose paid work;
+# answers are judged by finish_attempt, exactly like direct ones, and
+# `collect` can be re-run safely: answers already logged are skipped.
+
+def run_batch(n, grade=True, cmd="", constructs_path=None, scales_path=None,
+              log_path=None, model=None, even_seeds=False, poll_s=60):
+    model = model or MODEL
+    exemplars, run_id, plans = plan_attempts(
+        n, cmd=cmd, grade=grade, model=model, constructs_path=constructs_path,
+        scales_path=scales_path, even_seeds=even_seeds)
+    if grade:
+        assert_exemplar_pool(exemplars)
+    log = Path(log_path or LOG_PATH)
+    manifest = log.parent / f"batch_{run_id}.json"
+    attempts = [{"custom_id": f"a{i:04d}", "record": record,
+                 "user_msg": user_msg}
+                for i, (record, user_msg, _) in enumerate(plans)]
+    m = {"run_id": run_id, "log": str(log), "model": model, "grade": grade,
+         "max_tokens": MAX_TOKENS, "effort": EFFORT, "batch_id": None,
+         "attempts": attempts}
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(json.dumps(m, indent=1))
+    print(f"{len(attempts)} questions saved -> {manifest}")
+    items = [(a["custom_id"], llm_client.request_kwargs(
+        model=model, max_tokens=MAX_TOKENS, user=a["user_msg"],
+        system=SYSTEM_PROMPT, schema=TRIPLE_SCHEMA, effort=EFFORT))
+        for a in attempts]
+    m["batch_id"] = llm_client.batch_submit(items)
+    m["submitted"] = datetime.now(timezone.utc).isoformat()
+    manifest.write_text(json.dumps(m, indent=1))
+    print(f"batch {m['batch_id']} sent; if this stops, resume with:\n"
+          f"  venv/bin/python initiator/run.py collect --manifest {manifest}")
+    collect(manifest, poll_s=poll_s)
+
+
+def collect(manifest, poll_s=60):
+    """Wait for the batch to end, then judge and log every answer not
+    already in the log."""
+    manifest = Path(manifest)
+    m = json.loads(manifest.read_text())
+    if not m.get("batch_id"):
+        sys.exit(f"{manifest.name} was never sent: no batch id, nothing paid")
+    while True:
+        status, counts = llm_client.batch_status(m["batch_id"])
+        print(f"batch {m['batch_id']}: {status} {counts}", flush=True)
+        if status == "ended":
+            break
+        time.sleep(poll_s)
+    log = Path(m["log"])
+    done = set()
+    if log.exists():
+        for line in log.read_text().splitlines():
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if r.get("batch_id") == m["batch_id"]:
+                done.add(r.get("custom_id"))
+    results = dict(llm_client.batch_results(m["batch_id"]))
+    tally, spent = {}, {"input": 0, "output": 0}
+    for i, a in enumerate(m["attempts"]):
+        cid = a["custom_id"]
+        if cid in done:
+            continue
+        record = dict(a["record"], batch=True, batch_id=m["batch_id"],
+                      custom_id=cid)
+        stop, text, usage, raw = results.get(
+            cid, ("error:no_result", None, {"input": 0, "output": 0}, None))
+        spent["input"] += usage.get("input", 0)
+        spent["output"] += usage.get("output", 0)
+        if stop.startswith("error"):
+            record["usage"] = usage
+            record["error"] = f"batch {stop}"
+            dump(record, log)
+            print(f"[{i}] {record['error']} - logged, continuing")
+            continue
+        finish_attempt(i, record, text, usage, stop, raw, grade=m["grade"],
+                       show_raw=False, log_path=log, tally=tally)
+    if tally:
+        print("\nverdict distribution:", dict(sorted(tally.items())))
+    print(f"this collect: {spent['input']:,} in, {spent['output']:,} out = "
+          f"${llm_client.dollars(m['model'], spent['input'], spent['output'], batch=True):.2f}"
+          " at batch price")
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
@@ -374,6 +495,16 @@ def main():
                        help="size seeds, one drawn per attempt")
     pilot.add_argument("--log", default=None,
                        help="attempts log to write instead of logs/attempts.jsonl")
+    pilot.add_argument("--batch", action="store_true",
+                       help="send every question as one batch at half price")
+    pilot.add_argument("--even-seeds", action="store_true",
+                       help="draw each style, pattern and scope equally often")
+    pilot.add_argument("--model", default=None,
+                       help=f"model that writes the designs (default {MODEL})")
+
+    col = sub.add_parser("collect")
+    col.add_argument("--manifest", required=True,
+                     help="the batch_<run_id>.json a batch run wrote")
 
     args = p.parse_args()
     if args.cmd == "check-contract":
@@ -385,9 +516,12 @@ def main():
     elif args.cmd == "grade-one":
         run_attempts(1, grade=True, show_raw=True, cmd="grade-one")
     elif args.cmd == "pilot":
-        run_attempts(args.n, grade=True, cmd="pilot",
-                     constructs_path=args.constructs,
-                     scales_path=args.scales, log_path=args.log)
+        run = run_batch if args.batch else run_attempts
+        run(args.n, grade=True, cmd="pilot",
+            constructs_path=args.constructs, scales_path=args.scales,
+            log_path=args.log, model=args.model, even_seeds=args.even_seeds)
+    elif args.cmd == "collect":
+        collect(args.manifest)
 
 
 if __name__ == "__main__":

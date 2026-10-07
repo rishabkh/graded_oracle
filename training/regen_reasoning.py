@@ -53,9 +53,9 @@ ATTEMPTS = HERE.parent / "initiator" / "logs" / "attempts.jsonl"
 LOG = HERE.parent / "extender" / "logs" / "reasoning_regen.jsonl"
 ORIG_LOG = HERE.parent / "extender" / "logs" / "reasoning_originals_check.jsonl"
 
-MODEL = "claude-opus-5"
-PRICE_IN = 5.0        # dollars per million input tokens
-PRICE_OUT = 25.0      # dollars per million output tokens
+MODEL = "claude-opus-5-5"
+# log lines written before the model was recorded came from Opus 5
+OLD_MODEL = "claude-opus-5"
 
 # the generator's own two reasoning fields, same definitions, nothing else
 FIELDS = ("cti_reasoning", "cti_state")
@@ -290,8 +290,17 @@ def verdict_of(rec):
     return stop if stop and stop != "ok" else "unparseable"
 
 
-def cost(tokens_in, tokens_out):
-    return tokens_in * PRICE_IN / 1e6 + tokens_out * PRICE_OUT / 1e6
+def cost(tokens_in, tokens_out, model=None):
+    """At the list price of `model` (default: the model this script calls)."""
+    return llm_client.dollars(model or MODEL, tokens_in, tokens_out)
+
+
+def line_cost(rec):
+    """One log line at the price of the model it records, so an old Opus 5
+    log is not re-priced as Opus 5.5, nor the reverse."""
+    u = rec.get("usage") or {}
+    return cost(u.get("input", 0), u.get("output", 0),
+                rec.get("model") or OLD_MODEL)
 
 
 def progress_label(done, total, active, dollars):
@@ -365,7 +374,7 @@ def report(log_path, corpus_ids):
     first_try = sum(1 for i, a in accepted.items() if a == first[i])
     tokens_in = sum((r.get("usage") or {}).get("input", 0) for r in lines)
     tokens_out = sum((r.get("usage") or {}).get("output", 0) for r in lines)
-    dollars = cost(tokens_in, tokens_out)
+    dollars = sum(line_cost(r) for r in lines)
     rep = {"verdicts": dict(verdicts), "first_try": first_try,
            "after_retries": len(accepted) - first_try,
            "missing": len(wanted) - len(accepted), "rows": len(wanted),

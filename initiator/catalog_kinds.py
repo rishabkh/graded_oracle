@@ -41,7 +41,7 @@ sys.path.insert(0, str(HERE))
 
 import llm_client                                             # noqa: E402
 
-MODEL = "claude-opus-5"
+MODEL = "claude-opus-5-5"
 EFFORT = "medium"
 MAX_TOKENS = 32000
 ASK = 250
@@ -202,7 +202,8 @@ def main(argv=None):
                  f"kinds_{stamp}.json and no kind list was written")
     lines = out / f"constructs_{stamp}.txt"
     lines.write_text("".join(construct_line(k) + "\n" for k in chosen))
-    dollars = usage.get("input", 0) * 5 / 1e6 + usage.get("output", 0) * 25 / 1e6
+    dollars = llm_client.dollars(MODEL, usage.get("input", 0),
+                                 usage.get("output", 0))
     print(f"{len(kinds)} kinds returned, {args.pick} picked with seed "
           f"{args.seed} (${dollars:.2f})")
     print(f"record: {out / f'kinds_{stamp}.json'}")

@@ -181,9 +181,9 @@ def test_accepted_first_try_logs_one_line(env):
     assert line["cti_reasoning"] == GOOD["cti_reasoning"]
     assert line["check"]["verdict"] == "REAL"
     assert line["usage"] == USAGE and line["stop"] == "ok"
-    assert line["model"] == "claude-opus-5" and line["effort"] == "medium"
+    assert line["model"] == "claude-opus-5-5" and line["effort"] == "medium"
     assert "timestamp" in line
-    assert env["kwargs"]["model"] == "claude-opus-5"
+    assert env["kwargs"]["model"] == "claude-opus-5-5"
     assert env["kwargs"]["schema"] == rr.SCHEMA
     assert env["kwargs"]["max_tokens"] == 16000
 
@@ -332,8 +332,15 @@ def test_report_turns_tokens_into_dollars(tmp_path):
     assert rep["first_try"] == 1 and rep["after_retries"] == 1
     assert rep["missing"] == 2          # c tried and failed, d never tried
     assert rep["input"] == 1_000_000 and rep["output"] == 1_000_000
+    # lines with no model are the old Opus 5 lines: $5/$25
     assert rep["cost"] == pytest.approx(30.0)
     assert rep["cost_per_accepted"] == pytest.approx(15.0)
+    # each line is priced by the model it records, so an Opus 5.5 run is
+    # not re-priced as Opus 5, nor the old log as Opus 5.5
+    for r in rows:
+        r["model"] = "claude-opus-5-5"
+    log.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    assert rr.report(log, ["a", "b", "c", "d"])["cost"] == pytest.approx(24.0)
 
 
 def test_report_flag_makes_no_calls(env, monkeypatch, capsys):

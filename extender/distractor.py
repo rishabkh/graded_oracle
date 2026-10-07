@@ -40,7 +40,7 @@ from oracle import grade_triple_generated    # noqa: E402
 
 CORPUS = HERE / "corpus.jsonl"
 OUT_LOG = HERE / "logs" / "extensions.jsonl"
-MODEL = "claude-opus-5"
+MODEL = "claude-opus-5-5"
 EFFORT = "high"
 MAX_TOKENS = 16000
 GRADE_KWARGS = dict(timeout_s=120)
