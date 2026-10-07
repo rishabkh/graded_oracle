@@ -1,0 +1,1624 @@
+{
+ "run_id": "2026-10-07_21h32m05s",
+ "timestamp": "2026-10-07T16:02:05.521716+00:00",
+ "model": "claude-opus-5",
+ "effort": "medium",
+ "max_tokens": 32000,
+ "system_prompt": null,
+ "prompt": "List 250 distinct kinds of digital hardware building blocks. Together they\nshould form a broad, representative catalog of what digital designers\nbuild: the kind of blocks found across digital design textbooks and\nopen-source hardware libraries.\n\nFor each kind give:\n- name: a short name for the block;\n- description: one sentence saying what the block does and what state it\n  keeps (its registers or memories).\n\nRules:\n- Every entry is a different kind of block, not a size or parameter\n  variant of another entry.\n- Describe the block only. Do not state any correctness property, rule or\n  relationship that its state must satisfy.\n- Leave out these kinds, which are already covered:\n  - a FIFO with separate write and read pointers plus an occupancy counter; full and empty are derived, and occupancy always equals the pointer difference\n  - a credit counter: a producer spends credits, a consumer returns them; credits outstanding plus credits held always equals the configured total\n  - a four-phase req/ack handshake with a busy register; req may not drop until ack rises, and the busy flag mirrors the phase\n  - a valid/ready pipeline stage with a skid buffer; the buffered word is only meaningful while the stall flag is up\n  - a two-flop synchronizer carrying a gray-coded pointer across clock domains; consecutive pointer samples differ in at most one bit\n  - a round-robin arbiter over N requesters with a last-grant register; the grant is always one-hot and never lands on a non-requesting line\n  - a fixed-priority arbiter with a lock bit that freezes the current winner until it releases\n  - a one-hot FSM; exactly one state bit is ever set, and some transitions are only legal from specific states\n  - a binary-encoded FSM whose state register has unreachable encodings; the design never enters them\n  - a saturating up-counter that clamps at a maximum below what its register width admits\n  - an up counter and a down counter stepped by the same enable; their sum is constant\n  - a gray-code counter alongside its binary shadow; the gray value always equals binary XOR binary-shifted-right\n  - a shift register tracking in-flight requests with a separate count of set bits\n  - a token bucket that refills on a timer tick and drains on grants, capped at a burst size\n  - a linear-feedback shift register that never reaches the all-zeros lockup state\n  - a watchdog timer that must be kicked before a timeout; the expired flag implies the counter reached its limit\n  - a debouncer requiring K identical consecutive samples before the clean output flips; a stability counter never exceeds K\n  - a PWM generator with a period counter and duty register; the output is high exactly while the counter is below the duty value\n  - a scoreboard counting issued vs retired transactions; retired never exceeds issued and the difference is bounded by the window\n  - a ping-pong double buffer with a select bit; the writer and reader never address the same half\n  - an elastic (two-entry) buffer with head/tail flags; the occupancy encoded by the flags matches the count register\n  - a priority encoder with a registered valid flag; the encoded index is only meaningful while valid is set\n  - an accumulator split into two carry-save halves; the halves always sum to the true total\n  - a sequence detector for a fixed pattern with a match-progress register; progress never exceeds the pattern length\n  - a triple-modular-redundancy voter with three shadow registers; the voted output always equals the majority\n  - a sliding-window rate limiter: a shift register of recent grants plus a count of ones that mirrors it\n  - a register slice protected by a parity bit; stored parity always matches the stored data\n  - a stack pointer with a high-water-mark register; the mark never falls below the pointer and only ratchets upward\n  - a DMA burst engine with a beats-remaining counter; the busy flag is up exactly while beats remain\n  - a clock divider built from a phase counter; a divided-enable pulse fires exactly when the phase wraps\n  - a histogram of N bin counters incremented one at a time; the bins always sum to the total-samples register\n  - an in-flight tracker for a pipelined unit: issue increments, a fixed-latency shift register drains; occupancy equals the ones in the shift register\n",
+ "raw_reply": "{\"kinds\":[{\"name\":\"Ripple-carry adder\",\"description\":\"Adds two binary operands by chaining full-adder carries from the least to most significant bit, holding no internal state in its combinational form.\"},{\"name\":\"Carry-lookahead adder\",\"description\":\"Adds two operands using generate/propagate logic to compute carries in parallel, with optional pipeline registers for the partial carry terms.\"},{\"name\":\"Carry-select adder\",\"description\":\"Computes two conditional sums per block for carry-in 0 and 1 and selects between them, buffering the duplicated block sums.\"},{\"name\":\"Carry-save adder\",\"description\":\"Reduces three input vectors to a sum vector and a carry vector, optionally registering both outputs for the next reduction stage.\"},{\"name\":\"Kogge-Stone prefix adder\",\"description\":\"Performs addition through a parallel-prefix tree of generate/propagate cells, optionally with pipeline registers between prefix levels.\"},{\"name\":\"Brent-Kung adder\",\"description\":\"Performs addition with a sparse parallel-prefix carry tree, keeping only optional stage registers between its forward and backward trees.\"},{\"name\":\"Bit-serial adder\",\"description\":\"Adds two operands one bit per cycle, keeping a single carry flip-flop and a bit-index counter.\"},{\"name\":\"Borrow-propagate subtractor\",\"description\":\"Computes the difference of two operands by propagating borrows through full-subtractor cells, holding only the final borrow bit.\"},{\"name\":\"Array multiplier\",\"description\":\"Forms all partial products at once and sums them in a regular adder array, with optional registers between rows.\"},{\"name\":\"Radix-4 Booth multiplier\",\"description\":\"Recodes the multiplier into signed digits to halve partial-product count, keeping a recoded-digit register and an accumulating product register.\"},{\"name\":\"Wallace tree multiplier\",\"description\":\"Compresses partial products through a tree of carry-save compressors into a final adder, with optional stage pipeline registers.\"},{\"name\":\"Shift-and-add sequential multiplier\",\"description\":\"Multiplies over several cycles using a shifting multiplicand register, a shifting multiplier register, an accumulator, and a step counter.\"},{\"name\":\"Restoring divider\",\"description\":\"Produces a quotient one bit per cycle by trial subtraction and restoration, keeping partial-remainder, quotient, and iteration-count registers.\"},{\"name\":\"Non-restoring divider\",\"description\":\"Generates quotient bits from the sign of a running remainder without restoring, holding remainder, quotient, and step-counter registers.\"},{\"name\":\"SRT radix-4 divider\",\"description\":\"Retires two quotient bits per cycle using a redundant quotient-digit selection table, keeping a redundant partial remainder and a quotient-digit accumulation register.\"},{\"name\":\"Newton-Raphson reciprocal unit\",\"description\":\"Iteratively refines an initial seed estimate of 1/x, storing the current estimate and an iteration counter.\"},{\"name\":\"Restoring square-root unit\",\"description\":\"Extracts a square root digit by digit using trial subtractions, keeping partial radicand, partial root, and step-index registers.\"},{\"name\":\"CORDIC rotation engine\",\"description\":\"Computes trigonometric or vector-rotation results by iterative shift-add micro-rotations, holding x, y, and angle accumulator registers plus an iteration index.\"},{\"name\":\"Barrel shifter\",\"description\":\"Shifts or rotates a word by an arbitrary amount in one pass through a cascade of multiplexer stages, holding no state.\"},{\"name\":\"Funnel shifter\",\"description\":\"Extracts a word-width field from the concatenation of two input words at a programmable offset, purely combinationally.\"},{\"name\":\"Arithmetic shifter unit\",\"description\":\"Shifts a signed value right or left with sign replication, optionally registering the shifted result.\"},{\"name\":\"Integer ALU\",\"description\":\"Selects among add, subtract, logical, and compare operations on two operands and produces a result plus condition flags held in a flag register.\"},{\"name\":\"Magnitude comparator\",\"description\":\"Compares two operands and asserts less-than, equal, and greater-than outputs from a chain or tree of bit comparisons.\"},{\"name\":\"Equality comparator tree\",\"description\":\"Reduces bitwise XOR results through an OR tree to signal whether two words differ, optionally registering the match bit.\"},{\"name\":\"Absolute-value unit\",\"description\":\"Returns the magnitude of a signed input by conditionally negating it based on the sign bit.\"},{\"name\":\"Two's-complement negator\",\"description\":\"Produces the arithmetic negation of an operand by inverting bits and incrementing, holding only an optional output register.\"},{\"name\":\"Sign-extension unit\",\"description\":\"Widens a narrow operand to a wider bus by replicating its sign bit or zero-filling according to a mode input.\"},{\"name\":\"Population-count unit\",\"description\":\"Counts the number of set bits in a word using a compressor tree, with an optional registered count output.\"},{\"name\":\"Leading-zero counter\",\"description\":\"Reports how many zero bits precede the most significant one bit of an input word, using a priority reduction tree.\"},{\"name\":\"Find-first-set unit\",\"description\":\"Scans a vector for the lowest set bit and outputs its index and a found flag, optionally registered.\"},{\"name\":\"Bit-reversal unit\",\"description\":\"Reorders a word so bit i maps to bit N-1-i, typically as pure wiring with an optional output register.\"},{\"name\":\"Gray-to-binary converter\",\"description\":\"Converts a Gray-coded input into plain binary via a prefix-XOR network, holding no state.\"},{\"name\":\"Binary-to-Gray converter\",\"description\":\"Converts a binary word to its Gray-coded form by XORing each bit with its neighbor.\"},{\"name\":\"BCD adder\",\"description\":\"Adds two packed decimal operands with per-digit correction logic, carrying a digit-carry chain and an optional result register.\"},{\"name\":\"Double-dabble converter\",\"description\":\"Converts a binary value to packed BCD by iterative shift-and-add-3 steps, keeping a shift register of digits and a step counter.\"},{\"name\":\"Seven-segment decoder\",\"description\":\"Maps a 4-bit nibble to segment drive patterns through a combinational lookup, optionally latching the pattern.\"},{\"name\":\"Floating-point adder\",\"description\":\"Aligns exponents, adds mantissas, then normalizes and rounds, keeping pipeline registers for exponent difference, aligned mantissas, and sticky bits.\"},{\"name\":\"Floating-point multiplier\",\"description\":\"Multiplies mantissas and adds exponents, then normalizes and rounds, holding pipeline registers for the product and exponent sum.\"},{\"name\":\"Floating-point divider\",\"description\":\"Divides mantissas iteratively and subtracts exponents, keeping partial-quotient, remainder, exponent, and iteration registers.\"},{\"name\":\"Float-to-integer converter\",\"description\":\"Converts a floating-point value to a fixed-width integer by shifting the mantissa per exponent and rounding, with an optional registered result and exception flags.\"},{\"name\":\"Integer-to-float converter\",\"description\":\"Normalizes an integer into mantissa and exponent fields and rounds to the target format, keeping an optional output register.\"},{\"name\":\"Floating-point comparator\",\"description\":\"Compares two floating-point operands including special-value cases and emits ordering and unordered flags, optionally registered.\"},{\"name\":\"Normalizer\",\"description\":\"Left-shifts a mantissa by its leading-zero count and adjusts the exponent accordingly, holding the shift amount in an internal register.\"},{\"name\":\"Rounding unit\",\"description\":\"Applies a selected rounding mode to a truncated result using guard, round, and sticky bits stored in a small status register.\"},{\"name\":\"Saturating fixed-point adder\",\"description\":\"Adds two fixed-point values and clamps the result to the representable range, keeping a sticky saturation flag register.\"},{\"name\":\"Multiply-accumulate unit\",\"description\":\"Multiplies two operands and adds the product into an accumulator register that persists across cycles.\"},{\"name\":\"Dot-product unit\",\"description\":\"Multiplies several operand pairs in parallel and sums them through an adder tree into a running sum register.\"},{\"name\":\"Systolic array processing element\",\"description\":\"Performs one multiply-accumulate per cycle while forwarding operands to neighbors, holding weight, partial-sum, and pipeline operand registers.\"},{\"name\":\"Transpose buffer\",\"description\":\"Writes a matrix tile in row order and reads it in column order using a two-dimensional register or memory array with row and column index counters.\"},{\"name\":\"Modular adder\",\"description\":\"Adds two residues and conditionally subtracts the modulus, holding the modulus in a configuration register.\"},{\"name\":\"Montgomery multiplier\",\"description\":\"Computes modular products in Montgomery form by interleaved multiply-and-reduce steps, keeping partial-product, modulus, and loop-index registers.\"},{\"name\":\"Modular exponentiation engine\",\"description\":\"Performs square-and-multiply exponentiation over a modulus, holding base, running result, exponent shift register, and bit counter.\"},{\"name\":\"GF(2^m) multiplier\",\"description\":\"Multiplies two binary-field elements with polynomial reduction, keeping an accumulator register and the irreducible-polynomial configuration.\"},{\"name\":\"CRC generator\",\"description\":\"Updates a remainder register with each incoming data word using a polynomial division network.\"},{\"name\":\"One's-complement checksum accumulator\",\"description\":\"Accumulates 16-bit words with end-around carry into a checksum register.\"},{\"name\":\"Parity tree\",\"description\":\"Reduces a data word to a single parity bit through an XOR tree, with an optional output register.\"},{\"name\":\"Hamming encoder\",\"description\":\"Computes check bits for a data word and emits the combined codeword, optionally registering it.\"},{\"name\":\"Hamming decoder\",\"description\":\"Recomputes syndrome bits from a received codeword and flips the indicated bit, holding syndrome and error-flag registers.\"},{\"name\":\"SECDED memory wrapper\",\"description\":\"Adds encode-on-write and correct-on-read logic around a memory array, keeping registered syndrome and error-status bits.\"},{\"name\":\"Reed-Solomon encoder\",\"description\":\"Appends parity symbols computed by a shift-register divider over a Galois field, keeping the symbol remainder registers.\"},{\"name\":\"Viterbi ACS unit\",\"description\":\"Adds branch metrics, compares path candidates, and selects survivors, holding per-state path-metric registers and a survivor traceback memory.\"},{\"name\":\"Convolutional encoder\",\"description\":\"Produces coded output bits from a constraint-length shift register of past input bits.\"},{\"name\":\"Block interleaver\",\"description\":\"Writes symbols row-wise and reads them column-wise from a block memory with write and read index counters.\"},{\"name\":\"Scrambler\",\"description\":\"XORs the data stream with a pseudorandom sequence generated from an internal polynomial shift register.\"},{\"name\":\"Descrambler\",\"description\":\"Recovers original data by XORing with a locally regenerated sequence held in a state shift register.\"},{\"name\":\"AES round datapath\",\"description\":\"Applies substitution, shifting, mixing, and key addition to a 128-bit state register for one cipher round.\"},{\"name\":\"AES key expansion unit\",\"description\":\"Derives per-round subkeys from the cipher key, holding the current key words and a round index register.\"},{\"name\":\"SHA-256 compression core\",\"description\":\"Processes a message block through 64 rounds, keeping eight working-variable registers, a message schedule array, and a round counter.\"},{\"name\":\"Microcode sequencer\",\"description\":\"Selects the next control-store address from branch, jump, and increment sources, keeping a microprogram counter and a microsubroutine return register.\"},{\"name\":\"ChaCha20 quarter-round core\",\"description\":\"Mixes four 32-bit words with add-rotate-XOR operations on a 16-word state register array.\"},{\"name\":\"Xorshift PRNG\",\"description\":\"Generates pseudorandom words by shifting and XORing an internal state register each cycle.\"},{\"name\":\"Ring-oscillator entropy harvester\",\"description\":\"Samples free-running oscillator phases to collect raw entropy bits into a collection shift register and sample counter.\"},{\"name\":\"Binary decoder\",\"description\":\"Activates one of 2^n outputs selected by an n-bit input under an enable, combinationally.\"},{\"name\":\"Binary encoder\",\"description\":\"Converts an asserted input line into its binary index, combinationally.\"},{\"name\":\"Multiplexer tree\",\"description\":\"Selects one of many input words using a hierarchy of select stages, optionally registering the selected word.\"},{\"name\":\"Demultiplexer\",\"description\":\"Routes a single input word to one of several output ports chosen by a select field.\"},{\"name\":\"Crossbar switch\",\"description\":\"Connects any input port to any output port through per-output select registers programmed by a configuration write.\"},{\"name\":\"Benes permutation network\",\"description\":\"Realizes arbitrary permutations through two butterfly halves of 2x2 switches whose settings are held in configuration registers.\"},{\"name\":\"Universal shift register\",\"description\":\"Holds a data word that can be loaded in parallel, shifted left, shifted right, or held according to mode inputs.\"},{\"name\":\"Multi-port register file\",\"description\":\"Provides several simultaneous read ports and one or more write ports over an array of addressable registers.\"},{\"name\":\"Single-port SRAM wrapper\",\"description\":\"Wraps a memory macro with address, data, and enable registers for one access per cycle.\"},{\"name\":\"Dual-port SRAM\",\"description\":\"Provides two independent address and data ports into one storage array, with per-port address and output registers.\"},{\"name\":\"ROM block\",\"description\":\"Returns fixed constant data for an applied address, optionally through a registered output stage.\"},{\"name\":\"Content-addressable memory\",\"description\":\"Compares a search key against all stored entries in parallel and returns a match index, keeping the entry array and valid bits.\"},{\"name\":\"Ternary CAM\",\"description\":\"Matches a key against stored entries with per-bit don't-care masks, keeping value, mask, and valid arrays.\"},{\"name\":\"Direct-mapped cache\",\"description\":\"Caches memory lines at index-determined slots, keeping tag, data, valid, and dirty arrays.\"},{\"name\":\"Set-associative cache controller\",\"description\":\"Looks up several ways in a set and sequences fills and evictions, keeping tag, data, state arrays, and a request state machine.\"},{\"name\":\"Cache tag array\",\"description\":\"Stores and compares address tags per set and way, holding tag bits and valid bits.\"},{\"name\":\"True-LRU replacement unit\",\"description\":\"Tracks access recency ordering per set in a stored rank or matrix and nominates a victim way.\"},{\"name\":\"Pseudo-LRU tree unit\",\"description\":\"Maintains a binary tree of direction bits per set and walks it to pick a victim way.\"},{\"name\":\"Translation lookaside buffer\",\"description\":\"Caches virtual-to-physical page translations in a tag/data array with valid, ASID, and permission bits.\"},{\"name\":\"Hardware page-table walker\",\"description\":\"Issues memory reads to traverse page-table levels, keeping level counter, current descriptor, and walk-state registers.\"},{\"name\":\"Store buffer\",\"description\":\"Holds committed store addresses and data until they drain to memory, with per-entry valid and merge bits.\"},{\"name\":\"Victim cache\",\"description\":\"Holds lines recently evicted from a main cache in a small fully associative array with tags and valid bits.\"},{\"name\":\"Miss-status holding register file\",\"description\":\"Tracks outstanding cache misses with per-entry address, target register list, and valid bits.\"},{\"name\":\"Snoop filter\",\"description\":\"Tracks which caches may hold which lines using a presence-vector array indexed by address.\"},{\"name\":\"Directory coherence controller\",\"description\":\"Sequences coherence messages for each line, keeping per-line sharer vectors, owner ids, and stable/transient state fields.\"},{\"name\":\"Scratchpad memory\",\"description\":\"Provides software-addressed local storage with simple address and data registers and no tags.\"},{\"name\":\"Line fill buffer\",\"description\":\"Collects returning beats of a memory line before writing it into the array, keeping a data buffer, beat index, and address register.\"},{\"name\":\"Stride prefetcher\",\"description\":\"Detects constant address strides per program counter and issues ahead-of-time requests, keeping a table of last address, stride, and confidence counters.\"},{\"name\":\"Bimodal branch predictor\",\"description\":\"Predicts branch direction from a table of saturating counters indexed by branch address.\"},{\"name\":\"Gshare branch predictor\",\"description\":\"Indexes a counter table with branch address XOR global history, keeping a global history shift register.\"},{\"name\":\"Branch target buffer\",\"description\":\"Caches predicted target addresses for taken branches in a tag/target array with valid bits.\"},{\"name\":\"Return address stack\",\"description\":\"Pushes return addresses on calls and pops them on returns, keeping an address array and a top-of-stack pointer.\"},{\"name\":\"Instruction fetch unit\",\"description\":\"Generates fetch addresses and captures returned instruction bytes, keeping a fetch pointer and an alignment buffer.\"},{\"name\":\"Instruction decoder\",\"description\":\"Extracts opcode fields and emits control signals and immediates, optionally registering the decoded micro-operation.\"},{\"name\":\"Register rename table\",\"description\":\"Maps architectural registers to physical tags, keeping the map array and a free-tag list.\"},{\"name\":\"Reorder buffer\",\"description\":\"Holds in-flight instruction results and status until in-order commit, with head and tail pointers and per-entry done/exception fields.\"},{\"name\":\"Reservation station\",\"description\":\"Buffers waiting operations with operand values, source tags, and ready bits until their inputs arrive.\"},{\"name\":\"Load-store queue\",\"description\":\"Holds pending memory operations with addresses, data, and age fields and performs address matching between them.\"},{\"name\":\"Common data bus broadcast unit\",\"description\":\"Drives completed result tag and value onto a shared result bus, keeping an output register and tag field.\"},{\"name\":\"Hazard detection unit\",\"description\":\"Compares source and destination identifiers across pipeline stages to produce stall and bubble signals, reading the stage registers.\"},{\"name\":\"Forwarding network\",\"description\":\"Selects operand values from later pipeline stage registers instead of the register file via multiplexer control logic.\"},{\"name\":\"Pipeline register stage\",\"description\":\"Latches datapath values and control bits between stages with enable and flush inputs.\"},{\"name\":\"Exception/trap controller\",\"description\":\"Captures faulting cause and address and redirects control flow, keeping cause, epc, and status registers.\"},{\"name\":\"Interrupt controller\",\"description\":\"Collects interrupt lines, applies priority, and presents a vector, keeping pending, enable, and in-service registers.\"},{\"name\":\"Interrupt vector table unit\",\"description\":\"Translates an accepted interrupt id into a handler address through a programmable table memory.\"},{\"name\":\"Control and status register file\",\"description\":\"Provides architecturally visible configuration and status words accessed by special instructions, each a mapped register.\"},{\"name\":\"Performance counter block\",\"description\":\"Counts selected microarchitectural events in programmable counters with per-counter event-select registers.\"},{\"name\":\"Breakpoint comparator unit\",\"description\":\"Compares instruction or data addresses against programmed watch values, keeping address, mask, and control registers.\"},{\"name\":\"Trace buffer\",\"description\":\"Records a rolling window of sampled signals into a circular memory with a write pointer and trigger-position register.\"},{\"name\":\"JTAG TAP controller\",\"description\":\"Sequences the standard test access state machine and routes data to instruction and data registers.\"},{\"name\":\"Boundary-scan register chain\",\"description\":\"Captures and drives chip pin values through a serial chain of boundary cells with capture and update latches.\"},{\"name\":\"Scan flip-flop chain\",\"description\":\"Provides test-mode serial shifting of functional flip-flop contents through a multiplexed scan input.\"},{\"name\":\"Memory BIST controller\",\"description\":\"Generates march-test address and data patterns and compares read-back data, keeping address counter, pattern state, and fail flag registers.\"},{\"name\":\"MISR signature analyzer\",\"description\":\"Compresses an observed data stream into a signature register updated each cycle by feedback and XOR.\"},{\"name\":\"eFuse/OTP controller\",\"description\":\"Sequences programming and sensing of one-time-programmable bits, keeping a shadow register of read fuse values and a program state machine.\"},{\"name\":\"Clock gating cell\",\"description\":\"Produces a gated clock from an enable captured in a latch transparent on the inactive clock phase.\"},{\"name\":\"Glitchless clock mux\",\"description\":\"Switches between asynchronous clock sources using per-branch synchronizer flops and enable handshake flops.\"},{\"name\":\"Digital PLL loop filter\",\"description\":\"Converts phase error samples into an oscillator control word, keeping proportional and integral accumulator registers.\"},{\"name\":\"DLL phase aligner\",\"description\":\"Adjusts a delay-line tap to align a feedback clock to a reference, keeping a tap-select register and lock flag.\"},{\"name\":\"Tapped delay line\",\"description\":\"Propagates a signal through a chain of buffers and exposes intermediate taps, with optional sampling flops on each tap.\"},{\"name\":\"Duty-cycle corrector\",\"description\":\"Adjusts clock high-time using a measured imbalance stored in a correction code register.\"},{\"name\":\"Reset synchronizer\",\"description\":\"Asserts reset asynchronously and releases it synchronously using a short chain of flip-flops.\"},{\"name\":\"Power-on reset generator\",\"description\":\"Holds reset asserted for a programmed number of stable clock cycles counted in an internal counter.\"},{\"name\":\"Pulse stretcher\",\"description\":\"Extends a short input pulse to a fixed output duration using a reload counter and an output flag.\"},{\"name\":\"Edge detector\",\"description\":\"Flags rising or falling transitions by comparing a signal with its value stored in a delay flop.\"},{\"name\":\"Cross-domain mailbox register\",\"description\":\"Holds a data word written in one clock domain and read in another, with set/clear flag flops on each side.\"},{\"name\":\"Isolation cell controller\",\"description\":\"Drives clamp enables for signals crossing into powered-down regions, keeping sequencing state bits.\"},{\"name\":\"Power gating controller\",\"description\":\"Sequences retention save, switch ramp, and restore steps, keeping a sequencer state register and acknowledge flags.\"},{\"name\":\"DVFS controller\",\"description\":\"Requests voltage and frequency operating points based on load inputs, keeping current-point and request-pending registers.\"},{\"name\":\"Temperature sensor interface\",\"description\":\"Samples a sensor conversion result periodically into a reading register with threshold compare registers.\"},{\"name\":\"UART transmitter\",\"description\":\"Serializes a byte with start, parity, and stop bits, keeping a shift register, bit counter, and busy flag.\"},{\"name\":\"UART receiver\",\"description\":\"Samples an asynchronous serial line at mid-bit and assembles a byte in a shift register with bit counter and framing-error flag.\"},{\"name\":\"Baud rate generator\",\"description\":\"Divides a system clock to produce bit-time and oversampling ticks using a divisor register and a phase accumulator.\"},{\"name\":\"SPI master\",\"description\":\"Drives chip-select, clock, and serial data for a transfer, keeping a shift register, bit counter, and mode configuration bits.\"},{\"name\":\"SPI slave\",\"description\":\"Shifts data in and out on an externally supplied clock, keeping receive and transmit shift registers and a bit index.\"},{\"name\":\"I2C master\",\"description\":\"Generates start, address, data, and stop phases on an open-drain bus, keeping a byte shift register, bit counter, and phase state register.\"},{\"name\":\"I2C slave\",\"description\":\"Responds to its programmed address and shifts bytes on the bus clock, keeping an address-match flag, shift register, and state machine.\"},{\"name\":\"I2S audio interface\",\"description\":\"Serializes or deserializes left/right audio samples against word-select and bit clocks, keeping sample shift registers and a channel flag.\"},{\"name\":\"CAN protocol controller\",\"description\":\"Handles arbitration, bit stuffing, CRC, and acknowledgement for frames, keeping frame buffers, bit timing counters, and error counters.\"},{\"name\":\"USB serial interface engine\",\"description\":\"Decodes packet identifiers and NRZI-encoded data on the bus, keeping packet-state, CRC, and token field registers.\"},{\"name\":\"USB endpoint buffer manager\",\"description\":\"Manages per-endpoint data buffers and toggle bits, keeping endpoint configuration, buffer pointers, and data-toggle flags.\"},{\"name\":\"Ethernet MAC transmitter\",\"description\":\"Frames payload with preamble, padding, and FCS and hands bytes to the PHY interface, keeping byte counters and a transmit state register.\"},{\"name\":\"Ethernet MAC receiver\",\"description\":\"Detects preamble, strips framing, and checks FCS on inbound frames, keeping a length counter, CRC register, and status flags.\"},{\"name\":\"RGMII adapter\",\"description\":\"Converts between double-data-rate PHY signaling and single-rate internal buses using DDR capture and launch registers.\"},{\"name\":\"8b/10b encoder\",\"description\":\"Maps data bytes to balanced ten-bit symbols, keeping a running disparity bit.\"},{\"name\":\"8b/10b decoder\",\"description\":\"Recovers bytes and control indications from ten-bit symbols, keeping disparity and code-error status bits.\"},{\"name\":\"64b/66b gearbox\",\"description\":\"Repacks 64-bit payloads plus sync header into a continuous 66-bit serial framing, keeping a barrel buffer and bit-offset counter.\"},{\"name\":\"Serializer\",\"description\":\"Converts a parallel word into a high-rate serial bitstream using a load register, shift register, and bit counter.\"},{\"name\":\"Deserializer\",\"description\":\"Collects serial bits into parallel words using a shift register and a bit-count register that triggers word output.\"},{\"name\":\"Comma detector\",\"description\":\"Searches the incoming bitstream for an alignment pattern and sets a barrel-shift offset register for word boundaries.\"},{\"name\":\"Oversampling clock-data recovery\",\"description\":\"Samples a serial line several times per bit and picks the best phase, keeping phase-select and majority-vote registers.\"},{\"name\":\"Packet framer\",\"description\":\"Wraps payload bytes with start/end delimiters and length fields, keeping a byte counter and framing state register.\"},{\"name\":\"Packet header parser\",\"description\":\"Extracts fixed-offset header fields from a streaming packet into field registers, keeping a byte-offset counter.\"},{\"name\":\"AXI master port\",\"description\":\"Issues address, write-data, and response channel transactions, keeping outstanding-transaction id registers and per-channel handshake state.\"},{\"name\":\"AXI slave port\",\"description\":\"Accepts channel transactions and returns data or responses, keeping captured address, burst parameters, and response code registers.\"},{\"name\":\"AXI interconnect address decoder\",\"description\":\"Routes transactions to target ports based on address ranges stored in region base/limit registers.\"},{\"name\":\"AXI-to-APB bridge\",\"description\":\"Converts pipelined bus transactions to simple two-phase peripheral accesses, keeping captured address, data, and phase state registers.\"},{\"name\":\"APB peripheral controller\",\"description\":\"Decodes setup and access phases to read or write peripheral registers, keeping a phase flag and selected-register index.\"},{\"name\":\"AHB master\",\"description\":\"Drives address and control for pipelined bus transfers, keeping address-phase and data-phase holding registers.\"},{\"name\":\"Burst address generator\",\"description\":\"Produces successive beat addresses for incrementing or wrapping bursts, keeping base address, beat index, and size registers.\"},{\"name\":\"Memory-map address decoder\",\"description\":\"Compares an incoming address against programmed region descriptors and selects a target slave.\"},{\"name\":\"Network-on-chip router\",\"description\":\"Switches flits between input and output ports, keeping per-port input buffers, route fields, and switch configuration registers.\"},{\"name\":\"Virtual channel allocator\",\"description\":\"Assigns free output virtual channels to waiting input channels, keeping per-VC state and allocation registers.\"},{\"name\":\"Wormhole route computation unit\",\"description\":\"Computes the output port for a head flit from destination coordinates, storing the chosen port per input channel.\"},{\"name\":\"Packet reassembly buffer\",\"description\":\"Collects fragments of a packet into contiguous storage using a segment memory, offset register, and received-length counter.\"},{\"name\":\"Weighted fair queue scheduler\",\"description\":\"Selects among queues according to per-queue weights and virtual-time counters held in a scheduling state array.\"},{\"name\":\"Hardware priority queue\",\"description\":\"Maintains a binary heap of keyed entries in a memory array with a size register and sift-up/sift-down index registers.\"},{\"name\":\"Sorting network\",\"description\":\"Sorts a fixed number of parallel values through a fixed pattern of compare-exchange stages, with optional stage registers.\"},{\"name\":\"Bitonic merge unit\",\"description\":\"Merges two sorted sequences through log-depth compare-exchange stages, keeping per-stage pipeline registers.\"},{\"name\":\"Hash table lookup engine\",\"description\":\"Hashes a key, probes bucket memory, and compares stored keys, keeping probe index, bucket data, and match registers.\"},{\"name\":\"Bloom filter\",\"description\":\"Sets and tests several hashed bit positions in a bit-vector memory to answer approximate membership queries.\"},{\"name\":\"LIFO stack\",\"description\":\"Stores pushed words in a memory array addressed by a top-of-stack pointer register.\"},{\"name\":\"Free-list manager\",\"description\":\"Allocates and recycles buffer identifiers through a linked-list memory with head and tail pointer registers.\"},{\"name\":\"Bitmap allocator\",\"description\":\"Tracks free blocks as bits in a bitmap memory and selects the first clear bit for allocation.\"},{\"name\":\"Timer/counter peripheral\",\"description\":\"Counts clock ticks or external events with load, compare, and control registers plus an interrupt flag.\"},{\"name\":\"Real-time clock\",\"description\":\"Maintains seconds, minutes, hours, and calendar fields in dedicated registers updated by a one-hertz tick.\"},{\"name\":\"Cycle timestamp counter\",\"description\":\"Provides a free-running wide cycle count readable as a register pair with a latched snapshot register.\"},{\"name\":\"Serial-in parallel-out shift register\",\"description\":\"Shifts in bits one per cycle and exposes the accumulated word in parallel from its storage flops.\"},{\"name\":\"Frequency meter\",\"description\":\"Counts edges of an unknown clock over a reference gate interval, keeping an event counter, gate counter, and result latch.\"},{\"name\":\"Time-to-digital converter\",\"description\":\"Measures the interval between two edges using a tapped delay chain plus a coarse cycle counter, latching both codes.\"},{\"name\":\"Quadrature decoder\",\"description\":\"Derives position and direction from two phase-shifted encoder inputs, keeping previous-sample flops and a position counter.\"},{\"name\":\"Stepper motor sequencer\",\"description\":\"Drives coil phase patterns in order at a programmable step rate, keeping a phase index register and step-rate divider.\"},{\"name\":\"Program counter unit\",\"description\":\"Supplies the next instruction address from increment, branch, or exception sources, holding the current address register.\"},{\"name\":\"First-order sigma-delta DAC\",\"description\":\"Converts a multi-bit sample to a one-bit density stream using an error accumulator register.\"},{\"name\":\"Decimation filter\",\"description\":\"Low-pass filters and downsamples an oversampled stream, keeping filter state registers and a decimation phase counter.\"},{\"name\":\"PDM-to-PCM converter\",\"description\":\"Turns a one-bit density stream into multi-bit samples through cascaded integrators and combs, keeping their accumulator and delay registers.\"},{\"name\":\"FIR filter\",\"description\":\"Computes a weighted sum of recent samples using a tapped delay line of sample registers and a coefficient memory.\"},{\"name\":\"IIR biquad section\",\"description\":\"Implements a second-order recursive filter stage with two delay-state registers and coefficient registers.\"},{\"name\":\"CIC filter\",\"description\":\"Performs rate conversion with cascaded integrator and comb stages, holding integrator accumulators and comb delay registers.\"},{\"name\":\"Polyphase resampler\",\"description\":\"Changes sample rate using sub-filter banks selected by a phase accumulator, keeping sample history and phase registers.\"},{\"name\":\"FFT butterfly unit\",\"description\":\"Combines two complex operands with a twiddle factor into two outputs, with pipeline registers for the complex intermediates.\"},{\"name\":\"Twiddle address generator\",\"description\":\"Produces coefficient ROM addresses for each FFT stage and index, keeping stage and butterfly-index counters.\"},{\"name\":\"Window function multiplier\",\"description\":\"Scales incoming samples by coefficients read from a window ROM addressed by a sample-index counter.\"},{\"name\":\"Numerically controlled oscillator\",\"description\":\"Generates sine and cosine samples by advancing a phase accumulator register and looking up a waveform table.\"},{\"name\":\"PID controller\",\"description\":\"Computes a control output from proportional, integral, and derivative terms, keeping an integral accumulator and previous-error register.\"},{\"name\":\"Automatic gain control loop\",\"description\":\"Adjusts an applied gain from measured signal amplitude, keeping an amplitude estimate register and a gain register.\"},{\"name\":\"Correlator\",\"description\":\"Slides a reference sequence against an input stream and accumulates products, keeping a sample shift register and accumulator.\"},{\"name\":\"Peak detector\",\"description\":\"Tracks the largest magnitude seen within a window, keeping peak-value and peak-index registers plus a window counter.\"},{\"name\":\"Moving-average filter\",\"description\":\"Outputs the mean of the last N samples using a sample delay memory and a running-sum register.\"},{\"name\":\"Median filter\",\"description\":\"Outputs the middle value of a sliding sample window held in a small register array with a sorting network.\"},{\"name\":\"Image line buffer\",\"description\":\"Stores one or more complete image rows in memory so a kernel can access vertically adjacent pixels, with row write and read pointers.\"},{\"name\":\"2D sliding-window generator\",\"description\":\"Assembles a KxK pixel neighborhood each cycle from line buffers into a register window array.\"},{\"name\":\"Color space converter\",\"description\":\"Applies a fixed matrix transform between color representations, keeping coefficient registers and an optional output pipeline register.\"},{\"name\":\"Gamma lookup table\",\"description\":\"Maps input intensity values through a writable table memory to corrected output values.\"},{\"name\":\"Alpha blender\",\"description\":\"Mixes foreground and background pixels using an alpha weight, with optional registered pixel outputs.\"},{\"name\":\"Video timing generator\",\"description\":\"Produces horizontal and vertical sync and blanking signals from pixel and line counters and programmed timing registers.\"},{\"name\":\"Framebuffer scanout controller\",\"description\":\"Reads pixel data from memory in raster order to feed a display, keeping a base-address register, current-address counter, and line counter.\"},{\"name\":\"Character display generator\",\"description\":\"Renders text by fetching character codes and font rows, keeping a character memory, font ROM, and row/column counters.\"},{\"name\":\"Bilinear video scaler\",\"description\":\"Interpolates output pixels from neighboring input pixels using fractional position accumulators and line-buffer state.\"},{\"name\":\"Bayer demosaic unit\",\"description\":\"Reconstructs full-color pixels from a mosaic sensor pattern using neighborhood registers and a phase indicator for the filter position.\"},{\"name\":\"Zigzag scan reorder buffer\",\"description\":\"Reorders an 8x8 coefficient block between raster and zigzag order using a block memory and an index-sequence ROM.\"},{\"name\":\"Discrete cosine transform unit\",\"description\":\"Transforms a block of samples into frequency coefficients through row and column passes, keeping an intermediate block memory.\"},{\"name\":\"Run-length encoder\",\"description\":\"Emits value and repeat-count pairs from a stream, keeping a current-value register and a run-length counter.\"},{\"name\":\"Huffman decoder\",\"description\":\"Consumes a variable-length bitstream and emits symbols using code-table memories, keeping a bit-accumulator register and bit-position counter.\"},{\"name\":\"LZ77 match finder\",\"description\":\"Searches a history window for the longest match with current input, keeping a history memory, candidate position registers, and match-length register.\"},{\"name\":\"PS/2 keyboard interface\",\"description\":\"Receives serial scan-code frames clocked by the device, keeping a shift register, bit counter, and code output register.\"},{\"name\":\"Seven-segment display multiplexer\",\"description\":\"Time-multiplexes digit drive lines across several displays, keeping a digit-index counter and per-digit value registers.\"},{\"name\":\"LED matrix scanner\",\"description\":\"Drives rows sequentially while presenting column data, keeping a row counter and a frame bitmap memory.\"},{\"name\":\"GPIO port\",\"description\":\"Provides software-controlled pin output, input sampling, and direction, keeping output-data, direction, and input-capture registers.\"},{\"name\":\"Pin mux controller\",\"description\":\"Selects which internal function drives each physical pad using per-pin function-select registers.\"},{\"name\":\"Shadowed configuration register bank\",\"description\":\"Accepts writes into shadow registers and transfers them to active registers on a commit strobe.\"},{\"name\":\"Hardware semaphore block\",\"description\":\"Provides test-and-set lock cells that record the owning requester id and a locked flag per cell.\"},{\"name\":\"Atomic compare-and-swap unit\",\"description\":\"Reads a memory location, compares it to an expected value, and conditionally writes, keeping read-data, expected, and success-flag registers.\"},{\"name\":\"Barrier synchronization unit\",\"description\":\"Tracks which participants have arrived using an arrival bit vector and releases them with a sense-reversal flag.\"},{\"name\":\"Doorbell register block\",\"description\":\"Lets a remote agent set notification bits that a local agent reads and clears, keeping per-channel pending bits.\"},{\"name\":\"Interrupt status aggregator\",\"description\":\"Combines many source events into a summary line, keeping raw-status, mask, and masked-status registers.\"},{\"name\":\"DMA descriptor fetch engine\",\"description\":\"Reads descriptor structures from memory and loads transfer parameters, keeping descriptor-pointer, parameter, and fetch-state registers.\"},{\"name\":\"Scatter-gather address translator\",\"description\":\"Walks a list of memory segments to map a linear transfer offset onto physical addresses, keeping segment-index and residual-length registers.\"},{\"name\":\"SDRAM bank controller\",\"description\":\"Issues activate, read, write, and precharge commands for one bank, keeping open-row address, bank state, and timing counters.\"},{\"name\":\"DRAM refresh scheduler\",\"description\":\"Generates periodic refresh commands and tracks deferrals, keeping an interval counter and a pending-refresh counter.\"},{\"name\":\"NAND flash controller\",\"description\":\"Sequences command, address, and data cycles to a flash device, keeping a command state machine, page buffer, and status register.\"},{\"name\":\"SD card host controller\",\"description\":\"Issues command/response transactions and block data transfers, keeping argument, response, and transfer-state registers.\"},{\"name\":\"QSPI execute-in-place controller\",\"description\":\"Converts memory read requests into quad serial flash commands, keeping command configuration registers and a prefetch data register.\"},{\"name\":\"Wear-leveling mapping table\",\"description\":\"Translates logical to physical blocks and records per-block erase counts in a mapping memory.\"},{\"name\":\"Activation function LUT\",\"description\":\"Maps an input value to a nonlinear output using a piecewise table memory with optional interpolation registers.\"},{\"name\":\"Requantization unit\",\"description\":\"Rescales wide accumulator values to a narrow output format using multiplier and shift configuration registers.\"},{\"name\":\"Argmax unit\",\"description\":\"Scans a stream of values to report the index of the largest, keeping best-value, best-index, and position-counter registers.\"},{\"name\":\"Johnson ring counter\",\"description\":\"Circulates a pattern through a shift register whose last bit is inverted back into the first stage.\"}]}",
+ "stop": "ok",
+ "usage": {
+  "input": 1667,
+  "output": 21184
+ },
+ "asked": 250,
+ "kinds": [
+  {
+   "name": "Ripple-carry adder",
+   "description": "Adds two binary operands by chaining full-adder carries from the least to most significant bit, holding no internal state in its combinational form."
+  },
+  {
+   "name": "Carry-lookahead adder",
+   "description": "Adds two operands using generate/propagate logic to compute carries in parallel, with optional pipeline registers for the partial carry terms."
+  },
+  {
+   "name": "Carry-select adder",
+   "description": "Computes two conditional sums per block for carry-in 0 and 1 and selects between them, buffering the duplicated block sums."
+  },
+  {
+   "name": "Carry-save adder",
+   "description": "Reduces three input vectors to a sum vector and a carry vector, optionally registering both outputs for the next reduction stage."
+  },
+  {
+   "name": "Kogge-Stone prefix adder",
+   "description": "Performs addition through a parallel-prefix tree of generate/propagate cells, optionally with pipeline registers between prefix levels."
+  },
+  {
+   "name": "Brent-Kung adder",
+   "description": "Performs addition with a sparse parallel-prefix carry tree, keeping only optional stage registers between its forward and backward trees."
+  },
+  {
+   "name": "Bit-serial adder",
+   "description": "Adds two operands one bit per cycle, keeping a single carry flip-flop and a bit-index counter."
+  },
+  {
+   "name": "Borrow-propagate subtractor",
+   "description": "Computes the difference of two operands by propagating borrows through full-subtractor cells, holding only the final borrow bit."
+  },
+  {
+   "name": "Array multiplier",
+   "description": "Forms all partial products at once and sums them in a regular adder array, with optional registers between rows."
+  },
+  {
+   "name": "Radix-4 Booth multiplier",
+   "description": "Recodes the multiplier into signed digits to halve partial-product count, keeping a recoded-digit register and an accumulating product register."
+  },
+  {
+   "name": "Wallace tree multiplier",
+   "description": "Compresses partial products through a tree of carry-save compressors into a final adder, with optional stage pipeline registers."
+  },
+  {
+   "name": "Shift-and-add sequential multiplier",
+   "description": "Multiplies over several cycles using a shifting multiplicand register, a shifting multiplier register, an accumulator, and a step counter."
+  },
+  {
+   "name": "Restoring divider",
+   "description": "Produces a quotient one bit per cycle by trial subtraction and restoration, keeping partial-remainder, quotient, and iteration-count registers."
+  },
+  {
+   "name": "Non-restoring divider",
+   "description": "Generates quotient bits from the sign of a running remainder without restoring, holding remainder, quotient, and step-counter registers."
+  },
+  {
+   "name": "SRT radix-4 divider",
+   "description": "Retires two quotient bits per cycle using a redundant quotient-digit selection table, keeping a redundant partial remainder and a quotient-digit accumulation register."
+  },
+  {
+   "name": "Newton-Raphson reciprocal unit",
+   "description": "Iteratively refines an initial seed estimate of 1/x, storing the current estimate and an iteration counter."
+  },
+  {
+   "name": "Restoring square-root unit",
+   "description": "Extracts a square root digit by digit using trial subtractions, keeping partial radicand, partial root, and step-index registers."
+  },
+  {
+   "name": "CORDIC rotation engine",
+   "description": "Computes trigonometric or vector-rotation results by iterative shift-add micro-rotations, holding x, y, and angle accumulator registers plus an iteration index."
+  },
+  {
+   "name": "Barrel shifter",
+   "description": "Shifts or rotates a word by an arbitrary amount in one pass through a cascade of multiplexer stages, holding no state."
+  },
+  {
+   "name": "Funnel shifter",
+   "description": "Extracts a word-width field from the concatenation of two input words at a programmable offset, purely combinationally."
+  },
+  {
+   "name": "Arithmetic shifter unit",
+   "description": "Shifts a signed value right or left with sign replication, optionally registering the shifted result."
+  },
+  {
+   "name": "Integer ALU",
+   "description": "Selects among add, subtract, logical, and compare operations on two operands and produces a result plus condition flags held in a flag register."
+  },
+  {
+   "name": "Magnitude comparator",
+   "description": "Compares two operands and asserts less-than, equal, and greater-than outputs from a chain or tree of bit comparisons."
+  },
+  {
+   "name": "Equality comparator tree",
+   "description": "Reduces bitwise XOR results through an OR tree to signal whether two words differ, optionally registering the match bit."
+  },
+  {
+   "name": "Absolute-value unit",
+   "description": "Returns the magnitude of a signed input by conditionally negating it based on the sign bit."
+  },
+  {
+   "name": "Two's-complement negator",
+   "description": "Produces the arithmetic negation of an operand by inverting bits and incrementing, holding only an optional output register."
+  },
+  {
+   "name": "Sign-extension unit",
+   "description": "Widens a narrow operand to a wider bus by replicating its sign bit or zero-filling according to a mode input."
+  },
+  {
+   "name": "Population-count unit",
+   "description": "Counts the number of set bits in a word using a compressor tree, with an optional registered count output."
+  },
+  {
+   "name": "Leading-zero counter",
+   "description": "Reports how many zero bits precede the most significant one bit of an input word, using a priority reduction tree."
+  },
+  {
+   "name": "Find-first-set unit",
+   "description": "Scans a vector for the lowest set bit and outputs its index and a found flag, optionally registered."
+  },
+  {
+   "name": "Bit-reversal unit",
+   "description": "Reorders a word so bit i maps to bit N-1-i, typically as pure wiring with an optional output register."
+  },
+  {
+   "name": "Gray-to-binary converter",
+   "description": "Converts a Gray-coded input into plain binary via a prefix-XOR network, holding no state."
+  },
+  {
+   "name": "Binary-to-Gray converter",
+   "description": "Converts a binary word to its Gray-coded form by XORing each bit with its neighbor."
+  },
+  {
+   "name": "BCD adder",
+   "description": "Adds two packed decimal operands with per-digit correction logic, carrying a digit-carry chain and an optional result register."
+  },
+  {
+   "name": "Double-dabble converter",
+   "description": "Converts a binary value to packed BCD by iterative shift-and-add-3 steps, keeping a shift register of digits and a step counter."
+  },
+  {
+   "name": "Seven-segment decoder",
+   "description": "Maps a 4-bit nibble to segment drive patterns through a combinational lookup, optionally latching the pattern."
+  },
+  {
+   "name": "Floating-point adder",
+   "description": "Aligns exponents, adds mantissas, then normalizes and rounds, keeping pipeline registers for exponent difference, aligned mantissas, and sticky bits."
+  },
+  {
+   "name": "Floating-point multiplier",
+   "description": "Multiplies mantissas and adds exponents, then normalizes and rounds, holding pipeline registers for the product and exponent sum."
+  },
+  {
+   "name": "Floating-point divider",
+   "description": "Divides mantissas iteratively and subtracts exponents, keeping partial-quotient, remainder, exponent, and iteration registers."
+  },
+  {
+   "name": "Float-to-integer converter",
+   "description": "Converts a floating-point value to a fixed-width integer by shifting the mantissa per exponent and rounding, with an optional registered result and exception flags."
+  },
+  {
+   "name": "Integer-to-float converter",
+   "description": "Normalizes an integer into mantissa and exponent fields and rounds to the target format, keeping an optional output register."
+  },
+  {
+   "name": "Floating-point comparator",
+   "description": "Compares two floating-point operands including special-value cases and emits ordering and unordered flags, optionally registered."
+  },
+  {
+   "name": "Normalizer",
+   "description": "Left-shifts a mantissa by its leading-zero count and adjusts the exponent accordingly, holding the shift amount in an internal register."
+  },
+  {
+   "name": "Rounding unit",
+   "description": "Applies a selected rounding mode to a truncated result using guard, round, and sticky bits stored in a small status register."
+  },
+  {
+   "name": "Saturating fixed-point adder",
+   "description": "Adds two fixed-point values and clamps the result to the representable range, keeping a sticky saturation flag register."
+  },
+  {
+   "name": "Multiply-accumulate unit",
+   "description": "Multiplies two operands and adds the product into an accumulator register that persists across cycles."
+  },
+  {
+   "name": "Dot-product unit",
+   "description": "Multiplies several operand pairs in parallel and sums them through an adder tree into a running sum register."
+  },
+  {
+   "name": "Systolic array processing element",
+   "description": "Performs one multiply-accumulate per cycle while forwarding operands to neighbors, holding weight, partial-sum, and pipeline operand registers."
+  },
+  {
+   "name": "Transpose buffer",
+   "description": "Writes a matrix tile in row order and reads it in column order using a two-dimensional register or memory array with row and column index counters."
+  },
+  {
+   "name": "Modular adder",
+   "description": "Adds two residues and conditionally subtracts the modulus, holding the modulus in a configuration register."
+  },
+  {
+   "name": "Montgomery multiplier",
+   "description": "Computes modular products in Montgomery form by interleaved multiply-and-reduce steps, keeping partial-product, modulus, and loop-index registers."
+  },
+  {
+   "name": "Modular exponentiation engine",
+   "description": "Performs square-and-multiply exponentiation over a modulus, holding base, running result, exponent shift register, and bit counter."
+  },
+  {
+   "name": "GF(2^m) multiplier",
+   "description": "Multiplies two binary-field elements with polynomial reduction, keeping an accumulator register and the irreducible-polynomial configuration."
+  },
+  {
+   "name": "CRC generator",
+   "description": "Updates a remainder register with each incoming data word using a polynomial division network."
+  },
+  {
+   "name": "One's-complement checksum accumulator",
+   "description": "Accumulates 16-bit words with end-around carry into a checksum register."
+  },
+  {
+   "name": "Parity tree",
+   "description": "Reduces a data word to a single parity bit through an XOR tree, with an optional output register."
+  },
+  {
+   "name": "Hamming encoder",
+   "description": "Computes check bits for a data word and emits the combined codeword, optionally registering it."
+  },
+  {
+   "name": "Hamming decoder",
+   "description": "Recomputes syndrome bits from a received codeword and flips the indicated bit, holding syndrome and error-flag registers."
+  },
+  {
+   "name": "SECDED memory wrapper",
+   "description": "Adds encode-on-write and correct-on-read logic around a memory array, keeping registered syndrome and error-status bits."
+  },
+  {
+   "name": "Reed-Solomon encoder",
+   "description": "Appends parity symbols computed by a shift-register divider over a Galois field, keeping the symbol remainder registers."
+  },
+  {
+   "name": "Viterbi ACS unit",
+   "description": "Adds branch metrics, compares path candidates, and selects survivors, holding per-state path-metric registers and a survivor traceback memory."
+  },
+  {
+   "name": "Convolutional encoder",
+   "description": "Produces coded output bits from a constraint-length shift register of past input bits."
+  },
+  {
+   "name": "Block interleaver",
+   "description": "Writes symbols row-wise and reads them column-wise from a block memory with write and read index counters."
+  },
+  {
+   "name": "Scrambler",
+   "description": "XORs the data stream with a pseudorandom sequence generated from an internal polynomial shift register."
+  },
+  {
+   "name": "Descrambler",
+   "description": "Recovers original data by XORing with a locally regenerated sequence held in a state shift register."
+  },
+  {
+   "name": "AES round datapath",
+   "description": "Applies substitution, shifting, mixing, and key addition to a 128-bit state register for one cipher round."
+  },
+  {
+   "name": "AES key expansion unit",
+   "description": "Derives per-round subkeys from the cipher key, holding the current key words and a round index register."
+  },
+  {
+   "name": "SHA-256 compression core",
+   "description": "Processes a message block through 64 rounds, keeping eight working-variable registers, a message schedule array, and a round counter."
+  },
+  {
+   "name": "Microcode sequencer",
+   "description": "Selects the next control-store address from branch, jump, and increment sources, keeping a microprogram counter and a microsubroutine return register."
+  },
+  {
+   "name": "ChaCha20 quarter-round core",
+   "description": "Mixes four 32-bit words with add-rotate-XOR operations on a 16-word state register array."
+  },
+  {
+   "name": "Xorshift PRNG",
+   "description": "Generates pseudorandom words by shifting and XORing an internal state register each cycle."
+  },
+  {
+   "name": "Ring-oscillator entropy harvester",
+   "description": "Samples free-running oscillator phases to collect raw entropy bits into a collection shift register and sample counter."
+  },
+  {
+   "name": "Binary decoder",
+   "description": "Activates one of 2^n outputs selected by an n-bit input under an enable, combinationally."
+  },
+  {
+   "name": "Binary encoder",
+   "description": "Converts an asserted input line into its binary index, combinationally."
+  },
+  {
+   "name": "Multiplexer tree",
+   "description": "Selects one of many input words using a hierarchy of select stages, optionally registering the selected word."
+  },
+  {
+   "name": "Demultiplexer",
+   "description": "Routes a single input word to one of several output ports chosen by a select field."
+  },
+  {
+   "name": "Crossbar switch",
+   "description": "Connects any input port to any output port through per-output select registers programmed by a configuration write."
+  },
+  {
+   "name": "Benes permutation network",
+   "description": "Realizes arbitrary permutations through two butterfly halves of 2x2 switches whose settings are held in configuration registers."
+  },
+  {
+   "name": "Universal shift register",
+   "description": "Holds a data word that can be loaded in parallel, shifted left, shifted right, or held according to mode inputs."
+  },
+  {
+   "name": "Multi-port register file",
+   "description": "Provides several simultaneous read ports and one or more write ports over an array of addressable registers."
+  },
+  {
+   "name": "Single-port SRAM wrapper",
+   "description": "Wraps a memory macro with address, data, and enable registers for one access per cycle."
+  },
+  {
+   "name": "Dual-port SRAM",
+   "description": "Provides two independent address and data ports into one storage array, with per-port address and output registers."
+  },
+  {
+   "name": "ROM block",
+   "description": "Returns fixed constant data for an applied address, optionally through a registered output stage."
+  },
+  {
+   "name": "Content-addressable memory",
+   "description": "Compares a search key against all stored entries in parallel and returns a match index, keeping the entry array and valid bits."
+  },
+  {
+   "name": "Ternary CAM",
+   "description": "Matches a key against stored entries with per-bit don't-care masks, keeping value, mask, and valid arrays."
+  },
+  {
+   "name": "Direct-mapped cache",
+   "description": "Caches memory lines at index-determined slots, keeping tag, data, valid, and dirty arrays."
+  },
+  {
+   "name": "Set-associative cache controller",
+   "description": "Looks up several ways in a set and sequences fills and evictions, keeping tag, data, state arrays, and a request state machine."
+  },
+  {
+   "name": "Cache tag array",
+   "description": "Stores and compares address tags per set and way, holding tag bits and valid bits."
+  },
+  {
+   "name": "True-LRU replacement unit",
+   "description": "Tracks access recency ordering per set in a stored rank or matrix and nominates a victim way."
+  },
+  {
+   "name": "Pseudo-LRU tree unit",
+   "description": "Maintains a binary tree of direction bits per set and walks it to pick a victim way."
+  },
+  {
+   "name": "Translation lookaside buffer",
+   "description": "Caches virtual-to-physical page translations in a tag/data array with valid, ASID, and permission bits."
+  },
+  {
+   "name": "Hardware page-table walker",
+   "description": "Issues memory reads to traverse page-table levels, keeping level counter, current descriptor, and walk-state registers."
+  },
+  {
+   "name": "Store buffer",
+   "description": "Holds committed store addresses and data until they drain to memory, with per-entry valid and merge bits."
+  },
+  {
+   "name": "Victim cache",
+   "description": "Holds lines recently evicted from a main cache in a small fully associative array with tags and valid bits."
+  },
+  {
+   "name": "Miss-status holding register file",
+   "description": "Tracks outstanding cache misses with per-entry address, target register list, and valid bits."
+  },
+  {
+   "name": "Snoop filter",
+   "description": "Tracks which caches may hold which lines using a presence-vector array indexed by address."
+  },
+  {
+   "name": "Directory coherence controller",
+   "description": "Sequences coherence messages for each line, keeping per-line sharer vectors, owner ids, and stable/transient state fields."
+  },
+  {
+   "name": "Scratchpad memory",
+   "description": "Provides software-addressed local storage with simple address and data registers and no tags."
+  },
+  {
+   "name": "Line fill buffer",
+   "description": "Collects returning beats of a memory line before writing it into the array, keeping a data buffer, beat index, and address register."
+  },
+  {
+   "name": "Stride prefetcher",
+   "description": "Detects constant address strides per program counter and issues ahead-of-time requests, keeping a table of last address, stride, and confidence counters."
+  },
+  {
+   "name": "Bimodal branch predictor",
+   "description": "Predicts branch direction from a table of saturating counters indexed by branch address."
+  },
+  {
+   "name": "Gshare branch predictor",
+   "description": "Indexes a counter table with branch address XOR global history, keeping a global history shift register."
+  },
+  {
+   "name": "Branch target buffer",
+   "description": "Caches predicted target addresses for taken branches in a tag/target array with valid bits."
+  },
+  {
+   "name": "Return address stack",
+   "description": "Pushes return addresses on calls and pops them on returns, keeping an address array and a top-of-stack pointer."
+  },
+  {
+   "name": "Instruction fetch unit",
+   "description": "Generates fetch addresses and captures returned instruction bytes, keeping a fetch pointer and an alignment buffer."
+  },
+  {
+   "name": "Instruction decoder",
+   "description": "Extracts opcode fields and emits control signals and immediates, optionally registering the decoded micro-operation."
+  },
+  {
+   "name": "Register rename table",
+   "description": "Maps architectural registers to physical tags, keeping the map array and a free-tag list."
+  },
+  {
+   "name": "Reorder buffer",
+   "description": "Holds in-flight instruction results and status until in-order commit, with head and tail pointers and per-entry done/exception fields."
+  },
+  {
+   "name": "Reservation station",
+   "description": "Buffers waiting operations with operand values, source tags, and ready bits until their inputs arrive."
+  },
+  {
+   "name": "Load-store queue",
+   "description": "Holds pending memory operations with addresses, data, and age fields and performs address matching between them."
+  },
+  {
+   "name": "Common data bus broadcast unit",
+   "description": "Drives completed result tag and value onto a shared result bus, keeping an output register and tag field."
+  },
+  {
+   "name": "Hazard detection unit",
+   "description": "Compares source and destination identifiers across pipeline stages to produce stall and bubble signals, reading the stage registers."
+  },
+  {
+   "name": "Forwarding network",
+   "description": "Selects operand values from later pipeline stage registers instead of the register file via multiplexer control logic."
+  },
+  {
+   "name": "Pipeline register stage",
+   "description": "Latches datapath values and control bits between stages with enable and flush inputs."
+  },
+  {
+   "name": "Exception/trap controller",
+   "description": "Captures faulting cause and address and redirects control flow, keeping cause, epc, and status registers."
+  },
+  {
+   "name": "Interrupt controller",
+   "description": "Collects interrupt lines, applies priority, and presents a vector, keeping pending, enable, and in-service registers."
+  },
+  {
+   "name": "Interrupt vector table unit",
+   "description": "Translates an accepted interrupt id into a handler address through a programmable table memory."
+  },
+  {
+   "name": "Control and status register file",
+   "description": "Provides architecturally visible configuration and status words accessed by special instructions, each a mapped register."
+  },
+  {
+   "name": "Performance counter block",
+   "description": "Counts selected microarchitectural events in programmable counters with per-counter event-select registers."
+  },
+  {
+   "name": "Breakpoint comparator unit",
+   "description": "Compares instruction or data addresses against programmed watch values, keeping address, mask, and control registers."
+  },
+  {
+   "name": "Trace buffer",
+   "description": "Records a rolling window of sampled signals into a circular memory with a write pointer and trigger-position register."
+  },
+  {
+   "name": "JTAG TAP controller",
+   "description": "Sequences the standard test access state machine and routes data to instruction and data registers."
+  },
+  {
+   "name": "Boundary-scan register chain",
+   "description": "Captures and drives chip pin values through a serial chain of boundary cells with capture and update latches."
+  },
+  {
+   "name": "Scan flip-flop chain",
+   "description": "Provides test-mode serial shifting of functional flip-flop contents through a multiplexed scan input."
+  },
+  {
+   "name": "Memory BIST controller",
+   "description": "Generates march-test address and data patterns and compares read-back data, keeping address counter, pattern state, and fail flag registers."
+  },
+  {
+   "name": "MISR signature analyzer",
+   "description": "Compresses an observed data stream into a signature register updated each cycle by feedback and XOR."
+  },
+  {
+   "name": "eFuse/OTP controller",
+   "description": "Sequences programming and sensing of one-time-programmable bits, keeping a shadow register of read fuse values and a program state machine."
+  },
+  {
+   "name": "Clock gating cell",
+   "description": "Produces a gated clock from an enable captured in a latch transparent on the inactive clock phase."
+  },
+  {
+   "name": "Glitchless clock mux",
+   "description": "Switches between asynchronous clock sources using per-branch synchronizer flops and enable handshake flops."
+  },
+  {
+   "name": "Digital PLL loop filter",
+   "description": "Converts phase error samples into an oscillator control word, keeping proportional and integral accumulator registers."
+  },
+  {
+   "name": "DLL phase aligner",
+   "description": "Adjusts a delay-line tap to align a feedback clock to a reference, keeping a tap-select register and lock flag."
+  },
+  {
+   "name": "Tapped delay line",
+   "description": "Propagates a signal through a chain of buffers and exposes intermediate taps, with optional sampling flops on each tap."
+  },
+  {
+   "name": "Duty-cycle corrector",
+   "description": "Adjusts clock high-time using a measured imbalance stored in a correction code register."
+  },
+  {
+   "name": "Reset synchronizer",
+   "description": "Asserts reset asynchronously and releases it synchronously using a short chain of flip-flops."
+  },
+  {
+   "name": "Power-on reset generator",
+   "description": "Holds reset asserted for a programmed number of stable clock cycles counted in an internal counter."
+  },
+  {
+   "name": "Pulse stretcher",
+   "description": "Extends a short input pulse to a fixed output duration using a reload counter and an output flag."
+  },
+  {
+   "name": "Edge detector",
+   "description": "Flags rising or falling transitions by comparing a signal with its value stored in a delay flop."
+  },
+  {
+   "name": "Cross-domain mailbox register",
+   "description": "Holds a data word written in one clock domain and read in another, with set/clear flag flops on each side."
+  },
+  {
+   "name": "Isolation cell controller",
+   "description": "Drives clamp enables for signals crossing into powered-down regions, keeping sequencing state bits."
+  },
+  {
+   "name": "Power gating controller",
+   "description": "Sequences retention save, switch ramp, and restore steps, keeping a sequencer state register and acknowledge flags."
+  },
+  {
+   "name": "DVFS controller",
+   "description": "Requests voltage and frequency operating points based on load inputs, keeping current-point and request-pending registers."
+  },
+  {
+   "name": "Temperature sensor interface",
+   "description": "Samples a sensor conversion result periodically into a reading register with threshold compare registers."
+  },
+  {
+   "name": "UART transmitter",
+   "description": "Serializes a byte with start, parity, and stop bits, keeping a shift register, bit counter, and busy flag."
+  },
+  {
+   "name": "UART receiver",
+   "description": "Samples an asynchronous serial line at mid-bit and assembles a byte in a shift register with bit counter and framing-error flag."
+  },
+  {
+   "name": "Baud rate generator",
+   "description": "Divides a system clock to produce bit-time and oversampling ticks using a divisor register and a phase accumulator."
+  },
+  {
+   "name": "SPI master",
+   "description": "Drives chip-select, clock, and serial data for a transfer, keeping a shift register, bit counter, and mode configuration bits."
+  },
+  {
+   "name": "SPI slave",
+   "description": "Shifts data in and out on an externally supplied clock, keeping receive and transmit shift registers and a bit index."
+  },
+  {
+   "name": "I2C master",
+   "description": "Generates start, address, data, and stop phases on an open-drain bus, keeping a byte shift register, bit counter, and phase state register."
+  },
+  {
+   "name": "I2C slave",
+   "description": "Responds to its programmed address and shifts bytes on the bus clock, keeping an address-match flag, shift register, and state machine."
+  },
+  {
+   "name": "I2S audio interface",
+   "description": "Serializes or deserializes left/right audio samples against word-select and bit clocks, keeping sample shift registers and a channel flag."
+  },
+  {
+   "name": "CAN protocol controller",
+   "description": "Handles arbitration, bit stuffing, CRC, and acknowledgement for frames, keeping frame buffers, bit timing counters, and error counters."
+  },
+  {
+   "name": "USB serial interface engine",
+   "description": "Decodes packet identifiers and NRZI-encoded data on the bus, keeping packet-state, CRC, and token field registers."
+  },
+  {
+   "name": "USB endpoint buffer manager",
+   "description": "Manages per-endpoint data buffers and toggle bits, keeping endpoint configuration, buffer pointers, and data-toggle flags."
+  },
+  {
+   "name": "Ethernet MAC transmitter",
+   "description": "Frames payload with preamble, padding, and FCS and hands bytes to the PHY interface, keeping byte counters and a transmit state register."
+  },
+  {
+   "name": "Ethernet MAC receiver",
+   "description": "Detects preamble, strips framing, and checks FCS on inbound frames, keeping a length counter, CRC register, and status flags."
+  },
+  {
+   "name": "RGMII adapter",
+   "description": "Converts between double-data-rate PHY signaling and single-rate internal buses using DDR capture and launch registers."
+  },
+  {
+   "name": "8b/10b encoder",
+   "description": "Maps data bytes to balanced ten-bit symbols, keeping a running disparity bit."
+  },
+  {
+   "name": "8b/10b decoder",
+   "description": "Recovers bytes and control indications from ten-bit symbols, keeping disparity and code-error status bits."
+  },
+  {
+   "name": "64b/66b gearbox",
+   "description": "Repacks 64-bit payloads plus sync header into a continuous 66-bit serial framing, keeping a barrel buffer and bit-offset counter."
+  },
+  {
+   "name": "Serializer",
+   "description": "Converts a parallel word into a high-rate serial bitstream using a load register, shift register, and bit counter."
+  },
+  {
+   "name": "Deserializer",
+   "description": "Collects serial bits into parallel words using a shift register and a bit-count register that triggers word output."
+  },
+  {
+   "name": "Comma detector",
+   "description": "Searches the incoming bitstream for an alignment pattern and sets a barrel-shift offset register for word boundaries."
+  },
+  {
+   "name": "Oversampling clock-data recovery",
+   "description": "Samples a serial line several times per bit and picks the best phase, keeping phase-select and majority-vote registers."
+  },
+  {
+   "name": "Packet framer",
+   "description": "Wraps payload bytes with start/end delimiters and length fields, keeping a byte counter and framing state register."
+  },
+  {
+   "name": "Packet header parser",
+   "description": "Extracts fixed-offset header fields from a streaming packet into field registers, keeping a byte-offset counter."
+  },
+  {
+   "name": "AXI master port",
+   "description": "Issues address, write-data, and response channel transactions, keeping outstanding-transaction id registers and per-channel handshake state."
+  },
+  {
+   "name": "AXI slave port",
+   "description": "Accepts channel transactions and returns data or responses, keeping captured address, burst parameters, and response code registers."
+  },
+  {
+   "name": "AXI interconnect address decoder",
+   "description": "Routes transactions to target ports based on address ranges stored in region base/limit registers."
+  },
+  {
+   "name": "AXI-to-APB bridge",
+   "description": "Converts pipelined bus transactions to simple two-phase peripheral accesses, keeping captured address, data, and phase state registers."
+  },
+  {
+   "name": "APB peripheral controller",
+   "description": "Decodes setup and access phases to read or write peripheral registers, keeping a phase flag and selected-register index."
+  },
+  {
+   "name": "AHB master",
+   "description": "Drives address and control for pipelined bus transfers, keeping address-phase and data-phase holding registers."
+  },
+  {
+   "name": "Burst address generator",
+   "description": "Produces successive beat addresses for incrementing or wrapping bursts, keeping base address, beat index, and size registers."
+  },
+  {
+   "name": "Memory-map address decoder",
+   "description": "Compares an incoming address against programmed region descriptors and selects a target slave."
+  },
+  {
+   "name": "Network-on-chip router",
+   "description": "Switches flits between input and output ports, keeping per-port input buffers, route fields, and switch configuration registers."
+  },
+  {
+   "name": "Virtual channel allocator",
+   "description": "Assigns free output virtual channels to waiting input channels, keeping per-VC state and allocation registers."
+  },
+  {
+   "name": "Wormhole route computation unit",
+   "description": "Computes the output port for a head flit from destination coordinates, storing the chosen port per input channel."
+  },
+  {
+   "name": "Packet reassembly buffer",
+   "description": "Collects fragments of a packet into contiguous storage using a segment memory, offset register, and received-length counter."
+  },
+  {
+   "name": "Weighted fair queue scheduler",
+   "description": "Selects among queues according to per-queue weights and virtual-time counters held in a scheduling state array."
+  },
+  {
+   "name": "Hardware priority queue",
+   "description": "Maintains a binary heap of keyed entries in a memory array with a size register and sift-up/sift-down index registers."
+  },
+  {
+   "name": "Sorting network",
+   "description": "Sorts a fixed number of parallel values through a fixed pattern of compare-exchange stages, with optional stage registers."
+  },
+  {
+   "name": "Bitonic merge unit",
+   "description": "Merges two sorted sequences through log-depth compare-exchange stages, keeping per-stage pipeline registers."
+  },
+  {
+   "name": "Hash table lookup engine",
+   "description": "Hashes a key, probes bucket memory, and compares stored keys, keeping probe index, bucket data, and match registers."
+  },
+  {
+   "name": "Bloom filter",
+   "description": "Sets and tests several hashed bit positions in a bit-vector memory to answer approximate membership queries."
+  },
+  {
+   "name": "LIFO stack",
+   "description": "Stores pushed words in a memory array addressed by a top-of-stack pointer register."
+  },
+  {
+   "name": "Free-list manager",
+   "description": "Allocates and recycles buffer identifiers through a linked-list memory with head and tail pointer registers."
+  },
+  {
+   "name": "Bitmap allocator",
+   "description": "Tracks free blocks as bits in a bitmap memory and selects the first clear bit for allocation."
+  },
+  {
+   "name": "Timer/counter peripheral",
+   "description": "Counts clock ticks or external events with load, compare, and control registers plus an interrupt flag."
+  },
+  {
+   "name": "Real-time clock",
+   "description": "Maintains seconds, minutes, hours, and calendar fields in dedicated registers updated by a one-hertz tick."
+  },
+  {
+   "name": "Cycle timestamp counter",
+   "description": "Provides a free-running wide cycle count readable as a register pair with a latched snapshot register."
+  },
+  {
+   "name": "Serial-in parallel-out shift register",
+   "description": "Shifts in bits one per cycle and exposes the accumulated word in parallel from its storage flops."
+  },
+  {
+   "name": "Frequency meter",
+   "description": "Counts edges of an unknown clock over a reference gate interval, keeping an event counter, gate counter, and result latch."
+  },
+  {
+   "name": "Time-to-digital converter",
+   "description": "Measures the interval between two edges using a tapped delay chain plus a coarse cycle counter, latching both codes."
+  },
+  {
+   "name": "Quadrature decoder",
+   "description": "Derives position and direction from two phase-shifted encoder inputs, keeping previous-sample flops and a position counter."
+  },
+  {
+   "name": "Stepper motor sequencer",
+   "description": "Drives coil phase patterns in order at a programmable step rate, keeping a phase index register and step-rate divider."
+  },
+  {
+   "name": "Program counter unit",
+   "description": "Supplies the next instruction address from increment, branch, or exception sources, holding the current address register."
+  },
+  {
+   "name": "First-order sigma-delta DAC",
+   "description": "Converts a multi-bit sample to a one-bit density stream using an error accumulator register."
+  },
+  {
+   "name": "Decimation filter",
+   "description": "Low-pass filters and downsamples an oversampled stream, keeping filter state registers and a decimation phase counter."
+  },
+  {
+   "name": "PDM-to-PCM converter",
+   "description": "Turns a one-bit density stream into multi-bit samples through cascaded integrators and combs, keeping their accumulator and delay registers."
+  },
+  {
+   "name": "FIR filter",
+   "description": "Computes a weighted sum of recent samples using a tapped delay line of sample registers and a coefficient memory."
+  },
+  {
+   "name": "IIR biquad section",
+   "description": "Implements a second-order recursive filter stage with two delay-state registers and coefficient registers."
+  },
+  {
+   "name": "CIC filter",
+   "description": "Performs rate conversion with cascaded integrator and comb stages, holding integrator accumulators and comb delay registers."
+  },
+  {
+   "name": "Polyphase resampler",
+   "description": "Changes sample rate using sub-filter banks selected by a phase accumulator, keeping sample history and phase registers."
+  },
+  {
+   "name": "FFT butterfly unit",
+   "description": "Combines two complex operands with a twiddle factor into two outputs, with pipeline registers for the complex intermediates."
+  },
+  {
+   "name": "Twiddle address generator",
+   "description": "Produces coefficient ROM addresses for each FFT stage and index, keeping stage and butterfly-index counters."
+  },
+  {
+   "name": "Window function multiplier",
+   "description": "Scales incoming samples by coefficients read from a window ROM addressed by a sample-index counter."
+  },
+  {
+   "name": "Numerically controlled oscillator",
+   "description": "Generates sine and cosine samples by advancing a phase accumulator register and looking up a waveform table."
+  },
+  {
+   "name": "PID controller",
+   "description": "Computes a control output from proportional, integral, and derivative terms, keeping an integral accumulator and previous-error register."
+  },
+  {
+   "name": "Automatic gain control loop",
+   "description": "Adjusts an applied gain from measured signal amplitude, keeping an amplitude estimate register and a gain register."
+  },
+  {
+   "name": "Correlator",
+   "description": "Slides a reference sequence against an input stream and accumulates products, keeping a sample shift register and accumulator."
+  },
+  {
+   "name": "Peak detector",
+   "description": "Tracks the largest magnitude seen within a window, keeping peak-value and peak-index registers plus a window counter."
+  },
+  {
+   "name": "Moving-average filter",
+   "description": "Outputs the mean of the last N samples using a sample delay memory and a running-sum register."
+  },
+  {
+   "name": "Median filter",
+   "description": "Outputs the middle value of a sliding sample window held in a small register array with a sorting network."
+  },
+  {
+   "name": "Image line buffer",
+   "description": "Stores one or more complete image rows in memory so a kernel can access vertically adjacent pixels, with row write and read pointers."
+  },
+  {
+   "name": "2D sliding-window generator",
+   "description": "Assembles a KxK pixel neighborhood each cycle from line buffers into a register window array."
+  },
+  {
+   "name": "Color space converter",
+   "description": "Applies a fixed matrix transform between color representations, keeping coefficient registers and an optional output pipeline register."
+  },
+  {
+   "name": "Gamma lookup table",
+   "description": "Maps input intensity values through a writable table memory to corrected output values."
+  },
+  {
+   "name": "Alpha blender",
+   "description": "Mixes foreground and background pixels using an alpha weight, with optional registered pixel outputs."
+  },
+  {
+   "name": "Video timing generator",
+   "description": "Produces horizontal and vertical sync and blanking signals from pixel and line counters and programmed timing registers."
+  },
+  {
+   "name": "Framebuffer scanout controller",
+   "description": "Reads pixel data from memory in raster order to feed a display, keeping a base-address register, current-address counter, and line counter."
+  },
+  {
+   "name": "Character display generator",
+   "description": "Renders text by fetching character codes and font rows, keeping a character memory, font ROM, and row/column counters."
+  },
+  {
+   "name": "Bilinear video scaler",
+   "description": "Interpolates output pixels from neighboring input pixels using fractional position accumulators and line-buffer state."
+  },
+  {
+   "name": "Bayer demosaic unit",
+   "description": "Reconstructs full-color pixels from a mosaic sensor pattern using neighborhood registers and a phase indicator for the filter position."
+  },
+  {
+   "name": "Zigzag scan reorder buffer",
+   "description": "Reorders an 8x8 coefficient block between raster and zigzag order using a block memory and an index-sequence ROM."
+  },
+  {
+   "name": "Discrete cosine transform unit",
+   "description": "Transforms a block of samples into frequency coefficients through row and column passes, keeping an intermediate block memory."
+  },
+  {
+   "name": "Run-length encoder",
+   "description": "Emits value and repeat-count pairs from a stream, keeping a current-value register and a run-length counter."
+  },
+  {
+   "name": "Huffman decoder",
+   "description": "Consumes a variable-length bitstream and emits symbols using code-table memories, keeping a bit-accumulator register and bit-position counter."
+  },
+  {
+   "name": "LZ77 match finder",
+   "description": "Searches a history window for the longest match with current input, keeping a history memory, candidate position registers, and match-length register."
+  },
+  {
+   "name": "PS/2 keyboard interface",
+   "description": "Receives serial scan-code frames clocked by the device, keeping a shift register, bit counter, and code output register."
+  },
+  {
+   "name": "Seven-segment display multiplexer",
+   "description": "Time-multiplexes digit drive lines across several displays, keeping a digit-index counter and per-digit value registers."
+  },
+  {
+   "name": "LED matrix scanner",
+   "description": "Drives rows sequentially while presenting column data, keeping a row counter and a frame bitmap memory."
+  },
+  {
+   "name": "GPIO port",
+   "description": "Provides software-controlled pin output, input sampling, and direction, keeping output-data, direction, and input-capture registers."
+  },
+  {
+   "name": "Pin mux controller",
+   "description": "Selects which internal function drives each physical pad using per-pin function-select registers."
+  },
+  {
+   "name": "Shadowed configuration register bank",
+   "description": "Accepts writes into shadow registers and transfers them to active registers on a commit strobe."
+  },
+  {
+   "name": "Hardware semaphore block",
+   "description": "Provides test-and-set lock cells that record the owning requester id and a locked flag per cell."
+  },
+  {
+   "name": "Atomic compare-and-swap unit",
+   "description": "Reads a memory location, compares it to an expected value, and conditionally writes, keeping read-data, expected, and success-flag registers."
+  },
+  {
+   "name": "Barrier synchronization unit",
+   "description": "Tracks which participants have arrived using an arrival bit vector and releases them with a sense-reversal flag."
+  },
+  {
+   "name": "Doorbell register block",
+   "description": "Lets a remote agent set notification bits that a local agent reads and clears, keeping per-channel pending bits."
+  },
+  {
+   "name": "Interrupt status aggregator",
+   "description": "Combines many source events into a summary line, keeping raw-status, mask, and masked-status registers."
+  },
+  {
+   "name": "DMA descriptor fetch engine",
+   "description": "Reads descriptor structures from memory and loads transfer parameters, keeping descriptor-pointer, parameter, and fetch-state registers."
+  },
+  {
+   "name": "Scatter-gather address translator",
+   "description": "Walks a list of memory segments to map a linear transfer offset onto physical addresses, keeping segment-index and residual-length registers."
+  },
+  {
+   "name": "SDRAM bank controller",
+   "description": "Issues activate, read, write, and precharge commands for one bank, keeping open-row address, bank state, and timing counters."
+  },
+  {
+   "name": "DRAM refresh scheduler",
+   "description": "Generates periodic refresh commands and tracks deferrals, keeping an interval counter and a pending-refresh counter."
+  },
+  {
+   "name": "NAND flash controller",
+   "description": "Sequences command, address, and data cycles to a flash device, keeping a command state machine, page buffer, and status register."
+  },
+  {
+   "name": "SD card host controller",
+   "description": "Issues command/response transactions and block data transfers, keeping argument, response, and transfer-state registers."
+  },
+  {
+   "name": "QSPI execute-in-place controller",
+   "description": "Converts memory read requests into quad serial flash commands, keeping command configuration registers and a prefetch data register."
+  },
+  {
+   "name": "Wear-leveling mapping table",
+   "description": "Translates logical to physical blocks and records per-block erase counts in a mapping memory."
+  },
+  {
+   "name": "Activation function LUT",
+   "description": "Maps an input value to a nonlinear output using a piecewise table memory with optional interpolation registers."
+  },
+  {
+   "name": "Requantization unit",
+   "description": "Rescales wide accumulator values to a narrow output format using multiplier and shift configuration registers."
+  },
+  {
+   "name": "Argmax unit",
+   "description": "Scans a stream of values to report the index of the largest, keeping best-value, best-index, and position-counter registers."
+  },
+  {
+   "name": "Johnson ring counter",
+   "description": "Circulates a pattern through a shift register whose last bit is inverted back into the first stage."
+  }
+ ],
+ "pick": 150,
+ "seed": 20261007,
+ "rule": "drop repeated names (case-insensitive, first kept), then random.Random(seed).sample(kinds, pick)",
+ "picked": [
+  {
+   "name": "SECDED memory wrapper",
+   "description": "Adds encode-on-write and correct-on-read logic around a memory array, keeping registered syndrome and error-status bits."
+  },
+  {
+   "name": "Correlator",
+   "description": "Slides a reference sequence against an input stream and accumulates products, keeping a sample shift register and accumulator."
+  },
+  {
+   "name": "Median filter",
+   "description": "Outputs the middle value of a sliding sample window held in a small register array with a sorting network."
+  },
+  {
+   "name": "Translation lookaside buffer",
+   "description": "Caches virtual-to-physical page translations in a tag/data array with valid, ASID, and permission bits."
+  },
+  {
+   "name": "Funnel shifter",
+   "description": "Extracts a word-width field from the concatenation of two input words at a programmable offset, purely combinationally."
+  },
+  {
+   "name": "Multiplexer tree",
+   "description": "Selects one of many input words using a hierarchy of select stages, optionally registering the selected word."
+  },
+  {
+   "name": "RGMII adapter",
+   "description": "Converts between double-data-rate PHY signaling and single-rate internal buses using DDR capture and launch registers."
+  },
+  {
+   "name": "Serializer",
+   "description": "Converts a parallel word into a high-rate serial bitstream using a load register, shift register, and bit counter."
+  },
+  {
+   "name": "Bitonic merge unit",
+   "description": "Merges two sorted sequences through log-depth compare-exchange stages, keeping per-stage pipeline registers."
+  },
+  {
+   "name": "Argmax unit",
+   "description": "Scans a stream of values to report the index of the largest, keeping best-value, best-index, and position-counter registers."
+  },
+  {
+   "name": "Baud rate generator",
+   "description": "Divides a system clock to produce bit-time and oversampling ticks using a divisor register and a phase accumulator."
+  },
+  {
+   "name": "Frequency meter",
+   "description": "Counts edges of an unknown clock over a reference gate interval, keeping an event counter, gate counter, and result latch."
+  },
+  {
+   "name": "Two's-complement negator",
+   "description": "Produces the arithmetic negation of an operand by inverting bits and incrementing, holding only an optional output register."
+  },
+  {
+   "name": "Ring-oscillator entropy harvester",
+   "description": "Samples free-running oscillator phases to collect raw entropy bits into a collection shift register and sample counter."
+  },
+  {
+   "name": "Bayer demosaic unit",
+   "description": "Reconstructs full-color pixels from a mosaic sensor pattern using neighborhood registers and a phase indicator for the filter position."
+  },
+  {
+   "name": "SDRAM bank controller",
+   "description": "Issues activate, read, write, and precharge commands for one bank, keeping open-row address, bank state, and timing counters."
+  },
+  {
+   "name": "Binary-to-Gray converter",
+   "description": "Converts a binary word to its Gray-coded form by XORing each bit with its neighbor."
+  },
+  {
+   "name": "Glitchless clock mux",
+   "description": "Switches between asynchronous clock sources using per-branch synchronizer flops and enable handshake flops."
+  },
+  {
+   "name": "UART transmitter",
+   "description": "Serializes a byte with start, parity, and stop bits, keeping a shift register, bit counter, and busy flag."
+  },
+  {
+   "name": "Moving-average filter",
+   "description": "Outputs the mean of the last N samples using a sample delay memory and a running-sum register."
+  },
+  {
+   "name": "Quadrature decoder",
+   "description": "Derives position and direction from two phase-shifted encoder inputs, keeping previous-sample flops and a position counter."
+  },
+  {
+   "name": "Sign-extension unit",
+   "description": "Widens a narrow operand to a wider bus by replicating its sign bit or zero-filling according to a mode input."
+  },
+  {
+   "name": "GPIO port",
+   "description": "Provides software-controlled pin output, input sampling, and direction, keeping output-data, direction, and input-capture registers."
+  },
+  {
+   "name": "Seven-segment display multiplexer",
+   "description": "Time-multiplexes digit drive lines across several displays, keeping a digit-index counter and per-digit value registers."
+  },
+  {
+   "name": "JTAG TAP controller",
+   "description": "Sequences the standard test access state machine and routes data to instruction and data registers."
+  },
+  {
+   "name": "Carry-lookahead adder",
+   "description": "Adds two operands using generate/propagate logic to compute carries in parallel, with optional pipeline registers for the partial carry terms."
+  },
+  {
+   "name": "Comma detector",
+   "description": "Searches the incoming bitstream for an alignment pattern and sets a barrel-shift offset register for word boundaries."
+  },
+  {
+   "name": "Transpose buffer",
+   "description": "Writes a matrix tile in row order and reads it in column order using a two-dimensional register or memory array with row and column index counters."
+  },
+  {
+   "name": "Free-list manager",
+   "description": "Allocates and recycles buffer identifiers through a linked-list memory with head and tail pointer registers."
+  },
+  {
+   "name": "Bit-reversal unit",
+   "description": "Reorders a word so bit i maps to bit N-1-i, typically as pure wiring with an optional output register."
+  },
+  {
+   "name": "Isolation cell controller",
+   "description": "Drives clamp enables for signals crossing into powered-down regions, keeping sequencing state bits."
+  },
+  {
+   "name": "Normalizer",
+   "description": "Left-shifts a mantissa by its leading-zero count and adjusts the exponent accordingly, holding the shift amount in an internal register."
+  },
+  {
+   "name": "Multiply-accumulate unit",
+   "description": "Multiplies two operands and adds the product into an accumulator register that persists across cycles."
+  },
+  {
+   "name": "Leading-zero counter",
+   "description": "Reports how many zero bits precede the most significant one bit of an input word, using a priority reduction tree."
+  },
+  {
+   "name": "Single-port SRAM wrapper",
+   "description": "Wraps a memory macro with address, data, and enable registers for one access per cycle."
+  },
+  {
+   "name": "Weighted fair queue scheduler",
+   "description": "Selects among queues according to per-queue weights and virtual-time counters held in a scheduling state array."
+  },
+  {
+   "name": "Montgomery multiplier",
+   "description": "Computes modular products in Montgomery form by interleaved multiply-and-reduce steps, keeping partial-product, modulus, and loop-index registers."
+  },
+  {
+   "name": "Store buffer",
+   "description": "Holds committed store addresses and data until they drain to memory, with per-entry valid and merge bits."
+  },
+  {
+   "name": "Ethernet MAC transmitter",
+   "description": "Frames payload with preamble, padding, and FCS and hands bytes to the PHY interface, keeping byte counters and a transmit state register."
+  },
+  {
+   "name": "Scan flip-flop chain",
+   "description": "Provides test-mode serial shifting of functional flip-flop contents through a multiplexed scan input."
+  },
+  {
+   "name": "Viterbi ACS unit",
+   "description": "Adds branch metrics, compares path candidates, and selects survivors, holding per-state path-metric registers and a survivor traceback memory."
+  },
+  {
+   "name": "Ripple-carry adder",
+   "description": "Adds two binary operands by chaining full-adder carries from the least to most significant bit, holding no internal state in its combinational form."
+  },
+  {
+   "name": "Scatter-gather address translator",
+   "description": "Walks a list of memory segments to map a linear transfer offset onto physical addresses, keeping segment-index and residual-length registers."
+  },
+  {
+   "name": "Set-associative cache controller",
+   "description": "Looks up several ways in a set and sequences fills and evictions, keeping tag, data, state arrays, and a request state machine."
+  },
+  {
+   "name": "SHA-256 compression core",
+   "description": "Processes a message block through 64 rounds, keeping eight working-variable registers, a message schedule array, and a round counter."
+  },
+  {
+   "name": "Serial-in parallel-out shift register",
+   "description": "Shifts in bits one per cycle and exposes the accumulated word in parallel from its storage flops."
+  },
+  {
+   "name": "Power gating controller",
+   "description": "Sequences retention save, switch ramp, and restore steps, keeping a sequencer state register and acknowledge flags."
+  },
+  {
+   "name": "AXI-to-APB bridge",
+   "description": "Converts pipelined bus transactions to simple two-phase peripheral accesses, keeping captured address, data, and phase state registers."
+  },
+  {
+   "name": "Restoring divider",
+   "description": "Produces a quotient one bit per cycle by trial subtraction and restoration, keeping partial-remainder, quotient, and iteration-count registers."
+  },
+  {
+   "name": "One's-complement checksum accumulator",
+   "description": "Accumulates 16-bit words with end-around carry into a checksum register."
+  },
+  {
+   "name": "Twiddle address generator",
+   "description": "Produces coefficient ROM addresses for each FFT stage and index, keeping stage and butterfly-index counters."
+  },
+  {
+   "name": "SRT radix-4 divider",
+   "description": "Retires two quotient bits per cycle using a redundant quotient-digit selection table, keeping a redundant partial remainder and a quotient-digit accumulation register."
+  },
+  {
+   "name": "Polyphase resampler",
+   "description": "Changes sample rate using sub-filter banks selected by a phase accumulator, keeping sample history and phase registers."
+  },
+  {
+   "name": "Timer/counter peripheral",
+   "description": "Counts clock ticks or external events with load, compare, and control registers plus an interrupt flag."
+  },
+  {
+   "name": "Magnitude comparator",
+   "description": "Compares two operands and asserts less-than, equal, and greater-than outputs from a chain or tree of bit comparisons."
+  },
+  {
+   "name": "Wallace tree multiplier",
+   "description": "Compresses partial products through a tree of carry-save compressors into a final adder, with optional stage pipeline registers."
+  },
+  {
+   "name": "Kogge-Stone prefix adder",
+   "description": "Performs addition through a parallel-prefix tree of generate/propagate cells, optionally with pipeline registers between prefix levels."
+  },
+  {
+   "name": "Radix-4 Booth multiplier",
+   "description": "Recodes the multiplier into signed digits to halve partial-product count, keeping a recoded-digit register and an accumulating product register."
+  },
+  {
+   "name": "DLL phase aligner",
+   "description": "Adjusts a delay-line tap to align a feedback clock to a reference, keeping a tap-select register and lock flag."
+  },
+  {
+   "name": "Bit-serial adder",
+   "description": "Adds two operands one bit per cycle, keeping a single carry flip-flop and a bit-index counter."
+  },
+  {
+   "name": "Interrupt vector table unit",
+   "description": "Translates an accepted interrupt id into a handler address through a programmable table memory."
+  },
+  {
+   "name": "Find-first-set unit",
+   "description": "Scans a vector for the lowest set bit and outputs its index and a found flag, optionally registered."
+  },
+  {
+   "name": "Packet framer",
+   "description": "Wraps payload bytes with start/end delimiters and length fields, keeping a byte counter and framing state register."
+  },
+  {
+   "name": "Binary encoder",
+   "description": "Converts an asserted input line into its binary index, combinationally."
+  },
+  {
+   "name": "PDM-to-PCM converter",
+   "description": "Turns a one-bit density stream into multi-bit samples through cascaded integrators and combs, keeping their accumulator and delay registers."
+  },
+  {
+   "name": "ROM block",
+   "description": "Returns fixed constant data for an applied address, optionally through a registered output stage."
+  },
+  {
+   "name": "Deserializer",
+   "description": "Collects serial bits into parallel words using a shift register and a bit-count register that triggers word output."
+  },
+  {
+   "name": "Non-restoring divider",
+   "description": "Generates quotient bits from the sign of a running remainder without restoring, holding remainder, quotient, and step-counter registers."
+  },
+  {
+   "name": "Bitmap allocator",
+   "description": "Tracks free blocks as bits in a bitmap memory and selects the first clear bit for allocation."
+  },
+  {
+   "name": "Control and status register file",
+   "description": "Provides architecturally visible configuration and status words accessed by special instructions, each a mapped register."
+  },
+  {
+   "name": "Modular adder",
+   "description": "Adds two residues and conditionally subtracts the modulus, holding the modulus in a configuration register."
+  },
+  {
+   "name": "Digital PLL loop filter",
+   "description": "Converts phase error samples into an oscillator control word, keeping proportional and integral accumulator registers."
+  },
+  {
+   "name": "Scratchpad memory",
+   "description": "Provides software-addressed local storage with simple address and data registers and no tags."
+  },
+  {
+   "name": "Shadowed configuration register bank",
+   "description": "Accepts writes into shadow registers and transfers them to active registers on a commit strobe."
+  },
+  {
+   "name": "Gshare branch predictor",
+   "description": "Indexes a counter table with branch address XOR global history, keeping a global history shift register."
+  },
+  {
+   "name": "BCD adder",
+   "description": "Adds two packed decimal operands with per-digit correction logic, carrying a digit-carry chain and an optional result register."
+  },
+  {
+   "name": "Hamming encoder",
+   "description": "Computes check bits for a data word and emits the combined codeword, optionally registering it."
+  },
+  {
+   "name": "Cross-domain mailbox register",
+   "description": "Holds a data word written in one clock domain and read in another, with set/clear flag flops on each side."
+  },
+  {
+   "name": "DVFS controller",
+   "description": "Requests voltage and frequency operating points based on load inputs, keeping current-point and request-pending registers."
+  },
+  {
+   "name": "Stride prefetcher",
+   "description": "Detects constant address strides per program counter and issues ahead-of-time requests, keeping a table of last address, stride, and confidence counters."
+  },
+  {
+   "name": "Discrete cosine transform unit",
+   "description": "Transforms a block of samples into frequency coefficients through row and column passes, keeping an intermediate block memory."
+  },
+  {
+   "name": "Seven-segment decoder",
+   "description": "Maps a 4-bit nibble to segment drive patterns through a combinational lookup, optionally latching the pattern."
+  },
+  {
+   "name": "First-order sigma-delta DAC",
+   "description": "Converts a multi-bit sample to a one-bit density stream using an error accumulator register."
+  },
+  {
+   "name": "Packet reassembly buffer",
+   "description": "Collects fragments of a packet into contiguous storage using a segment memory, offset register, and received-length counter."
+  },
+  {
+   "name": "Pin mux controller",
+   "description": "Selects which internal function drives each physical pad using per-pin function-select registers."
+  },
+  {
+   "name": "APB peripheral controller",
+   "description": "Decodes setup and access phases to read or write peripheral registers, keeping a phase flag and selected-register index."
+  },
+  {
+   "name": "Snoop filter",
+   "description": "Tracks which caches may hold which lines using a presence-vector array indexed by address."
+  },
+  {
+   "name": "Array multiplier",
+   "description": "Forms all partial products at once and sums them in a regular adder array, with optional registers between rows."
+  },
+  {
+   "name": "Performance counter block",
+   "description": "Counts selected microarchitectural events in programmable counters with per-counter event-select registers."
+  },
+  {
+   "name": "Doorbell register block",
+   "description": "Lets a remote agent set notification bits that a local agent reads and clears, keeping per-channel pending bits."
+  },
+  {
+   "name": "True-LRU replacement unit",
+   "description": "Tracks access recency ordering per set in a stored rank or matrix and nominates a victim way."
+  },
+  {
+   "name": "Forwarding network",
+   "description": "Selects operand values from later pipeline stage registers instead of the register file via multiplexer control logic."
+  },
+  {
+   "name": "SD card host controller",
+   "description": "Issues command/response transactions and block data transfers, keeping argument, response, and transfer-state registers."
+  },
+  {
+   "name": "Newton-Raphson reciprocal unit",
+   "description": "Iteratively refines an initial seed estimate of 1/x, storing the current estimate and an iteration counter."
+  },
+  {
+   "name": "Instruction fetch unit",
+   "description": "Generates fetch addresses and captures returned instruction bytes, keeping a fetch pointer and an alignment buffer."
+  },
+  {
+   "name": "NAND flash controller",
+   "description": "Sequences command, address, and data cycles to a flash device, keeping a command state machine, page buffer, and status register."
+  },
+  {
+   "name": "Pseudo-LRU tree unit",
+   "description": "Maintains a binary tree of direction bits per set and walks it to pick a victim way."
+  },
+  {
+   "name": "Reed-Solomon encoder",
+   "description": "Appends parity symbols computed by a shift-register divider over a Galois field, keeping the symbol remainder registers."
+  },
+  {
+   "name": "Breakpoint comparator unit",
+   "description": "Compares instruction or data addresses against programmed watch values, keeping address, mask, and control registers."
+  },
+  {
+   "name": "Huffman decoder",
+   "description": "Consumes a variable-length bitstream and emits symbols using code-table memories, keeping a bit-accumulator register and bit-position counter."
+  },
+  {
+   "name": "2D sliding-window generator",
+   "description": "Assembles a KxK pixel neighborhood each cycle from line buffers into a register window array."
+  },
+  {
+   "name": "Demultiplexer",
+   "description": "Routes a single input word to one of several output ports chosen by a select field."
+  },
+  {
+   "name": "Branch target buffer",
+   "description": "Caches predicted target addresses for taken branches in a tag/target array with valid bits."
+  },
+  {
+   "name": "Register rename table",
+   "description": "Maps architectural registers to physical tags, keeping the map array and a free-tag list."
+  },
+  {
+   "name": "Wear-leveling mapping table",
+   "description": "Translates logical to physical blocks and records per-block erase counts in a mapping memory."
+  },
+  {
+   "name": "AXI master port",
+   "description": "Issues address, write-data, and response channel transactions, keeping outstanding-transaction id registers and per-channel handshake state."
+  },
+  {
+   "name": "Load-store queue",
+   "description": "Holds pending memory operations with addresses, data, and age fields and performs address matching between them."
+  },
+  {
+   "name": "Hash table lookup engine",
+   "description": "Hashes a key, probes bucket memory, and compares stored keys, keeping probe index, bucket data, and match registers."
+  },
+  {
+   "name": "Atomic compare-and-swap unit",
+   "description": "Reads a memory location, compares it to an expected value, and conditionally writes, keeping read-data, expected, and success-flag registers."
+  },
+  {
+   "name": "Double-dabble converter",
+   "description": "Converts a binary value to packed BCD by iterative shift-and-add-3 steps, keeping a shift register of digits and a step counter."
+  },
+  {
+   "name": "Direct-mapped cache",
+   "description": "Caches memory lines at index-determined slots, keeping tag, data, valid, and dirty arrays."
+  },
+  {
+   "name": "Character display generator",
+   "description": "Renders text by fetching character codes and font rows, keeping a character memory, font ROM, and row/column counters."
+  },
+  {
+   "name": "Equality comparator tree",
+   "description": "Reduces bitwise XOR results through an OR tree to signal whether two words differ, optionally registering the match bit."
+  },
+  {
+   "name": "MISR signature analyzer",
+   "description": "Compresses an observed data stream into a signature register updated each cycle by feedback and XOR."
+  },
+  {
+   "name": "Automatic gain control loop",
+   "description": "Adjusts an applied gain from measured signal amplitude, keeping an amplitude estimate register and a gain register."
+  },
+  {
+   "name": "Population-count unit",
+   "description": "Counts the number of set bits in a word using a compressor tree, with an optional registered count output."
+  },
+  {
+   "name": "Zigzag scan reorder buffer",
+   "description": "Reorders an 8x8 coefficient block between raster and zigzag order using a block memory and an index-sequence ROM."
+  },
+  {
+   "name": "Microcode sequencer",
+   "description": "Selects the next control-store address from branch, jump, and increment sources, keeping a microprogram counter and a microsubroutine return register."
+  },
+  {
+   "name": "Real-time clock",
+   "description": "Maintains seconds, minutes, hours, and calendar fields in dedicated registers updated by a one-hertz tick."
+  },
+  {
+   "name": "Run-length encoder",
+   "description": "Emits value and repeat-count pairs from a stream, keeping a current-value register and a run-length counter."
+  },
+  {
+   "name": "AES key expansion unit",
+   "description": "Derives per-round subkeys from the cipher key, holding the current key words and a round index register."
+  },
+  {
+   "name": "I2C slave",
+   "description": "Responds to its programmed address and shifts bytes on the bus clock, keeping an address-match flag, shift register, and state machine."
+  },
+  {
+   "name": "FIR filter",
+   "description": "Computes a weighted sum of recent samples using a tapped delay line of sample registers and a coefficient memory."
+  },
+  {
+   "name": "SPI slave",
+   "description": "Shifts data in and out on an externally supplied clock, keeping receive and transmit shift registers and a bit index."
+  },
+  {
+   "name": "Barrel shifter",
+   "description": "Shifts or rotates a word by an arbitrary amount in one pass through a cascade of multiplexer stages, holding no state."
+  },
+  {
+   "name": "8b/10b encoder",
+   "description": "Maps data bytes to balanced ten-bit symbols, keeping a running disparity bit."
+  },
+  {
+   "name": "Borrow-propagate subtractor",
+   "description": "Computes the difference of two operands by propagating borrows through full-subtractor cells, holding only the final borrow bit."
+  },
+  {
+   "name": "Victim cache",
+   "description": "Holds lines recently evicted from a main cache in a small fully associative array with tags and valid bits."
+  },
+  {
+   "name": "Line fill buffer",
+   "description": "Collects returning beats of a memory line before writing it into the array, keeping a data buffer, beat index, and address register."
+  },
+  {
+   "name": "CORDIC rotation engine",
+   "description": "Computes trigonometric or vector-rotation results by iterative shift-add micro-rotations, holding x, y, and angle accumulator registers plus an iteration index."
+  },
+  {
+   "name": "CAN protocol controller",
+   "description": "Handles arbitration, bit stuffing, CRC, and acknowledgement for frames, keeping frame buffers, bit timing counters, and error counters."
+  },
+  {
+   "name": "Barrier synchronization unit",
+   "description": "Tracks which participants have arrived using an arrival bit vector and releases them with a sense-reversal flag."
+  },
+  {
+   "name": "Memory-map address decoder",
+   "description": "Compares an incoming address against programmed region descriptors and selects a target slave."
+  },
+  {
+   "name": "I2C master",
+   "description": "Generates start, address, data, and stop phases on an open-drain bus, keeping a byte shift register, bit counter, and phase state register."
+  },
+  {
+   "name": "Dual-port SRAM",
+   "description": "Provides two independent address and data ports into one storage array, with per-port address and output registers."
+  },
+  {
+   "name": "Descrambler",
+   "description": "Recovers original data by XORing with a locally regenerated sequence held in a state shift register."
+  },
+  {
+   "name": "Floating-point comparator",
+   "description": "Compares two floating-point operands including special-value cases and emits ordering and unordered flags, optionally registered."
+  },
+  {
+   "name": "UART receiver",
+   "description": "Samples an asynchronous serial line at mid-bit and assembles a byte in a shift register with bit counter and framing-error flag."
+  },
+  {
+   "name": "Window function multiplier",
+   "description": "Scales incoming samples by coefficients read from a window ROM addressed by a sample-index counter."
+  },
+  {
+   "name": "CRC generator",
+   "description": "Updates a remainder register with each incoming data word using a polynomial division network."
+  },
+  {
+   "name": "I2S audio interface",
+   "description": "Serializes or deserializes left/right audio samples against word-select and bit clocks, keeping sample shift registers and a channel flag."
+  },
+  {
+   "name": "Dot-product unit",
+   "description": "Multiplies several operand pairs in parallel and sums them through an adder tree into a running sum register."
+  },
+  {
+   "name": "Numerically controlled oscillator",
+   "description": "Generates sine and cosine samples by advancing a phase accumulator register and looking up a waveform table."
+  },
+  {
+   "name": "AES round datapath",
+   "description": "Applies substitution, shifting, mixing, and key addition to a 128-bit state register for one cipher round."
+  },
+  {
+   "name": "Directory coherence controller",
+   "description": "Sequences coherence messages for each line, keeping per-line sharer vectors, owner ids, and stable/transient state fields."
+  },
+  {
+   "name": "Hazard detection unit",
+   "description": "Compares source and destination identifiers across pipeline stages to produce stall and bubble signals, reading the stage registers."
+  },
+  {
+   "name": "Carry-save adder",
+   "description": "Reduces three input vectors to a sum vector and a carry vector, optionally registering both outputs for the next reduction stage."
+  },
+  {
+   "name": "Floating-point multiplier",
+   "description": "Multiplies mantissas and adds exponents, then normalizes and rounds, holding pipeline registers for the product and exponent sum."
+  },
+  {
+   "name": "Integer ALU",
+   "description": "Selects among add, subtract, logical, and compare operations on two operands and produces a result plus condition flags held in a flag register."
+  },
+  {
+   "name": "GF(2^m) multiplier",
+   "description": "Multiplies two binary-field elements with polynomial reduction, keeping an accumulator register and the irreducible-polynomial configuration."
+  }
+ ],
+ "ours_file": "constructs.txt"
+}

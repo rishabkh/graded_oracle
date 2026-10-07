@@ -18,6 +18,13 @@ generator seed lines, one per line, in the format of constructs.txt.
 
   venv/bin/python initiator/catalog_kinds.py --dry       # no call
   venv/bin/python initiator/catalog_kinds.py             # one paid call
+
+--use-all RECORD (7 Oct 2026: 150 were drawn, then all 250 wanted) writes
+every kind in a saved record as generator lines, the seeded draw first
+and the rest in reply order. No call, and still no hand choice, since
+every kind returned is used.
+
+  venv/bin/python initiator/catalog_kinds.py --use-all initiator/catalog/kinds_<run>.json
 """
 import argparse
 import json
@@ -118,6 +125,28 @@ def construct_line(kind):
     return " ".join(f"{kind['name']}: {kind['description']}".split())
 
 
+def use_all(record_path, out_dir):
+    """Every kind in a saved record, the seeded draw first, then the rest
+    in reply order; a small note records how the list was made."""
+    record_path = Path(record_path)
+    rec = json.loads(record_path.read_text())
+    picked = rec["picked"]
+    rest = [k for k in rec["kinds"] if k not in picked]
+    kinds = picked + rest
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    lines = out / f"constructs_{rec['run_id']}_all.txt"
+    lines.write_text("".join(construct_line(k) + "\n" for k in kinds))
+    note = {"from_record": record_path.name, "count": len(kinds),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "rule": (f"every kind in the record: the {len(picked)} drawn with "
+                     f"seed {rec['seed']} first, then the other {len(rest)} "
+                     "in reply order; no new call")}
+    (out / f"kinds_{rec['run_id']}_all.json").write_text(json.dumps(note, indent=1))
+    print(f"{len(kinds)} kinds ({len(picked)} drawn + {len(rest)} more) -> {lines}")
+    return lines
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(
         description="Choose new hardware kinds with one call to a fresh model.")
@@ -129,7 +158,12 @@ def main(argv=None):
     p.add_argument("--out-dir", default=str(OUT_DIR))
     p.add_argument("--dry", action="store_true",
                    help="print the prompt; no call")
+    p.add_argument("--use-all", default=None, metavar="RECORD",
+                   help="write every kind in a saved record; no call")
     args = p.parse_args(argv)
+    if args.use_all:
+        use_all(args.use_all, args.out_dir)
+        return
 
     ours = [l.strip() for l in Path(args.ours).read_text().splitlines()
             if l.strip()]

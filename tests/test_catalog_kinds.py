@@ -129,3 +129,24 @@ def test_dry_prints_the_prompt_and_calls_nothing(monkeypatch, tmp_path, capsys):
     run(tmp_path, "--dry")
     assert fake.calls == [] and OURS[0] in capsys.readouterr().out
     assert not list(tmp_path.glob("kinds_*.json"))
+
+
+def test_using_every_kind_needs_no_call_and_keeps_the_seeded_ones_first(
+        monkeypatch, tmp_path):
+    """7 Oct 2026: 150 kinds were drawn from the 250 returned, then all 250
+    were wanted. The other 100 come from the saved reply: no new call,
+    and still no hand choice, since every kind is used."""
+    kinds = json.loads(reply(250))["kinds"]
+    rec = {"run_id": "r1", "seed": 7, "kinds": kinds,
+           "picked": ck.pick(kinds, 150, seed=7)}
+    path = tmp_path / "kinds_r1.json"
+    path.write_text(json.dumps(rec))
+    fake = FakeModel(monkeypatch, reply(250))
+    ck.main(["--out-dir", str(tmp_path), "--use-all", str(path)])
+    assert fake.calls == []
+    lines = (tmp_path / "constructs_r1_all.txt").read_text().splitlines()
+    assert len(lines) == 250 == len(set(lines))
+    assert lines[:150] == [ck.construct_line(k) for k in rec["picked"]]
+    note = json.loads((tmp_path / "kinds_r1_all.json").read_text())
+    assert note["from_record"] == "kinds_r1.json" and note["count"] == 250
+    assert note["rule"] and note["timestamp"]

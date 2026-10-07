@@ -1,0 +1,6 @@
+{
+ "from_record": "kinds_2026-10-07_21h32m05s.json",
+ "count": 250,
+ "timestamp": "2026-10-07T18:12:42.258157+00:00",
+ "rule": "every kind in the record: the 150 drawn with seed 20261007 first, then the other 100 in reply order; no new call"
+}
