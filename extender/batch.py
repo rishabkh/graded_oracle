@@ -459,7 +459,9 @@ def main(argv=None):
             flush_after_s=args.flush_after, poll_s=60,
             manifest_dir=(args.log_dir or QUEUE_LOG.parent) / "batches")
     try:
-        with gate, PROGRESS["spinner"] or contextlib.nullcontext():
+        with llm_client.call_log((args.log_dir or QUEUE_LOG.parent)
+                                 / "calls.jsonl"), \
+                gate, PROGRESS["spinner"] or contextlib.nullcontext():
             new_rows = run_loop(corpus_rows, _real_executor,
                                 max_calls=args.max_calls,
                                 max_gen=args.max_gen, rng=rng,

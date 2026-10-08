@@ -21,8 +21,13 @@ Differences that matter, handled here:
   finish_reason=="content_filter".
 - Usage is normalised to {"input": .., "output": ..} either way.
 """
+import contextlib
 import json
 import os
+import threading
+import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 _or_client = None
 _an_client = None
@@ -100,16 +105,87 @@ def call_claude(*, model, max_tokens, user, system=None, schema=None,
     stop) where stop is "ok" or "refusal" and usage is
     {"input": int, "output": int}. raw_json_text is None only on refusal
     or (OpenRouter path) unparseable output."""
-    if provider() == "openrouter":
-        return _call_openrouter(model=model, max_tokens=max_tokens,
-                                user=user, system=system, schema=schema,
-                                effort=effort)
-    if _gate is not None:
-        return _gate_call(request_kwargs(model=model, max_tokens=max_tokens,
-                                         user=user, system=system,
-                                         schema=schema, effort=effort))
-    return _call_anthropic(model=model, max_tokens=max_tokens, user=user,
-                           system=system, schema=schema, effort=effort)
+    global LAST_RAW
+    entry = {"started": datetime.now(timezone.utc).isoformat(),
+             "provider": provider(), "model": model,
+             "batch": _gate is not None and provider() == "anthropic",
+             "batch_id": None, "custom_id": None, "request": None,
+             "raw": None, "stop": None, "usage": None}
+    t0 = time.monotonic()
+    try:
+        if provider() == "openrouter":
+            entry["request"] = {"model": model, "max_tokens": max_tokens,
+                                "system": system, "user": user,
+                                "schema": schema, "effort": effort}
+            text, usage, stop = _call_openrouter(
+                model=model, max_tokens=max_tokens, user=user, system=system,
+                schema=schema, effort=effort)
+            raw = LAST_RAW
+        else:
+            kwargs = request_kwargs(model=model, max_tokens=max_tokens,
+                                    user=user, system=system, schema=schema,
+                                    effort=effort)
+            entry["request"] = kwargs
+            if _gate is not None:
+                stop, text, usage, raw, info = _gate.call(kwargs)
+                entry.update(info)
+                if stop.startswith("error"):
+                    entry.update(stop=stop, usage=usage)
+                    raise RuntimeError(f"batch {stop}")
+            else:
+                text, usage, stop, raw = _call_anthropic(kwargs)
+            LAST_RAW = raw
+    except Exception as exc:
+        if not entry["stop"]:
+            entry["stop"] = f"exception: {type(exc).__name__}: {exc}"[:300]
+        _record_call(entry, t0)
+        raise
+    entry.update(raw=raw, stop=stop, usage=usage)
+    _record_call(entry, t0)
+    return text, usage, stop
+
+
+# --- the call log (8 Oct 2026) ----------------------------------------------
+# Every call, from any script, saved at the source: the exact request, the
+# raw answer (even a refusal or a cut-off one), tokens, how it ended,
+# timing, and for a batch its batch id and custom id. Scripts open it with
+# `with call_log(path):`; last_call() gives the current thread's last entry.
+
+_call_log_path = None
+_call_log_lock = threading.Lock()
+_thread = threading.local()
+
+
+def append_call(path, entry):
+    """One call line, for answers that never pass through call_claude (a
+    one-call batch collected straight from the batch)."""
+    line = json.dumps(entry, default=str) + "\n"
+    with _call_log_lock:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with Path(path).open("a") as f:
+            f.write(line)
+
+
+def _record_call(entry, t0):
+    entry["seconds"] = round(time.monotonic() - t0, 2)
+    _thread.call = entry
+    if _call_log_path is not None:
+        append_call(_call_log_path, entry)
+
+
+def last_call():
+    """This thread's most recent call entry, or None."""
+    return getattr(_thread, "call", None)
+
+
+@contextlib.contextmanager
+def call_log(path):
+    global _call_log_path
+    previous, _call_log_path = _call_log_path, Path(path)
+    try:
+        yield Path(path)
+    finally:
+        _call_log_path = previous
 
 
 def request_kwargs(*, model, max_tokens, user, system=None, schema=None,
@@ -153,19 +229,15 @@ def _client():
     return _an_client
 
 
-def _call_anthropic(*, model, max_tokens, user, system, schema, effort):
-    kwargs = request_kwargs(model=model, max_tokens=max_tokens, user=user,
-                            system=system, schema=schema, effort=effort)
+def _call_anthropic(kwargs):
+    """(text, usage, stop, raw). raw is None on a refusal: before 8 Oct 2026
+    LAST_RAW kept the previous reply then, so a refused attempt was logged
+    with another attempt's text."""
     # stream, not create: the SDK refuses a plain create() whose max_tokens
     # could run past ten minutes, which is every call at our 32k budget
     with _client().messages.stream(**kwargs) as s:
         resp = s.get_final_message()
-    global LAST_RAW
-    text, usage, stop, raw = read_message(resp)
-    # None on a refusal: before 8 Oct 2026 it kept the previous reply, so
-    # a refused attempt was logged with another attempt's text
-    LAST_RAW = raw
-    return text, usage, stop
+    return read_message(resp)
 
 
 # --- Message Batches API: the same requests at half price, answered within
@@ -351,7 +423,8 @@ class _Gate:
         rec.update(usage=usage, ended=datetime.now(timezone.utc).isoformat())
         self._write(path, rec)
         for cid, slot in slots.items():
-            slot["result"] = results[cid]
+            slot["result"] = results[cid] + (
+                {"batch_id": rec["batch_id"], "custom_id": cid},)
             slot["event"].set()
 
     def close(self):
@@ -359,15 +432,6 @@ class _Gate:
         self.flusher.join()
         for sender in self.senders:
             sender.join()
-
-
-def _gate_call(kwargs):
-    global LAST_RAW
-    stop, text, usage, raw = _gate.call(kwargs)
-    if stop.startswith("error"):
-        raise RuntimeError(f"batch {stop}")
-    LAST_RAW = raw
-    return text, usage, stop
 
 
 @contextlib.contextmanager

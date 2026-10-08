@@ -37,5 +37,18 @@
     "clock": "i_clk",
     "antecedents": [],
     "sanity_covers": ["sa[0] == 1'b1"]
+  },
+  "D_timer64": {
+    "cti_reasoning": "This state satisfies the property because remaining is not zero, so the guard does not fire. It violates the invariant because elapsed plus remaining is 6, not 48. With tick low the design idles here indefinitely; one tick then takes remaining to 0 while elapsed becomes 6, so the property fails in the next state.",
+    "cti_state": [
+      {"signal": "elapsed", "value": "64'd5"},
+      {"signal": "remaining", "value": "64'd1"}
+    ],
+    "invariants": ["elapsed + remaining == 64'd48"],
+    "verilog": "module timer64 (\n    input wire clk,\n    input wire rst,\n    input wire tick,\n    output wire expired,\n    output wire [63:0] o_elapsed\n);\n    localparam [63:0] PERIOD = 64'd48;\n    reg [63:0] elapsed, remaining;\n    initial begin elapsed = 64'd0; remaining = PERIOD; end\n\n    always @(posedge clk) begin\n        if (rst) begin\n            elapsed <= 64'd0;\n            remaining <= PERIOD;\n        end else if (tick && remaining != 64'd0) begin\n            elapsed <= elapsed + 64'd1;\n            remaining <= remaining - 64'd1;\n        end\n    end\n\n    assign expired = (remaining == 64'd0);\n    assign o_elapsed = elapsed;\n\n    always @(posedge clk)\n        if (expired)\n            assert (elapsed == PERIOD);\nendmodule\n",
+    "top_module": "timer64",
+    "clock": "clk",
+    "antecedents": ["remaining == 64'd0"],
+    "sanity_covers": ["remaining == 64'd40"]
   }
 }

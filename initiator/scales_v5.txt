@@ -1,0 +1,119 @@
+# Size seeds for v5 (8 Oct 2026). 100 lines; a repeated line weighs more.
+# Rule: cover the sizes real chips use, weighted the way real chips use
+# them, decided from general sources only, never from the test sets.
+# Sources (gathered and double-checked by two agents, 8 Oct 2026): lowRISC
+# Ibex; OpenTitan (UART, HMAC, SPI host, prim_fifo_sync); CVA6; Rocket Chip;
+# BOOM; VexRiscv; NEORV32; LiteX UART; the 16550 UART; Cummings' FIFO
+# paper; Forencich's verilog-axis and verilog-axi; the AXI, APB and Wishbone
+# specs; the RISC-V privileged spec; the Arm Cortex-A53 manual; a word count
+# over the 1,062 theme READMEs.
+# Widths: 32-bit is most common, then 64; 8 and 16 less; 128-bit only for
+# data (cache lines, keys, wide buses), never counters.
+#   8-bit 15, 16-bit 15, 32-bit 30, 64-bit 30, 128-bit data 10.
+# Storage: small storage is mostly 8-32 slots, and 2-64 covers 93% of 56
+# real data points (rough weights: one core family gave a third of them).
+#   2: 6, 4: 10, 8: 16, 16: 26, 32: 19, 64: 13; plus 128: 5 and 256: 5,
+#   Rishab's call (8 Oct 2026): real chips have them and we want bigger
+#   designs. About 1 in 5 real sizes is not a power of two, so 18 of the 90
+#   small-storage lines use 3, 6, 12, 24, 48 or 96 instead.
+# Widths and storage sizes are paired by a seeded shuffle (seed 20261008).
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 128 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 96 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 4 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 48 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 96 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 256 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 2 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 24 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 96 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 4 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 24 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 128 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 256 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 48 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 6 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 3 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 12 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 48 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 4 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 12 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 4 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 12 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 256 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 4 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 24 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 2 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 4 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 2 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 256 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 128 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 6 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 24 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 256 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 8 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 2 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 48 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 32 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 4 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 16 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 128 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 16 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 8 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 128 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 4 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 24 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 8 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 8 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 16 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 2 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 16 entries.

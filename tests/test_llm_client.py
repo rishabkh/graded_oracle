@@ -83,9 +83,9 @@ def test_anthropic_call_streams_so_a_long_generation_is_allowed(monkeypatch):
 
     monkeypatch.setattr(llm_client, "_an_client",
                         types.SimpleNamespace(messages=FakeMessages()))
-    text, usage, stop = llm_client._call_anthropic(
-        model="m", max_tokens=32000, user="u", system=None, schema=None,
-        effort=None)
+    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    text, usage, stop = llm_client.call_claude(model="m", max_tokens=32000,
+                                               user="u")
     assert stop == "ok" and text == '{"ok": 1}'
     assert usage == {"input": 1, "output": 2}
     assert seen["max_tokens"] == 32000
@@ -322,3 +322,81 @@ def test_with_the_gate_closed_calls_go_direct_again(monkeypatch, tmp_path):
     with llm_client.batch_gate(flush_after_s=0.3, poll_s=0, manifest_dir=tmp_path):
         pass
     assert llm_client._gate is None
+
+
+# --- the call log (8 Oct 2026): every API call, saved at the source --------
+# Whatever script makes a call, the client itself appends one line: the
+# exact request, the raw answer (even a refusal or a cut-off one), tokens,
+# how it ended, timing, and for a batch its batch id and custom id.
+
+def _stream_returning(monkeypatch, *replies):
+    replies = list(replies)
+
+    class Stream:
+        def __enter__(self):
+            return types.SimpleNamespace(get_final_message=lambda: replies.pop(0))
+
+        def __exit__(self, *a):
+            return False
+    monkeypatch.setattr(llm_client, "_an_client", types.SimpleNamespace(
+        messages=types.SimpleNamespace(stream=lambda **kw: Stream())))
+    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+
+
+def test_every_direct_call_is_logged_with_request_and_raw_answer(monkeypatch,
+                                                                tmp_path):
+    log = tmp_path / "calls.jsonl"
+    _stream_returning(monkeypatch, _msg('{"a": 1}'), _msg("half", stop="refusal"))
+    with llm_client.call_log(log):
+        llm_client.call_claude(model="claude-opus-5-5", max_tokens=9, user="U1",
+                               system="S", schema={"type": "object"}, effort="high")
+        llm_client.call_claude(model="claude-opus-5-5", max_tokens=9, user="U2")
+    a, b = [json.loads(l) for l in log.read_text().splitlines()]
+    assert a["request"] == llm_client.request_kwargs(
+        model="claude-opus-5-5", max_tokens=9, user="U1", system="S",
+        schema={"type": "object"}, effort="high")
+    assert a["raw"] == '{"a": 1}' and a["stop"] == "ok"
+    assert a["usage"] == {"input": 10, "output": 20} and a["seconds"] >= 0
+    assert a["started"] and a["batch_id"] is None
+    assert b["stop"] == "refusal" and b["request"]["messages"][0]["content"] == "U2"
+    assert llm_client._call_log_path is None          # closed again
+
+
+def test_the_last_call_is_kept_per_thread(monkeypatch):
+    _stream_returning(monkeypatch, _msg('{"t": 1}'), _msg('{"t": 2}'))
+    got = {}
+
+    def one(name):
+        llm_client.call_claude(model="m", max_tokens=1, user=name)
+        got[name] = llm_client.last_call()["request"]["messages"][0]["content"]
+    t1 = threading.Thread(target=one, args=("first",))
+    t1.start(); t1.join()
+    t2 = threading.Thread(target=one, args=("second",))
+    t2.start(); t2.join()
+    assert got == {"first": "first", "second": "second"}
+
+
+def test_a_batch_call_is_logged_with_its_batch_and_custom_id(monkeypatch, tmp_path):
+    _fake_batches(monkeypatch)
+    log = tmp_path / "calls.jsonl"
+    with llm_client.call_log(log), llm_client.batch_gate(
+            flush_after_s=0.2, poll_s=0, manifest_dir=tmp_path / "batches"):
+        _call_in_threads(2)
+    lines = [json.loads(l) for l in log.read_text().splitlines()]
+    assert len(lines) == 2
+    assert all(l["batch_id"] == "batch_1" and l["custom_id"].startswith("r")
+               and l["batch"] is True for l in lines)
+    assert {l["raw"] for l in lines} == {'{"echo": "q0"}', '{"echo": "q1"}'}
+
+
+def test_a_failed_batch_entry_is_logged_before_it_raises(monkeypatch, tmp_path):
+    _fake_batches(monkeypatch, fail={"q0"})
+    log = tmp_path / "calls.jsonl"
+    with llm_client.call_log(log), llm_client.batch_gate(
+            flush_after_s=0.2, poll_s=0, manifest_dir=tmp_path / "batches"):
+        try:
+            llm_client.call_claude(model="m", max_tokens=1, user="q0")
+        except RuntimeError:
+            pass
+    [line] = [json.loads(l) for l in log.read_text().splitlines()]
+    assert line["stop"] == "error:overloaded_error" and line["raw"] is None

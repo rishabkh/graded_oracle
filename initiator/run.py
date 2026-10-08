@@ -34,11 +34,13 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))   # graded_oracle root -> `oracle` package
 sys.path.insert(0, str(HERE))
 
-from prompts import (SIZE_SECTION, SYSTEM_PROMPT,   # noqa: E402
-                     USER_TEMPLATE, prompt_version)
+from prompts import (IDEA_SYSTEM, IDEA_TEMPLATE,     # noqa: E402
+                     IMPLEMENT_TEMPLATE, REPAIR_TEMPLATE, SIZE_SECTION,
+                     SYSTEM_PROMPT, USER_TEMPLATE, prompt_version)
 from schema import TRIPLE_SCHEMA                   # noqa: E402
 
 import llm_client                                            # noqa: E402
+import distill_log                                           # noqa: E402
 from oracle import NecessityVerdict, grade_triple_generated  # noqa: E402
 from oracle.contract import parse_generator_output           # noqa: E402
 
@@ -211,12 +213,51 @@ def build_user_msg(readme, construct, style, pattern, scope, exemplar,
     return msg
 
 
-def call_model(user_msg, model=None):
+IDEA_SCHEMA = {"type": "object", "properties": {"idea": {"type": "string"}},
+               "required": ["idea"], "additionalProperties": False}
+
+
+def call_model(user_msg, model=None, system=None, schema=None):
     """One API call (Anthropic direct or OpenRouter, per CLAUDE_PROVIDER).
-    Returns (raw_json_text or None, usage, stop)."""
+    Returns (raw_json_text or None, usage, stop). The default is the
+    generator's own question: SYSTEM_PROMPT and the triple schema."""
     return llm_client.call_claude(
-        model=model or MODEL, max_tokens=MAX_TOKENS, system=SYSTEM_PROMPT,
-        user=user_msg, schema=TRIPLE_SCHEMA, effort=EFFORT)
+        model=model or MODEL, max_tokens=MAX_TOKENS,
+        system=system or SYSTEM_PROMPT, user=user_msg,
+        schema=schema or TRIPLE_SCHEMA, effort=EFFORT)
+
+
+def _messages(system, user):
+    return [{"role": "system", "content": system},
+            {"role": "user", "content": user}]
+
+
+def default_distill(log_path):
+    """Training examples sit next to the run log they came from."""
+    log = Path(log_path or LOG_PATH)
+    return log.with_name("distill_" + log.name)
+
+
+def seed_arguments(record, extras):
+    """The inputs of one generator question, Formal Disco style: the README
+    by name and full text, and every seed that shaped the question."""
+    return {"repo": extras["readme"]["repo"],
+            "readme": extras["readme"]["readme"],
+            "construct": record["construct"], "scale": record.get("scale"),
+            "pattern": record["pattern"], "scope": record["scope"],
+            "style": record["style"], "exemplar_id": record["exemplar_id"]}
+
+
+def _meta(record):
+    keys = ("run_id", "attempt", "model", "effort", "prompt_version",
+            "constructs_file", "seed_weights", "batch")
+    return {k: record[k] for k in keys if k in record}
+
+
+def calls_path(log_path):
+    """Every API call of a run, next to its run log (llm_client.call_log)."""
+    log = Path(log_path or LOG_PATH)
+    return log.with_name("calls_" + log.name)
 
 
 def dump(record, path=None):
@@ -317,52 +358,79 @@ def plan_attempts(n, *, cmd, grade, model, constructs_path, scales_path,
             record["seed_weights"] = "even"
         plans.append((record, build_user_msg(readme, construct, style,
                                              pattern, scope, exemplar, scale),
-                      scope))
+                      scope, {"readme": readme, "exemplar": exemplar}))
     return exemplars, run_id, plans
 
 
-def finish_attempt(i, record, raw_json, usage, stop, raw_text, *, grade,
-                   show_raw, log_path, tally):
-    """Everything after the model answered: the same for a direct call and
-    a batch entry, so a batch design is judged exactly like any other."""
-    scope = record["scope"]
-    record["usage"] = usage
+def judge(raw_json, stop, scope, grade=True, label=""):
+    """The checker on one answer, the same on every path: no design
+    (refused, cut off, unreadable), then the scope gate, then the oracle.
+    Returns verdict, reason, result and grading time (verdict None when
+    grading is off)."""
+    out = {"verdict": None, "reason": None, "result": None,
+           "grade_wall_s": None}
     if raw_json is None:
-        record["verdict"] = {"refusal": "REFUSED",
-                             "length": "TRUNCATED"}.get(stop, "UNPARSEABLE")
-        record["raw_text"] = raw_text
-        dump(record, log_path)
-        print(f"[{i}] {record['verdict']} - logged, continuing")
-        return
-    record["raw_json"] = raw_json
-    if show_raw:
-        print(json.dumps(json.loads(raw_json), indent=2))
-
+        out["verdict"] = {"refusal": "REFUSED",
+                          "length": "TRUNCATED"}.get(stop, "UNPARSEABLE")
+        return out
     reason = scope_gate(scope, json.loads(raw_json))
     if reason:
-        record["verdict"] = "SCOPE_UNARMED"
-        record["reason"] = reason
-        tally["SCOPE_UNARMED"] = tally.get("SCOPE_UNARMED", 0) + 1
-        dump(record, log_path)
-        print(f"[{i}] SCOPE_UNARMED - {reason[:70]}")
-        return
+        return dict(out, verdict="SCOPE_UNARMED", reason=reason)
+    if not grade:
+        return out
+    t0 = time.monotonic()
+    with Spinner(f"{label} oracle grading"):
+        result = grade_triple_generated(raw_json, **GRADE_KWARGS)
+    return {"verdict": result.verdict.name, "reason": result.reason,
+            "result": asdict(result),
+            "grade_wall_s": round(time.monotonic() - t0, 2)}
 
-    if grade:
-        t0 = time.monotonic()
-        with Spinner(f"[{i}] oracle grading"):
-            result = grade_triple_generated(raw_json, **GRADE_KWARGS)
-        record["grade_wall_s"] = round(time.monotonic() - t0, 2)
-        record["verdict"] = result.verdict.name
-        record["result"] = asdict(result)
-        tally[result.verdict.name] = tally.get(result.verdict.name, 0) + 1
-        print(f"[{i}] {result.verdict.name:12s} ({record['grade_wall_s']}s) "
-              f"- {result.reason[:100]}")
+
+def finish_attempt(i, record, raw_json, usage, stop, raw_text, *, grade,
+                   show_raw, log_path, tally, distill_path=None, extras=None,
+                   user_msg=None):
+    """Everything after the model answered: the same for a direct call and
+    a batch entry, so a batch design is judged exactly like any other.
+    With a distill path, the answer is also saved as an `initiate`
+    training example (distill_log.py)."""
+    record["usage"] = usage
+    if raw_json is not None:
+        record["raw_json"] = raw_json
+        if show_raw:
+            print(json.dumps(json.loads(raw_json), indent=2))
+    j = judge(raw_json, stop, record["scope"], grade, label=f"[{i}]")
+    if raw_json is None:
+        record["verdict"] = j["verdict"]
+        record["raw_text"] = raw_text
+        print(f"[{i}] {record['verdict']} - logged, continuing")
+    elif j["verdict"] == "SCOPE_UNARMED":
+        record["verdict"] = "SCOPE_UNARMED"
+        record["reason"] = j["reason"]
+        tally["SCOPE_UNARMED"] = tally.get("SCOPE_UNARMED", 0) + 1
+        print(f"[{i}] SCOPE_UNARMED - {j['reason'][:70]}")
+    elif grade:
+        record["grade_wall_s"] = j["grade_wall_s"]
+        record["verdict"] = j["verdict"]
+        record["result"] = j["result"]
+        tally[j["verdict"]] = tally.get(j["verdict"], 0) + 1
+        print(f"[{i}] {j['verdict']:12s} ({record['grade_wall_s']}s) "
+              f"- {j['reason'][:100]}")
     dump(record, log_path)
+    if distill_path and extras is not None and user_msg is not None:
+        distill_log.record(distill_path, "initiate",
+                           seed_arguments(record, extras),
+                           raw_json if raw_json is not None else raw_text,
+                           record.get("verdict"),
+                           _messages(SYSTEM_PROMPT, user_msg),
+                           call={"usage": usage, "stop": stop,
+                                 "batch_id": record.get("batch_id"),
+                                 "custom_id": record.get("custom_id")},
+                           **_meta(record))
 
 
 def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
                  scales_path=None, log_path=None, model=None,
-                 even_seeds=False):
+                 even_seeds=False, distill_path=None):
     """`constructs_path`, `scales_path` and `log_path` are the catalog run's
     (task 5): its own kinds, a size seed per attempt, and its own log, so
     its designs never enter the main corpus. `model` swaps the writer
@@ -376,7 +444,17 @@ def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
     if grade:
         assert_exemplar_pool(exemplars)
     tally = {}
-    for i, (record, user_msg, scope) in enumerate(plans):
+    distill_path = distill_path or default_distill(log_path)
+    with llm_client.call_log(calls_path(log_path)):
+        _attempt_loop(plans, model, grade, show_raw, log_path, tally,
+                      distill_path)
+    if grade and tally:
+        print("\nverdict distribution:", dict(sorted(tally.items())))
+
+
+def _attempt_loop(plans, model, grade, show_raw, log_path, tally,
+                  distill_path):
+    for i, (record, user_msg, scope, extras) in enumerate(plans):
         try:
             with Spinner(f"[{i}] {llm_client.model_label(model)} writing a triple"):
                 raw_json, usage, stop = call_model(user_msg, model=model)
@@ -388,10 +466,8 @@ def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
             continue
         finish_attempt(i, record, raw_json, usage, stop, llm_client.LAST_RAW,
                        grade=grade, show_raw=show_raw, log_path=log_path,
-                       tally=tally)
-
-    if grade and tally:
-        print("\nverdict distribution:", dict(sorted(tally.items())))
+                       tally=tally, distill_path=distill_path, extras=extras,
+                       user_msg=user_msg)
 
 
 # --- batch mode (8 Oct 2026): the same questions through the Message
@@ -401,7 +477,8 @@ def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
 # `collect` can be re-run safely: answers already logged are skipped.
 
 def run_batch(n, grade=True, cmd="", constructs_path=None, scales_path=None,
-              log_path=None, model=None, even_seeds=False, poll_s=60):
+              log_path=None, model=None, even_seeds=False, poll_s=60,
+              distill_path=None):
     model = model or MODEL
     exemplars, run_id, plans = plan_attempts(
         n, cmd=cmd, grade=grade, model=model, constructs_path=constructs_path,
@@ -411,9 +488,10 @@ def run_batch(n, grade=True, cmd="", constructs_path=None, scales_path=None,
     log = Path(log_path or LOG_PATH)
     manifest = log.parent / f"batch_{run_id}.json"
     attempts = [{"custom_id": f"a{i:04d}", "record": record,
-                 "user_msg": user_msg}
-                for i, (record, user_msg, _) in enumerate(plans)]
+                 "user_msg": user_msg, "extras": extras}
+                for i, (record, user_msg, _, extras) in enumerate(plans)]
     m = {"run_id": run_id, "log": str(log), "model": model, "grade": grade,
+         "distill": str(distill_path or default_distill(log)),
          "max_tokens": MAX_TOKENS, "effort": EFFORT, "batch_id": None,
          "attempts": attempts}
     manifest.parent.mkdir(parents=True, exist_ok=True)
@@ -473,6 +551,15 @@ def collect(manifest, poll_s=60):
             cid, ("error:no_result", None, {"input": 0, "output": 0}, None))
         spent["input"] += usage.get("input", 0)
         spent["output"] += usage.get("output", 0)
+        llm_client.append_call(calls_path(log), {
+            "started": m.get("submitted"), "provider": "anthropic",
+            "model": m["model"], "batch": True, "batch_id": m["batch_id"],
+            "custom_id": cid, "seconds": None,
+            "request": llm_client.request_kwargs(
+                model=m["model"], max_tokens=m["max_tokens"],
+                user=a["user_msg"], system=SYSTEM_PROMPT,
+                schema=TRIPLE_SCHEMA, effort=m["effort"]),
+            "raw": raw, "stop": stop, "usage": usage})
         if stop.startswith("error"):
             record["usage"] = usage
             record["error"] = f"batch {stop}"
@@ -480,12 +567,222 @@ def collect(manifest, poll_s=60):
             print(f"[{i}] {record['error']} - logged, continuing")
             continue
         finish_attempt(i, record, text, usage, stop, raw, grade=m["grade"],
+                       distill_path=m.get("distill"), extras=a.get("extras"),
+                       user_msg=a["user_msg"],
                        show_raw=False, log_path=log, tally=tally)
     if tally:
         print("\nverdict distribution:", dict(sorted(tally.items())))
     print(f"this collect: {spent['input']:,} in, {spent['output']:,} out = "
           f"${llm_client.dollars(m['model'], spent['input'], spent['output'], batch=True):.2f}"
           " at batch price")
+
+
+# --- two-step and self-repairing generation (8 Oct 2026) --------------------
+# Formal Disco's idea -> implement split and its self-repairing generator,
+# on our contract. Per design, in order: (two-step only) the idea call; the
+# design call; the checker; then up to `repairs` rounds that hand back what
+# the checker found and ask for the complete corrected design. Each call is
+# also saved as a training example in Formal Disco's shape (distill_log):
+#   one-step, no repairs   initiate   the answer as given
+#   one-step, repairs      generate   the ORIGINAL question -> the final design
+#   two-step               idea       the idea, counted a success only when its
+#                                     implementation passed (Formal Disco's rule)
+#                          implement  the idea -> the final design
+#   every repair round     repair     design + checker findings -> new design
+# Designs run in parallel threads, so with batch=True every call goes
+# through llm_client's batch gate at half price; checking is limited to a
+# few at a time so a returning batch cannot overload the machine and push
+# checks past their time limit.
+
+NOTES_CAP = 4000
+
+
+def checker_notes(verdict, reason, result):
+    """What the checker found, for a repair question: the verdict and its
+    reason, each leg's reason, the counterexample trace, and any error
+    lines from the proof logs."""
+    parts = [f"Verdict: {verdict}", f"Reason: {reason or '(none given)'}"]
+    for leg in ("with_invariants", "without_invariants"):
+        info = (result or {}).get(leg) or {}
+        if info.get("reason"):
+            parts.append(f"{leg.replace('_', ' ')}: {info['reason']}")
+        for run in info.get("runs") or []:
+            if run.get("trace_text"):
+                parts.append(f"Counterexample ({leg.replace('_', ' ')}):\n"
+                             f"{run['trace_text']}")
+            errors = [l.strip() for l in (run.get("log_excerpt") or "").splitlines()
+                      if "ERROR" in l or "error:" in l]
+            if errors:
+                parts.append("Tool errors:\n" + "\n".join(errors[:6]))
+    return "\n\n".join(parts)[:NOTES_CAP]
+
+
+def _add(usage, more):
+    usage["input"] += (more or {}).get("input", 0)
+    usage["output"] += (more or {}).get("output", 0)
+
+
+def _step(user_msg, model, system=None, schema=None):
+    """One call plus what the client recorded about it: (answer, usage,
+    stop, call info, raw text). The raw text is kept even when there is no
+    usable answer (a refusal, a cut-off reply)."""
+    before = llm_client.last_call()
+    t0 = time.monotonic()
+    raw, usage, stop = call_model(user_msg, model=model, system=system,
+                                  schema=schema)
+    after = llm_client.last_call()
+    entry = after if after is not None and after is not before else None
+    info = {"usage": usage, "stop": stop,
+            "seconds": entry["seconds"] if entry and entry.get("seconds")
+            is not None else round(time.monotonic() - t0, 2),
+            "batch_id": (entry or {}).get("batch_id"),
+            "custom_id": (entry or {}).get("custom_id")}
+    return raw, usage, stop, info, (entry or {}).get("raw", raw)
+
+
+def design_pipeline(i, record, user_msg, extras, *, mode, repairs, model,
+                    grade, log_path, distill_path, slots, tally, lock):
+    usage = {"input": 0, "output": 0}
+    record.update(mode=mode, usage=usage)
+    seeds = seed_arguments(record, extras)
+    meta = lambda: _meta(record)                               # noqa: E731
+    if mode == "two-step":
+        idea_user = IDEA_TEMPLATE.format(
+            repo=extras["readme"]["repo"], readme=extras["readme"]["readme"],
+            construct=record["construct"], scale=record.get("scale") or
+            "(no size seed: choose ordinary sizes)", pattern=record["pattern"],
+            scope=record["scope"], style=record["style"])
+        raw, u, stop, idea_call, idea_raw = _step(
+            idea_user, model, system=IDEA_SYSTEM, schema=IDEA_SCHEMA)
+        _add(usage, u)
+        record["idea_call"] = idea_call
+        idea = json.loads(raw).get("idea") if raw else None
+        if not idea:
+            record["verdict"] = {"refusal": "REFUSED", "length": "TRUNCATED"
+                                 }.get(stop, "UNPARSEABLE")
+            record["failed_step"] = "idea"
+            record["raw_text"] = idea_raw
+            dump(record, log_path)
+            distill_log.record(distill_path, "idea", seeds, idea_raw,
+                               record["verdict"],
+                               _messages(IDEA_SYSTEM, idea_user),
+                               call=idea_call, chain_usage=usage, **meta())
+            return record
+        record["idea"] = idea
+        first_kind, first_args = "implement", {
+            "idea": idea, "exemplar_id": record["exemplar_id"]}
+        first_user = IMPLEMENT_TEMPLATE.format(
+            idea=idea, exemplar=json.dumps(extras["exemplar"], indent=2))
+    else:
+        first_kind = "generate" if repairs else "initiate"
+        first_args, first_user = seeds, user_msg
+
+    current, u, stop, last_call, raw_text = _step(first_user, model)
+    _add(usage, u)
+    with slots:
+        j = judge(current, stop, record["scope"], grade, label=f"[{i}]")
+    history = [dict(j, design=current if current is not None else raw_text,
+                    call=last_call)]
+    attempt = 0
+    while j["verdict"] != "NECESSARY" and current is not None \
+            and attempt < repairs:
+        notes = checker_notes(j["verdict"], j["reason"], j["result"])
+        pretty = json.dumps(json.loads(current), indent=2)
+        repair_user = REPAIR_TEMPLATE.format(triple=pretty, notes=notes)
+        new, u, stop, call, new_raw = _step(repair_user, model)
+        _add(usage, u)
+        attempt += 1
+        with slots:
+            jn = judge(new, stop, record["scope"], grade, label=f"[{i}]")
+        distill_log.record(distill_path, "repair",
+                           {"triple": current, "notes": notes},
+                           new if new is not None else new_raw, jn["verdict"],
+                           _messages(SYSTEM_PROMPT, repair_user),
+                           repair_round=attempt, call=call, **meta())
+        history.append(dict(jn, design=new if new is not None else new_raw,
+                            call=call))
+        if new is None:
+            break                       # nothing new to judge or repair
+        current, j, last_call = new, jn, call
+
+    record.update(verdict=j["verdict"], reason=j["reason"], result=j["result"],
+                  grade_wall_s=j["grade_wall_s"], repair_attempts=attempt,
+                  history=history)
+    if current is not None:
+        record["raw_json"] = current
+    else:
+        record["raw_text"] = raw_text
+    dump(record, log_path)
+    distill_log.record(distill_path, first_kind, first_args,
+                       current if current is not None else raw_text,
+                       j["verdict"], _messages(SYSTEM_PROMPT, first_user),
+                       repair_attempts=attempt, call=last_call,
+                       chain_usage=usage, **meta())
+    if mode == "two-step":
+        distill_log.record(distill_path, "idea", seeds, record["idea"],
+                           j["verdict"], _messages(IDEA_SYSTEM, idea_user),
+                           call=record["idea_call"], chain_usage=usage,
+                           **meta())
+    with lock:
+        tally[j["verdict"]] = tally.get(j["verdict"], 0) + 1
+    print(f"[{i}] {mode:9s} {str(j['verdict']):12s} after {attempt} "
+          f"repair(s)", flush=True)
+    return record
+
+
+def run_pipeline(n, *, mode="initiate", repairs=0, workers=8, batch=False,
+                 grade_slots=None, flush_after=30.0, grade=True, cmd="",
+                 constructs_path=None, scales_path=None, log_path=None,
+                 model=None, even_seeds=False, distill_path=None):
+    from concurrent.futures import ThreadPoolExecutor
+    import contextlib
+    if mode not in ("initiate", "two-step"):
+        raise ValueError(f"mode must be initiate or two-step, not {mode!r}")
+    model = model or MODEL
+    exemplars, run_id, plans = plan_attempts(
+        n, cmd=cmd, grade=grade, model=model, constructs_path=constructs_path,
+        scales_path=scales_path, even_seeds=even_seeds)
+    if grade:
+        assert_exemplar_pool(exemplars)
+    log = Path(log_path or LOG_PATH)
+    distill_path = distill_path or default_distill(log)
+    slots = threading.BoundedSemaphore(
+        grade_slots or max(1, (os.cpu_count() or 4) - 2))
+    tally, lock = {}, threading.Lock()
+    gate = contextlib.nullcontext()
+    if batch:
+        gate = llm_client.batch_gate(flush_after_s=flush_after, poll_s=60,
+                                     manifest_dir=log.parent / "batches")
+    for record, *_ in plans:
+        record["repairs_allowed"] = repairs
+        if batch:
+            record["batch"] = True
+
+    def one(item):
+        i, (record, user_msg, scope, extras) = item
+        try:
+            return design_pipeline(
+                i, record, user_msg, extras, mode=mode, repairs=repairs,
+                model=model, grade=grade, log_path=log,
+                distill_path=distill_path, slots=slots, tally=tally, lock=lock)
+        except Exception as exc:
+            record["error"] = f"{type(exc).__name__}: {exc}"
+            dump(record, log)
+            print(f"[{i}] error: {record['error'][:120]} - logged, continuing")
+            return record
+
+    with llm_client.call_log(calls_path(log)), gate:
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
+            out = list(ex.map(one, list(enumerate(plans))))
+    if tally:
+        print("\nverdict distribution:", dict(sorted(tally.items(),
+                                                       key=lambda kv: str(kv[0]))))
+    spent = {"input": sum(r["usage"]["input"] for r in out if r.get("usage")),
+             "output": sum(r["usage"]["output"] for r in out if r.get("usage"))}
+    print(f"tokens: {spent['input']:,} in, {spent['output']:,} out = $"
+          f"{llm_client.dollars(model, spent['input'], spent['output'], batch=batch):.2f}"
+          + (" at batch price" if batch else ""))
+    return out
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
@@ -503,7 +800,22 @@ def main():
     pilot.add_argument("--log", default=None,
                        help="attempts log to write instead of logs/attempts.jsonl")
     pilot.add_argument("--batch", action="store_true",
-                       help="send every question as one batch at half price")
+                       help="send the questions as batches at half price")
+    pilot.add_argument("--mode", choices=["initiate", "two-step"],
+                       default="initiate",
+                       help="initiate: one step (as before); two-step: an "
+                            "idea call, then the design")
+    pilot.add_argument("--repairs", type=int, default=0,
+                       help="self-repair rounds after a rejected design")
+    pilot.add_argument("--workers", type=int, default=8,
+                       help="designs worked on at once (two-step/repairs)")
+    pilot.add_argument("--grade-slots", type=int, default=None,
+                       help="designs checked at once (default: cores - 2)")
+    pilot.add_argument("--flush-after", type=float, default=30.0,
+                       help="with --batch in the pipeline: send waiting "
+                            "questions after this many quiet seconds")
+    pilot.add_argument("--distill-log", default=None,
+                       help="training examples file (default: next to --log)")
     pilot.add_argument("--even-seeds", action="store_true",
                        help="draw each style, pattern and scope equally often")
     pilot.add_argument("--model", default=None,
@@ -523,10 +835,18 @@ def main():
     elif args.cmd == "grade-one":
         run_attempts(1, grade=True, show_raw=True, cmd="grade-one")
     elif args.cmd == "pilot":
-        run = run_batch if args.batch else run_attempts
-        run(args.n, grade=True, cmd="pilot",
-            constructs_path=args.constructs, scales_path=args.scales,
-            log_path=args.log, model=args.model, even_seeds=args.even_seeds)
+        common = dict(grade=True, cmd="pilot", constructs_path=args.constructs,
+                      scales_path=args.scales, log_path=args.log,
+                      model=args.model, even_seeds=args.even_seeds,
+                      distill_path=args.distill_log)
+        if args.mode == "two-step" or args.repairs > 0:
+            run_pipeline(args.n, mode=args.mode, repairs=args.repairs,
+                         workers=args.workers, batch=args.batch,
+                         grade_slots=args.grade_slots,
+                         flush_after=args.flush_after, **common)
+        else:
+            run = run_batch if args.batch else run_attempts
+            run(args.n, **common)
     elif args.cmd == "collect":
         collect(args.manifest)
 

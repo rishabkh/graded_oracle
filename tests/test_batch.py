@@ -431,3 +431,20 @@ def test_a_record_made_in_batch_mode_says_so(monkeypatch):
     batch._real_executor(task, [{"id": "c0_000", "top_module": "m",
                                  "verilog": "", "property": [], "invariants": []}])
     assert rec["batch"] is True
+
+
+def test_the_extender_logs_every_call_next_to_its_logs(monkeypatch, tmp_path):
+    import json
+    import batch
+    import llm_client
+    seen = {}
+
+    def fake_loop(rows, executor, **kw):
+        seen["call_log"] = llm_client._call_log_path
+        return []
+    monkeypatch.setattr(batch, "run_loop", fake_loop)
+    corpus = tmp_path / "corpus_catalog.jsonl"
+    corpus.write_text(json.dumps({"id": "c0_000", "generation": 0}) + "\n")
+    logs = tmp_path / "logs"
+    batch.main(["--max-calls", "1", "--corpus", str(corpus), "--log-dir", str(logs)])
+    assert seen["call_log"] == logs / "calls.jsonl"

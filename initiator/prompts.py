@@ -214,3 +214,96 @@ def prompt_version(system_prompt=None):
     m = _CAP.search(system_prompt if system_prompt is not None
                     else SYSTEM_PROMPT)
     return f"{m.group(1)}cap" if m else "nocap"
+
+
+# --- two-step and self-repairing generation (8 Oct 2026) ------------------
+# Formal Disco's idea -> implement split and its self-repairing generator
+# (formal-disco/language/*/prompt.py idea, implement, repair_full), adapted
+# to the planted-triple contract above. Their idea step sees only a README;
+# ours also gets the structural seeds (kind, size, pattern, scope, style),
+# which are where our variety comes from.
+
+IDEA_SYSTEM = """\
+You propose short, precise ideas for small SystemVerilog modules for a formal
+verification dataset. Each idea must be implementable as a "planted triple":
+a design with an internal relation R that holds by construction, plus a
+property P that is true of the design but cannot be proven by k-induction
+unless the prover is also given R. You will receive a GitHub README for the
+theme and seeds for the hardware kind, its size, and the property's pattern,
+scope and style. Output exactly one concise idea and specification. The
+README's project is most likely unrelated to hardware verification, so adapt
+or reinterpret its theme freely."""
+
+IDEA_TEMPLATE = """\
+## Theme (loose inspiration only; do not implement the project)
+
+Repository: {repo}
+
+{readme}
+
+## Hardware kind
+
+{construct}
+
+## Size
+
+{scale}
+
+## Property pattern
+
+{pattern}
+
+## Property scope
+
+{scope}
+
+## Property style
+
+{style}
+
+## Task
+
+- Propose one idea for a module built around the hardware kind, themed by
+  the README, at the given size.
+- Name its state registers with their widths, and the enable or idle input
+  that holds all state when low.
+- State the relation R that holds by construction.
+- State the property P (following the pattern, scope and style) and a state
+  that satisfies P, violates R, can be held while idle, and steps to a
+  violation of P.
+- Keep it simple and self-contained. Output only the idea and specification,
+  in under 250 words.
+"""
+
+IMPLEMENT_TEMPLATE = """\
+## Design idea
+
+{idea}
+
+## Worked example
+
+{exemplar}
+
+## Your task
+
+Write one planted triple that implements this idea. It must be structurally
+different from the worked example. Fill in every field of the schema.
+"""
+
+REPAIR_TEMPLATE = """\
+Your planted triple was checked and rejected.
+
+## Your triple
+
+{triple}
+
+## What the checker found
+
+{notes}
+
+## Your task
+
+Return the complete corrected triple, with every field of the schema. Keep
+the same hardware idea; change whatever the checker's findings require: the
+design, the property, the helper facts (invariants) or the other fields.
+"""

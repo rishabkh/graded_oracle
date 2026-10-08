@@ -424,3 +424,16 @@ def test_pilot_batch_and_collect_options(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["run.py", "collect", "--manifest", "m.json"])
     R.main()
     assert seen["manifest"] == "m.json"
+
+
+def test_collecting_a_batch_logs_every_answer_as_a_call(monkeypatch, tmp_path):
+    """The one-call batch path reads answers straight from the batch, not
+    through the client's call function, so collect writes the call lines."""
+    R = _fake_run(monkeypatch, tmp_path)
+    _fake_batch(monkeypatch, R)
+    log = tmp_path / "log.jsonl"
+    R.run_batch(3, cmd="pilot", log_path=log, poll_s=0)
+    calls = [json.loads(l) for l in (tmp_path / "calls_log.jsonl").read_text().splitlines()]
+    assert len(calls) == 3 and all(c["batch_id"] == "batch_1" for c in calls)
+    assert all(c["request"]["messages"][0]["content"] for c in calls)
+    assert {c["custom_id"] for c in calls} == {"a0000", "a0001", "a0002"}

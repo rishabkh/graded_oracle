@@ -1,0 +1,8 @@
+{
+ "timestamp": "2026-10-08T00:28:11.478726+00:00",
+ "from": "constructs_v5_300.txt",
+ "seed": 20261009,
+ "picked": 150,
+ "rule": "random.Random(seed).sample(the 300 v5 kinds, 150); the first v5 run makes one design per kind",
+ "split": "lines 1-75 (already in seeded random order) -> constructs_v5_150_twostep.txt, run as idea then design; lines 76-150 -> constructs_v5_150_onestep.txt, run as one-step generation with self-repair; so every Formal Disco generation type is made and each kind is still used once"
+}
