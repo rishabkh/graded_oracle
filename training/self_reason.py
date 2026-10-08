@@ -43,6 +43,7 @@ import sys
 import threading
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -133,7 +134,10 @@ def grade(row, invariants):
                "sanity_covers": row.get("sanity_covers", []),
                "invariants": invariants}
     result = grade_triple_generated(json.dumps(payload), **GRADE_KWARGS)
-    out = {"verdict": result.verdict.name, "reason": result.reason}
+    # the whole result, proof folders included (8 Oct 2026: only the
+    # verdict was kept)
+    out = {"verdict": result.verdict.name, "reason": result.reason,
+           "result": json.loads(json.dumps(asdict(result), default=str))}
     # on a big design a too-weak answer fails induction quickly, then the
     # base case runs out of time; that is a "no", not a tool failure
     runs = result.with_invariants.runs if result.with_invariants else []
@@ -145,9 +149,15 @@ def grade(row, invariants):
 
 def check(row, state):
     """The fake-state checker. Imported late so tests can replace this
-    function without training/cti_check.py existing."""
-    from cti_check import check_state
-    return check_state(row, state)
+    function without training/cti_check.py existing. Its proofs are kept
+    next to the log (8 Oct 2026; they used to be made and deleted in a
+    temporary folder)."""
+    import cti_check
+    keep = Path(LOG).parent / f"{Path(LOG).stem}_proofs"
+    out = cti_check.check_state(row, state, keep_dir=keep)
+    if out.get("proof_dir"):     # from the log's folder, as one_step gives it
+        out["proof_dir"] = f"{keep.name}/{out['proof_dir']}"
+    return out
 
 
 def make_client():

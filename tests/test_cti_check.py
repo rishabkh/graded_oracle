@@ -318,3 +318,17 @@ def test_original_state_of_g0_000_gets_a_known_verdict():
     out = check_state(r, state, timeout_s=120)
     assert out["verdict"] in VERDICTS
     assert out["verdict"] not in ("ERROR", "TIMEOUT"), out["detail"]
+
+
+# --- keep everything (8 Oct 2026) ------------------------------------------
+
+@requires_sby
+def test_a_kept_check_says_where_its_proof_is(tmp_path):
+    r = dict(row(ASSERTS["clocked"]), id="g0_009")
+    out = check_state(r, st(a="3'd2", b="3'd0"), timeout_s=60,
+                      keep_dir=tmp_path)
+    assert out["verdict"] == "REAL"
+    folder = tmp_path / out["proof_dir"]
+    assert out["proof_dir"].startswith("g0_009_cti_")
+    assert list(folder.rglob("logfile.txt"))
+    assert list(folder.rglob("sby_stderr.txt"))

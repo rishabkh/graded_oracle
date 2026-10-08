@@ -90,3 +90,25 @@ def test_retarget_catches_the_unnormalised_path_the_checks_use():
     assert "cores/nerv/nerv.sv" not in out
     assert "wrapper.sv" in out            # other files untouched
     assert "bus_dmem_ch0.sv" in out
+
+
+def test_a_check_keeps_the_whole_tool_output(tmp_path, monkeypatch):
+    """8 Oct 2026: only a verdict and a time were kept, so a riscv score
+    could not be checked against what sby printed."""
+    import subprocess
+    import riscv_adapter as ra
+    core = next(iter(ra.CORES))
+    checks = tmp_path / "cores" / core / "checks"
+    checks.mkdir(parents=True)
+    (checks / "insn_add_ch0.sby").write_text(
+        f"[options]\nmode bmc\ndepth 10\n\n[files]\n{ra.CORES[core]['file']}\n")
+    src = tmp_path / ra.CORES[core]["file"]
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text(f"module {ra.CORES[core]['module']} (input clock);\n"
+                   "endmodule\n")
+    monkeypatch.setattr(ra, "RISCV", tmp_path)
+    monkeypatch.setattr(ra.subprocess, "run", lambda *a, **k:
+                        subprocess.CompletedProcess(a, 0, stdout="DONE (PASS",
+                                                    stderr="warn"))
+    rec = ra.run_check(core, "insn_add_ch0", [])
+    assert rec["stdout"] == "DONE (PASS" and rec["stderr"] == "warn"

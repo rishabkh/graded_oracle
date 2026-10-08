@@ -171,11 +171,18 @@ _log_lock = threading.Lock()
 _ASSERT = re.compile(r"\bassert\s*(?:property\s*)?\(")
 
 
-def check(row, state):
+def check(row, state, log=None):
     """The fake-state checker. Imported late so tests can replace this
-    function without training/cti_check.py existing."""
-    from cti_check import check_state
-    return check_state(row, state)
+    function without training/cti_check.py existing. Its proofs are kept
+    next to the log (8 Oct 2026; they used to be made and deleted in a
+    temporary folder)."""
+    import cti_check
+    log = Path(log or LOG)          # the log the result goes to
+    keep = log.parent / f"{log.stem}_proofs"
+    out = cti_check.check_state(row, state, keep_dir=keep)
+    if out.get("proof_dir"):     # from the log's folder, as one_step gives it
+        out["proof_dir"] = f"{keep.name}/{out['proof_dir']}"
+    return out
 
 
 def preflight():
@@ -244,11 +251,11 @@ def parse_answer(text):
     return {"cti_reasoning": reasoning, "cti_state": state}
 
 
-def safe_check(row, state):
+def safe_check(row, state, log=None):
     """A crash in the checker is a tool failure, not a verdict on the
     state; it is recorded as one so it is never mistaken for a rejection."""
     try:
-        return check(row, state)
+        return check(row, state, log=log) if log else check(row, state)
     except Exception as e:
         return {"ok": False, "verdict": "check_error",
                 "detail": f"{type(e).__name__}: {e}"}
@@ -427,7 +434,7 @@ def run_originals(rows, workers):
 
     def one(item):
         row, reasoning, state = item
-        chk = safe_check(row, state)
+        chk = safe_check(row, state, log=ORIG_LOG)
         append(ORIG_LOG, {"id": row["id"], "prompt_kind": "original",
                           "source_run_id": row.get("source_run_id"),
                           "source_attempt": row.get("source_attempt"),

@@ -365,8 +365,14 @@ def _run_sby(rundir, text, sby_text, timeout_s):
             ["sby", "-f", "job.sby"], cwd=rundir,
             capture_output=True, text=True,
             timeout=OUTER_GUARD_FACTOR * timeout_s + OUTER_GUARD_GRACE_S)
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
+        # keep what a hung run printed (8 Oct 2026)
+        for name, x in (("sby_stdout.txt", e.stdout), ("sby_stderr.txt", e.stderr)):
+            (rundir / name).write_text(
+                x.decode(errors="replace") if isinstance(x, bytes) else x or "")
         return None, ""
+    (rundir / "sby_stdout.txt").write_text(proc.stdout or "")
+    (rundir / "sby_stderr.txt").write_text(proc.stderr or "")
     logfile = rundir / "job" / "logfile.txt"
     log = logfile.read_text() if logfile.exists() else ""
     return proc.returncode, log or (proc.stdout or "") + (proc.stderr or "")
@@ -490,10 +496,15 @@ def check_state(row, state, timeout_s=120, keep_dir=None):
     start = time.monotonic()
     style = design_style(row["verilog"])
 
+    folder = f"{row.get('id', 'row')}_cti_{uuid.uuid4().hex[:8]}"
+
     def done(verdict, detail):
-        return {"ok": verdict == "REAL", "verdict": verdict,
-                "detail": " ".join(detail.split()), "style": style,
-                "wall_s": round(time.monotonic() - start, 3)}
+        out = {"ok": verdict == "REAL", "verdict": verdict,
+               "detail": " ".join(detail.split()), "style": style,
+               "wall_s": round(time.monotonic() - start, 3)}
+        if keep_dir and (Path(keep_dir) / folder).exists():
+            out["proof_dir"] = folder     # under keep_dir, kept
+        return out
 
     refused = _refuse(state, row["verilog"], row["top_module"])
     if refused:
@@ -512,8 +523,7 @@ def check_state(row, state, timeout_s=120, keep_dir=None):
     else:
         root = Path(tempfile.mkdtemp(prefix="cti_check_"))
     try:
-        return done(*_decide(root / f"cti_{uuid.uuid4().hex[:8]}", row,
-                             state, style, timeout_s))
+        return done(*_decide(root / folder, row, state, style, timeout_s))
     except InjectionError as e:
         return done("ERROR", str(e))
     finally:

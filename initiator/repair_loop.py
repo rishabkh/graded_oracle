@@ -148,12 +148,16 @@ def run_mode(bench_path, lemmas, mode, workdir, buechi=False):
         import subprocess
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
                            errors="replace", timeout=FACT_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        return {"verdict": "TIMEOUT", "time": FACT_TIMEOUT_S}
+    except subprocess.TimeoutExpired as e:
+        return {"verdict": "TIMEOUT", "time": FACT_TIMEOUT_S,
+                "stdout": ebmc_eval._text(e.stdout),
+                "stderr": ebmc_eval._text(e.stderr)}
     finally:
         out.unlink(missing_ok=True)
     res = ebmc_result(r.stdout, r.stderr, mode)
     res["time"] = round(time.perf_counter() - t0, 2)
+    # the tool's whole output is kept (8 Oct 2026); only `info` feeds prompts
+    res["stdout"], res["stderr"] = r.stdout, r.stderr
     return res
 
 
@@ -312,7 +316,13 @@ def _per_lemma(singletons):
                      "correctness": e["correct"]["verdict"],
                      "one_induction": e["1-inductive"]["verdict"],
                      "with_prop": e["1-inductive with property"]["verdict"],
-                     "info": _cap(info)[:600] if info else None})
+                     # whole (8 Oct 2026: cut at 600 characters)
+                     "info": info or None,
+                     "ebmc_output": {
+                         k: {"stdout": e[k].get("stdout"),
+                             "stderr": e[k].get("stderr")}
+                         for k in ("correct", "1-inductive",
+                                   "1-inductive with property")}})
     return rows
 
 

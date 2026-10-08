@@ -204,11 +204,22 @@ def run(bench_path, lemma_exprs, mode, workdir):
     try:
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
                            errors="replace", timeout=TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        return {"verdict": "TIMEOUT", "time": TIMEOUT_S, "cmd": cmd}
+    except subprocess.TimeoutExpired as e:
+        return {"verdict": "TIMEOUT", "time": TIMEOUT_S, "cmd": cmd,
+                "stdout": _text(e.stdout), "stderr": _text(e.stderr)}
+    # the whole output too (8 Oct 2026): a score must be checkable against
+    # what the tool printed
     return {"verdict": parse_verdict(r.stdout, r.stderr, mode),
             "time": round(time.perf_counter() - t0, 2), "cmd": cmd,
-            "stdout_tail": r.stdout[-400:]}
+            "stdout_tail": r.stdout[-400:], "stdout": r.stdout,
+            "stderr": r.stderr}
+
+
+def _text(x):
+    """A timed-out run's partial output, which may come back as bytes."""
+    if x is None:
+        return ""
+    return x.decode(errors="replace") if isinstance(x, bytes) else x
 
 
 def main():

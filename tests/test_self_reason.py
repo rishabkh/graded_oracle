@@ -748,6 +748,8 @@ def test_real_tools_keep_a_right_try_and_judge_the_state_by_its_own_answer(
     # the grader keeps its work folders; keep them out of runs/
     monkeypatch.setattr(sr, "GRADE_KWARGS",
                         dict(sr.GRADE_KWARGS, workdir_root=tmp_path))
+    # and the fake-state check keeps its proofs next to LOG
+    monkeypatch.setattr(sr, "LOG", tmp_path / "logs" / "self_reason.jsonl")
     row = {"id": "toy", "generation": 0, "verilog": TOY, "top_module": "toy",
            "clock": "clk", "antecedents": [], "sanity_covers": [],
            "invariants": ["a <= 3'd7"]}
@@ -765,3 +767,39 @@ def test_real_tools_keep_a_right_try_and_judge_the_state_by_its_own_answer(
     out = sr.judge(row, true_there, "stop")
     assert out["fake_check"]["verdict"] == "R_TRUE", out["fake_check"]
     assert out["kept"] is False
+
+
+# --- keep everything (8 Oct 2026) ------------------------------------------
+
+def test_the_fake_state_check_keeps_its_proofs_next_to_the_log(tmp_path,
+                                                               monkeypatch):
+    import cti_check
+    seen = {}
+    monkeypatch.setattr(cti_check, "check_state",
+                        lambda row, state, keep_dir=None: seen.update(
+                            keep_dir=keep_dir) or {"verdict": "REAL"})
+    monkeypatch.setattr(sr, "LOG", tmp_path / "logs" / "self_reason.jsonl")
+    sr.check({"id": "x"}, [])
+    assert seen["keep_dir"] == tmp_path / "logs" / "self_reason_proofs"
+
+
+def test_a_grade_keeps_the_whole_checker_result(monkeypatch):
+    import oracle
+    from oracle import GradeResult, NecessityVerdict, Tier, TripleResult
+    res = TripleResult(NecessityVerdict.NOT_PROVEN, "with-invariants grade "
+                       "is NOT_INDUCTIVE, not PROVEN",
+                       with_invariants=GradeResult(Tier.NOT_INDUCTIVE, "cti"))
+    monkeypatch.setattr(oracle, "grade_triple_generated", lambda *a, **k: res)
+    out = sr.grade({"verilog": "v", "top_module": "m"}, ["a == b"])
+    assert out["verdict"] == "NOT_PROVEN"
+    assert out["result"]["with_invariants"]["reason"] == "cti"
+
+
+def test_proof_dir_is_given_from_the_logs_folder(tmp_path, monkeypatch):
+    import cti_check
+    monkeypatch.setattr(cti_check, "check_state",
+                        lambda row, state, keep_dir=None:
+                        {"verdict": "REAL", "proof_dir": "x_cti_1"})
+    monkeypatch.setattr(sr, "LOG", tmp_path / "logs" / "self_reason.jsonl")
+    assert sr.check({"id": "x"}, [])["proof_dir"] == \
+        "self_reason_proofs/x_cti_1"

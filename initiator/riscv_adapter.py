@@ -116,14 +116,23 @@ def run_check(core, check, invariants, k=10, timeout=900, condition="native"):
             r = subprocess.run(["sby", "-f", str(run_sby)], cwd=work,
                                capture_output=True, text=True,
                                timeout=timeout)
-            rc, out = r.returncode, r.stdout
-        except subprocess.TimeoutExpired:
-            rc, out = None, ""
+            rc, out, err = r.returncode, r.stdout, r.stderr
+        except subprocess.TimeoutExpired as e:
+            rc, out, err = None, _text(e.stdout), _text(e.stderr)
+        # the whole output is kept (8 Oct 2026); the verdict still reads
+        # only the end of it, as before
         return {"core": core, "check": check, "condition": condition,
                 "k": k, "n_invariants": len(invariants),
                 "invariants": invariants,
-                "verdict": classify(rc, out[-4000:]),
-                "wall_s": round(time.monotonic() - t0, 1)}
+                "verdict": classify(rc, (out if rc is not None else "")[-4000:]),
+                "wall_s": round(time.monotonic() - t0, 1),
+                "stdout": out, "stderr": err}
+
+
+def _text(x):
+    if x is None:
+        return ""
+    return x.decode(errors="replace") if isinstance(x, bytes) else x
 
 
 def main():

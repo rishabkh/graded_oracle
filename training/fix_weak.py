@@ -39,7 +39,6 @@ import argparse
 import json
 import shutil
 import sys
-import tempfile
 import threading
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -214,12 +213,17 @@ def parse_answer(text):
 
 def check(row, facts):
     """The whole proof at one step. Imported late so tests can replace
-    this function without the toolchain."""
-    from one_step import prove_true
+    this function without the toolchain. Proofs are kept next to the log
+    (8 Oct 2026; they ran in a temporary folder and were lost)."""
+    import one_step
     with _lock:
         if "dir" not in _work:
-            _work["dir"] = tempfile.mkdtemp(prefix="fix_weak_")
-    return prove_true(row, facts, _work["dir"])
+            _work["dir"] = Path(LOG).parent / f"{Path(LOG).stem}_proofs"
+            _work["dir"].mkdir(parents=True, exist_ok=True)
+    res = one_step.prove_true(row, facts, _work["dir"], name=row.get("id"))
+    if res.get("proof_dir"):
+        res["proof_dir"] = f"{_work['dir'].name}/{res['proof_dir']}"
+    return res
 
 
 def safe_check(row, facts):

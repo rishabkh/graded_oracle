@@ -178,3 +178,34 @@ def test_ebmc_judges_the_enum_family_instead_of_crashing(tmp_path):
     from ebmc_eval import run
     r = run(ENUM_FILE, [], "one_inductive_with_prop", tmp_path)
     assert r["verdict"] == "INCONCLUSIVE"
+
+
+# --- keep everything (8 Oct 2026): rows kept only the last 400 characters
+
+def test_a_scoring_run_keeps_the_whole_tool_output(tmp_path, monkeypatch):
+    import subprocess
+    import ebmc_eval
+    bench = tmp_path / "b.sv"
+    bench.write_text(BENCH)
+    long_out = "step line\n" * 500
+    monkeypatch.setattr(ebmc_eval.subprocess, "run", lambda *a, **k:
+                        subprocess.CompletedProcess(a, 0, stdout=long_out,
+                                                    stderr="warn"))
+    monkeypatch.setattr(ebmc_eval, "parse_verdict", lambda o, e, m: "PROVEN")
+    res = ebmc_eval.run(bench, [], "one_inductive_with_prop", tmp_path)
+    assert res["stdout"] == long_out and res["stderr"] == "warn"
+    assert res["stdout_tail"] == long_out[-400:]          # unchanged
+
+
+def test_a_hung_scoring_run_keeps_what_it_printed(tmp_path, monkeypatch):
+    import subprocess
+    import ebmc_eval
+    bench = tmp_path / "b.sv"
+    bench.write_text(BENCH)
+
+    def hang(*a, **k):
+        raise subprocess.TimeoutExpired("ebmc", 1, output="partial",
+                                        stderr=None)
+    monkeypatch.setattr(ebmc_eval.subprocess, "run", hang)
+    res = ebmc_eval.run(bench, [], "one_inductive_with_prop", tmp_path)
+    assert res["verdict"] == "TIMEOUT" and res["stdout"] == "partial"

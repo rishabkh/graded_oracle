@@ -72,7 +72,7 @@ def env(tmp_path, monkeypatch):
             return None, dict(USAGE), "refusal"
         return json.dumps(reply), dict(USAGE), "ok"
 
-    def fake_check(row, cti_state):
+    def fake_check(row, cti_state, log=None):
         verdicts = state["checks"]
         return dict(verdicts.pop(0) if verdicts else OK)
 
@@ -400,8 +400,11 @@ def test_originals_flag_checks_and_logs_without_calls(env, monkeypatch, capsys):
 
 @pytest.mark.skipif(shutil.which("sby") is None,
                     reason="sby not on PATH - source oss-cad-suite first")
-def test_check_reaches_the_real_checker_on_an_original_row():
+def test_check_reaches_the_real_checker_on_an_original_row(tmp_path,
+                                                          monkeypatch):
     pytest.importorskip("cti_check")
+    # proofs are kept next to the log; keep them out of the real logs
+    monkeypatch.setattr(rr, "LOG", tmp_path / "logs" / "regen.jsonl")
     rows = [json.loads(l) for l in rr.CORPUS.read_text().splitlines()]
     found = rr.load_originals(rows[:1], rr.ATTEMPTS)
     row, _, state = found[0]
@@ -446,3 +449,30 @@ def test_a_run_drives_one_spinner_to_the_end(env, monkeypatch):
     assert "0/2 rows done" in seen[0]
     assert "1 in progress" in " ".join(seen)
     assert "2/2 rows done" in seen[-1] and "0 in progress" in seen[-1]
+
+
+def test_the_fake_state_check_keeps_its_proofs_next_to_the_log(tmp_path,
+                                                               monkeypatch):
+    """8 Oct 2026: its proofs were made in a temporary folder and lost."""
+    import cti_check
+    seen = {}
+    monkeypatch.setattr(cti_check, "check_state",
+                        lambda row, state, keep_dir=None: seen.update(
+                            keep_dir=keep_dir) or {"verdict": "REAL"})
+    monkeypatch.setattr(rr, "LOG", tmp_path / "logs" / "reasoning_regen.jsonl")
+    rr.check({"id": "x"}, [])
+    assert seen["keep_dir"] == tmp_path / "logs" / "reasoning_regen_proofs"
+
+
+def test_the_originals_check_keeps_its_proofs_next_to_its_own_log(
+        tmp_path, monkeypatch):
+    import cti_check
+    seen = {}
+    monkeypatch.setattr(cti_check, "check_state",
+                        lambda row, state, keep_dir=None: seen.update(
+                            keep_dir=keep_dir) or
+                        {"verdict": "REAL", "proof_dir": "x_cti_1"})
+    monkeypatch.setattr(rr, "LOG", tmp_path / "logs" / "reasoning_regen.jsonl")
+    out = rr.check({"id": "x"}, [], log=tmp_path / "logs" / "orig.jsonl")
+    assert seen["keep_dir"] == tmp_path / "logs" / "orig_proofs"
+    assert out["proof_dir"] == "orig_proofs/x_cti_1"

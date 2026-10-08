@@ -49,44 +49,66 @@ TIMEOUT_S = 120
 TRACE_CAP = 3000
 
 
-def prove(row, invariants, work, depth=1):
-    """Induction step only: the design's assertions plus these facts,
-    k-inductive at `depth`?"""
-    td = Path(tempfile.mkdtemp(dir=work))
+def _folder(work, name):
+    """A kept proof folder (8 Oct 2026: they used to be deleted after
+    every check). `name` makes it findable: <row id>_d<dropped fact>."""
+    return Path(tempfile.mkdtemp(dir=work, prefix=f"{name}_" if name else None))
+
+
+def _sby(td):
+    """Run sby in `td` and keep what it printed next to its log. Returns
+    (stdout, timed out)."""
     try:
-        src = inject_invariants(row["verilog"], row["top_module"],
-                                list(invariants)).text
-        (td / "design.sv").write_text(src)
-        (td / "job.sby").write_text(
-            f"[options]\nmode prove\ndepth {depth}\ntimeout {TIMEOUT_S}\n\n"
-            "[engines]\nsmtbmc --induction yices\n\n"
-            f"[script]\nread -formal design.sv\nprep -top {row['top_module']}\n\n"
-            "[files]\ndesign.sv\n")
-        t0 = time.monotonic()
-        try:
-            subprocess.run(["sby", "-f", "job.sby"], cwd=td,
+        r = subprocess.run(["sby", "-f", "job.sby"], cwd=td,
                            capture_output=True, text=True,
                            timeout=TIMEOUT_S * 1.5 + 10)
-        except subprocess.TimeoutExpired:
-            return {"tier": "TIMEOUT", "trace": None, "broke": None,
-                    "secs": round(time.monotonic() - t0, 1)}
-        logfile = td / "job" / "logfile.txt"
-        log = logfile.read_text() if logfile.exists() else ""
-        m = re.search(r"returned (\w+) for induction", log)
-        status = m.group(1).upper() if m else (
-            "TIMEOUT" if "timeout" in log.lower() else "ERROR")
-        tier = {"PASS": "INDUCTIVE", "FAIL": "NOT_INDUCTIVE",
-                "TIMEOUT": "TIMEOUT"}.get(status, "ERROR")
-        trace = None
-        vcds = sorted((td / "job").rglob("trace_induct.vcd"))
-        if tier == "NOT_INDUCTIVE" and vcds:
-            trace = summarize_vcd(vcds[0])[:TRACE_CAP]
-        broke = re.search(r"failed assertion \S+ at (\S+)", log)
-        return {"tier": tier, "trace": trace,
-                "broke": broke.group(1) if broke else None,
-                "secs": round(time.monotonic() - t0, 1)}
-    finally:
-        shutil.rmtree(td, ignore_errors=True)
+        out, err, hung = r.stdout or "", r.stderr or "", False
+    except subprocess.TimeoutExpired as e:
+        out, err, hung = _text(e.stdout), _text(e.stderr), True
+    (td / "sby_stdout.txt").write_text(out)
+    (td / "sby_stderr.txt").write_text(err)
+    return out, hung
+
+
+def _text(x):
+    if x is None:
+        return ""
+    return x.decode(errors="replace") if isinstance(x, bytes) else x
+
+
+def prove(row, invariants, work, depth=1, name=None):
+    """Induction step only: the design's assertions plus these facts,
+    k-inductive at `depth`? The proof folder is kept under `work`; its
+    name is in "proof_dir"."""
+    td = _folder(work, name)
+    src = inject_invariants(row["verilog"], row["top_module"],
+                            list(invariants)).text
+    (td / "design.sv").write_text(src)
+    (td / "job.sby").write_text(
+        f"[options]\nmode prove\ndepth {depth}\ntimeout {TIMEOUT_S}\n\n"
+        "[engines]\nsmtbmc --induction yices\n\n"
+        f"[script]\nread -formal design.sv\nprep -top {row['top_module']}\n\n"
+        "[files]\ndesign.sv\n")
+    t0 = time.monotonic()
+    _, hung = _sby(td)
+    if hung:
+        return {"tier": "TIMEOUT", "trace": None, "broke": None,
+                "secs": round(time.monotonic() - t0, 1), "proof_dir": td.name}
+    logfile = td / "job" / "logfile.txt"
+    log = logfile.read_text() if logfile.exists() else ""
+    m = re.search(r"returned (\w+) for induction", log)
+    status = m.group(1).upper() if m else (
+        "TIMEOUT" if "timeout" in log.lower() else "ERROR")
+    tier = {"PASS": "INDUCTIVE", "FAIL": "NOT_INDUCTIVE",
+            "TIMEOUT": "TIMEOUT"}.get(status, "ERROR")
+    trace = None
+    vcds = sorted((td / "job").rglob("trace_induct.vcd"))
+    if tier == "NOT_INDUCTIVE" and vcds:
+        trace = summarize_vcd(vcds[0])[:TRACE_CAP]
+    broke = re.search(r"failed assertion \S+ at (\S+)", log)
+    return {"tier": tier, "trace": trace,
+            "broke": broke.group(1) if broke else None,
+            "secs": round(time.monotonic() - t0, 1), "proof_dir": td.name}
 
 
 _FAILED_AT = re.compile(r"failed assertion \S+ at design\.sv:(\d+)\.")
@@ -95,7 +117,7 @@ _IMPLICIT = re.compile(r"design\.sv:(\d+): Warning: Identifier `\\?(\S+?)' "
 _ERROR_AT = re.compile(r"design\.sv:(\d+): ERROR: (.*)")
 
 
-def prove_true(row, invariants, work, depth=1):
+def prove_true(row, invariants, work, depth=1, name=None):
     """The whole proof, base case and induction step, for facts not yet
     proven true (prove() runs the step only, which is enough for subsets
     of an answer already proven). One of:
@@ -109,59 +131,53 @@ def prove_true(row, invariants, work, depth=1):
                      making the fact look false), bad syntax, or a system
                      function; `detail` says which
       TIMEOUT, ERROR the tool could not judge; says nothing of the facts
-    with `trace`, the proof tool's run, for FALSE and NOT_INDUCTIVE."""
-    td = Path(tempfile.mkdtemp(dir=work))
-    try:
-        inj = inject_invariants(row["verilog"], row["top_module"],
-                                list(invariants))
-        facts = {line: expr for line, (_, expr) in inj.line_map.items()}
-        (td / "design.sv").write_text(inj.text)
-        (td / "job.sby").write_text(
-            f"[options]\nmode prove\ndepth {depth}\ntimeout {TIMEOUT_S}\n\n"
-            "[engines]\nsmtbmc yices\n\n"
-            f"[script]\nread -formal design.sv\nprep -top {row['top_module']}\n\n"
-            "[files]\ndesign.sv\n")
-        t0 = time.monotonic()
-        out = {"tier": None, "fact": None, "detail": None, "trace": None}
-        try:
-            r = subprocess.run(["sby", "-f", "job.sby"], cwd=td,
-                               capture_output=True, text=True,
-                               timeout=TIMEOUT_S * 1.5 + 10)
-            log = r.stdout
-        except subprocess.TimeoutExpired:
-            return dict(out, tier="TIMEOUT",
-                        secs=round(time.monotonic() - t0, 1))
-        logfile = td / "job" / "logfile.txt"
-        if logfile.exists():
-            log += logfile.read_text()
-        out["secs"] = round(time.monotonic() - t0, 1)
-        for pattern, why in ((_ERROR_AT, None), (_IMPLICIT, "unknown name")):
-            for m in pattern.finditer(log):
-                line = int(m.group(1))
-                if line in facts:
-                    detail = (f"{why} `{m.group(2)}`: the design has no "
-                              f"such signal in module {row['top_module']}"
-                              if why else m.group(2).strip())
-                    return dict(out, tier="BAD_FACT", fact=facts[line],
-                                detail=detail)
-        status = {k: m.group(1).upper() for k in ("basecase", "induction")
-                  for m in [re.search(rf"returned (\w+) for {k}", log)] if m}
-        failed = _FAILED_AT.search(log)
-        fact = facts.get(int(failed.group(1))) if failed else None
-        if status.get("basecase") == "FAIL":
-            tier, vcd = "FALSE", "trace.vcd"
-        elif status.get("induction") == "FAIL":
-            tier, vcd = "NOT_INDUCTIVE", "trace_induct.vcd"
-        elif "DONE (PASS" in log:
-            return dict(out, tier="PROVEN")
-        else:
-            return dict(out, tier="TIMEOUT" if "timeout" in log.lower()
-                        else "ERROR", detail=log[-600:])
-        vcds = sorted((td / "job").rglob(vcd))
-        trace = summarize_vcd(vcds[0])[:TRACE_CAP] if vcds else None
-        return dict(out, tier=tier, fact=fact, trace=trace)
-    finally:
-        shutil.rmtree(td, ignore_errors=True)
+    with `trace`, the proof tool's run, for FALSE and NOT_INDUCTIVE. The
+    proof folder is kept under `work`; its name is in "proof_dir"."""
+    td = _folder(work, name)
+    inj = inject_invariants(row["verilog"], row["top_module"],
+                            list(invariants))
+    facts = {line: expr for line, (_, expr) in inj.line_map.items()}
+    (td / "design.sv").write_text(inj.text)
+    (td / "job.sby").write_text(
+        f"[options]\nmode prove\ndepth {depth}\ntimeout {TIMEOUT_S}\n\n"
+        "[engines]\nsmtbmc yices\n\n"
+        f"[script]\nread -formal design.sv\nprep -top {row['top_module']}\n\n"
+        "[files]\ndesign.sv\n")
+    t0 = time.monotonic()
+    out = {"tier": None, "fact": None, "detail": None, "trace": None,
+           "proof_dir": td.name}
+    log, hung = _sby(td)
+    if hung:
+        return dict(out, tier="TIMEOUT", secs=round(time.monotonic() - t0, 1))
+    logfile = td / "job" / "logfile.txt"
+    if logfile.exists():
+        log += logfile.read_text()
+    out["secs"] = round(time.monotonic() - t0, 1)
+    for pattern, why in ((_ERROR_AT, None), (_IMPLICIT, "unknown name")):
+        for m in pattern.finditer(log):
+            line = int(m.group(1))
+            if line in facts:
+                detail = (f"{why} `{m.group(2)}`: the design has no "
+                          f"such signal in module {row['top_module']}"
+                          if why else m.group(2).strip())
+                return dict(out, tier="BAD_FACT", fact=facts[line],
+                            detail=detail)
+    status = {k: m.group(1).upper() for k in ("basecase", "induction")
+              for m in [re.search(rf"returned (\w+) for {k}", log)] if m}
+    failed = _FAILED_AT.search(log)
+    fact = facts.get(int(failed.group(1))) if failed else None
+    if status.get("basecase") == "FAIL":
+        tier, vcd = "FALSE", "trace.vcd"
+    elif status.get("induction") == "FAIL":
+        tier, vcd = "NOT_INDUCTIVE", "trace_induct.vcd"
+    elif "DONE (PASS" in log:
+        return dict(out, tier="PROVEN")
+    else:
+        return dict(out, tier="TIMEOUT" if "timeout" in log.lower()
+                    else "ERROR", detail=log[-600:])
+    vcds = sorted((td / "job").rglob(vcd))
+    trace = summarize_vcd(vcds[0])[:TRACE_CAP] if vcds else None
+    return dict(out, tier=tier, fact=fact, trace=trace)
 
 
 def run(corpus=CORPUS, out=OUT, workers=6):
@@ -182,7 +198,9 @@ def run(corpus=CORPUS, out=OUT, workers=6):
              if (r["id"], i) not in done]
     print(f"{len(rows)} rows, {len(tasks)} proofs to run "
           f"({len(done)} already done)", flush=True)
-    work = Path(tempfile.mkdtemp(prefix="one_step_"))
+    # kept next to the log (8 Oct 2026); they used to be deleted
+    work = out.parent / f"{out.stem}_proofs"
+    work.mkdir(parents=True, exist_ok=True)
     lock, count = threading.Lock(), {"n": 0}
 
     def one(task):
@@ -190,7 +208,10 @@ def run(corpus=CORPUS, out=OUT, workers=6):
         facts = r["invariants"] if i < 0 else \
             r["invariants"][:i] + r["invariants"][i + 1:]
         try:
-            res = prove(r, facts, work, depth=20 if i == -1 else 1)
+            res = prove(r, facts, work, depth=20 if i == -1 else 1,
+                        name=f"{r['id']}_d{i}")
+            if res.get("proof_dir"):
+                res["proof_dir"] = f"{work.name}/{res['proof_dir']}"
         except Exception as e:                  # a crash is not a verdict
             res = {"tier": "CRASH", "trace": None, "broke": None, "secs": 0,
                    "error": f"{type(e).__name__}: {e}"[:300]}
@@ -206,7 +227,6 @@ def run(corpus=CORPUS, out=OUT, workers=6):
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
         list(ex.map(one, tasks))
-    shutil.rmtree(work, ignore_errors=True)
 
 
 def summary(out=OUT):

@@ -144,6 +144,10 @@ def main():
                     res = ebmc_run(f, lemmas, "one_inductive_with_prop", d)
             rec["verdict"] = res["verdict"]
             rec["ebmc_time"] = res["time"]
+            # what the scoring tool printed, whole (8 Oct 2026)
+            rec["ebmc_stdout"] = res.get("stdout")
+            rec["ebmc_stderr"] = res.get("stderr")
+            rec["ebmc_cmd"] = res.get("cmd")
             solved += res["verdict"] == "PROVEN"
         print(f"[{i}] {f.stem:28s} {rec['verdict']:10s} "
               f"({rec['solve_wall_s']}s)")

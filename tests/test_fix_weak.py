@@ -219,3 +219,20 @@ def test_dry_and_report_make_no_calls(monkeypatch, tmp_path, capsys):
     assert "1 rows would be called" in capsys.readouterr().out
     fw.main(["--report"])
     assert f.prompts == []
+
+
+def test_its_proofs_are_kept_next_to_its_log(tmp_path, monkeypatch):
+    """8 Oct 2026: they ran in a temporary folder and were lost."""
+    import one_step
+    seen = {}
+
+    def fake_prove_true(row, facts, work, depth=1, name=None):
+        seen.update(work=Path(work), name=name)
+        return {"tier": "PROVEN", "proof_dir": f"{name}_abc"}
+    monkeypatch.setattr(one_step, "prove_true", fake_prove_true)
+    monkeypatch.setattr(fw, "LOG", tmp_path / "logs" / "fix_weak.jsonl")
+    monkeypatch.setattr(fw, "_work", {})
+    r = fw.check({"id": "g0_007"}, ["a == b"])
+    assert seen["work"] == tmp_path / "logs" / "fix_weak_proofs"
+    assert seen["name"] == "g0_007"
+    assert r["proof_dir"] == "fix_weak_proofs/g0_007_abc"

@@ -413,3 +413,33 @@ def test_without_feedback_an_unreadable_answer_still_gets_the_format_message(
     assert ask.seen[0][-1]["content"] == rl.NO_FEEDBACK
     assert ask.seen[1][-1]["content"].startswith(
         "Your last response did not follow the expected format.")
+
+
+def test_each_facts_checks_keep_the_whole_tool_output():
+    """8 Oct 2026: the saved info was cut at 600 characters, and the tool's
+    own output was not saved at all."""
+    long = "x" * 2000
+    e = {"lemma": ["a == b"],
+         "correct": {"verdict": "REFUTED", "info": long, "stdout": "S1",
+                     "stderr": "E1"},
+         "1-inductive": {"verdict": "PROVEN", "stdout": "S2", "stderr": ""},
+         "1-inductive with property": {"verdict": "PROVEN", "stdout": "S3",
+                                       "stderr": ""}}
+    [row] = rl._per_lemma([e])
+    assert row["info"] == long
+    assert row["ebmc_output"]["correct"] == {"stdout": "S1", "stderr": "E1"}
+    assert row["ebmc_output"]["1-inductive with property"]["stdout"] == "S3"
+
+
+def test_a_fact_check_keeps_the_tool_output(tmp_path, monkeypatch):
+    import subprocess
+    from tests.test_ebmc_eval import BENCH
+    bench = tmp_path / "b.sv"
+    bench.write_text(BENCH)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k:
+                        subprocess.CompletedProcess(a, 0, stdout="PROVED all",
+                                                    stderr=""))
+    monkeypatch.setattr(rl, "ebmc_result",
+                        lambda o, e, m: {"verdict": "PROVEN", "info": None})
+    res = rl.run_mode(bench, ["a == b"], "one_inductive_with_prop", tmp_path)
+    assert res["stdout"] == "PROVED all" and res["stderr"] == ""

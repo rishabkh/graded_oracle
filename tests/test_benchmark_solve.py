@@ -15,7 +15,8 @@ REPLY = ('{"reasoning": "Fake state: c = 4\'d12. c jumps past 9.", '
          '"invariants": ["c <= 4\'d9"]}')
 
 
-def _run(tmp_path, monkeypatch, solve, extra=(), one_shot="INCONCLUSIVE"):
+def _run(tmp_path, monkeypatch, solve, extra=(), one_shot="INCONCLUSIVE",
+         ebmc=None):
     bench = tmp_path / "bench" / "hard"
     bench.mkdir(parents=True)
     (bench / "toy.sv").write_text("module main(); endmodule\n")
@@ -23,8 +24,8 @@ def _run(tmp_path, monkeypatch, solve, extra=(), one_shot="INCONCLUSIVE"):
     monkeypatch.setattr(bs, "OUT_LOG", tmp_path / "out.jsonl")
     monkeypatch.setattr(bs, "solve_qwen", solve)
     monkeypatch.setattr(bs, "judgeable", lambda f: True)
-    monkeypatch.setattr(bs, "ebmc_run", lambda *a, **k: {
-        "verdict": one_shot, "time": 0.1})
+    monkeypatch.setattr(bs, "ebmc_run", ebmc or (lambda *a, **k: {
+        "verdict": one_shot, "time": 0.1}))
     monkeypatch.setenv("EBMC_PATH", "/bin/true")
     monkeypatch.setenv("QWEN_BASE_URL", "http://localhost:8000/v1")
     fake_openai = types.SimpleNamespace(OpenAI=lambda **kw: types.SimpleNamespace(
@@ -193,3 +194,17 @@ def test_no_feedback_needs_rounds_and_has_no_counterexample_to_show(
             bs.main()
         # our refusal, not argparse's exit 2 for an option it does not know
         assert says in str(stop.value.code)
+
+
+def test_a_row_keeps_the_scoring_tools_whole_output(tmp_path, monkeypatch):
+    """8 Oct 2026: a score could not be checked against what EBMC said."""
+    def solve(prompt):
+        solve.last_raw, solve.last_finish = REPLY, "stop"
+        return ["c <= 4'd9"], None
+    solve.last_raw = solve.last_finish = None
+    [row] = _run(tmp_path, monkeypatch, solve, ebmc=lambda *a, **k: {
+        "verdict": "PROVEN", "time": 0.1, "stdout": "all of it",
+        "stderr": "a warning", "cmd": "ebmc x"})
+    assert row["verdict"] == "PROVEN"
+    assert row["ebmc_stdout"] == "all of it"
+    assert row["ebmc_stderr"] == "a warning" and row["ebmc_cmd"] == "ebmc x"

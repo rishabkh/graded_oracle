@@ -122,3 +122,56 @@ def test_an_unreadable_fact_is_named_not_called_false(tmp_path, fact, says):
     r = one_step.prove_true(ROW, ["a == b", fact], tmp_path)
     assert r["tier"] == "BAD_FACT"
     assert r["fact"] == fact and says in r["detail"]
+
+
+# --- keep everything (8 Oct 2026): proof folders were deleted after every
+# check, so 5,255 rows of 1-step results had no proof behind them ---
+
+@needs_sby
+def test_the_step_check_keeps_its_proof_folder(tmp_path):
+    r = one_step.prove(ROW, ["a <= 3'd7"], tmp_path, depth=1,
+                       name="toy_d0")
+    folder = tmp_path / r["proof_dir"]
+    assert r["proof_dir"].startswith("toy_d0_")
+    assert (folder / "job" / "logfile.txt").exists()
+    assert (folder / "sby_stderr.txt").exists()
+    assert list((folder / "job").rglob("trace_induct.vcd"))
+
+
+@needs_sby
+def test_the_whole_check_keeps_its_proof_folder(tmp_path):
+    r = one_step.prove_true(ROW, ["a == b"], tmp_path, name="toy_fix")
+    assert r["tier"] == "PROVEN"
+    assert (tmp_path / r["proof_dir"] / "job" / "logfile.txt").exists()
+
+
+def test_a_hung_check_keeps_what_it_printed(tmp_path, monkeypatch):
+    import subprocess
+
+    def hang(*a, **k):
+        raise subprocess.TimeoutExpired("sby", 1, output="half a log",
+                                        stderr="")
+    monkeypatch.setattr(one_step.subprocess, "run", hang)
+    r = one_step.prove(ROW, ["a == b"], tmp_path, name="toy_hang")
+    assert r["tier"] == "TIMEOUT"
+    assert (tmp_path / r["proof_dir"] / "sby_stdout.txt").read_text() == \
+        "half a log"
+
+
+def test_a_run_keeps_proofs_next_to_its_log(tmp_path, monkeypatch):
+    seen = []
+
+    def fake_prove(row, facts, work, depth=1, name=None):
+        seen.append((Path(work), name))
+        return {"tier": "INDUCTIVE", "trace": None, "broke": None,
+                "secs": 0, "proof_dir": f"{name}_x"}
+    monkeypatch.setattr(one_step, "prove", fake_prove)
+    corpus = tmp_path / "corpus.jsonl"
+    corpus.write_text(json.dumps(ROW) + "\n")
+    out = tmp_path / "logs" / "one_step.jsonl"
+    one_step.run(corpus, out, workers=1)
+    assert {w for w, _ in seen} == {tmp_path / "logs" / "one_step_proofs"}
+    assert sorted(n for _, n in seen) == ["toy_d-1", "toy_d-2", "toy_d0",
+                                          "toy_d1"]
+    rec = json.loads(out.read_text().splitlines()[0])
+    assert rec["proof_dir"].startswith("one_step_proofs/")
