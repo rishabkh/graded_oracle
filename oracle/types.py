@@ -54,6 +54,8 @@ class RunEvidence:
     # Plain-text rendering of the CEX/CTI trace — the Fixer-readable
     # form of trace_paths[0]; a .vcd cannot go in a prompt.
     trace_text: str | None = None
+    # The whole sby log on disk; log_excerpt is only its last 40 lines.
+    log_path: Path | None = None
 
 
 @dataclass

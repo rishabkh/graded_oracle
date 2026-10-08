@@ -17,6 +17,11 @@ import re
 from pathlib import Path
 
 _VAR = re.compile(r"\$var\s+\S+\s+(\d+)\s+(\S+)\s+(\S+).*?\$end")
+# Values the tool makes up for undefined bits, and its own internal wires:
+# not design state, and on bigger designs they swamped the repair notes
+# (2,100 anyseq_auto_setundef_* names across 4,000 saved traces). The
+# anyinit_procdff_* registers stay: they hold $past values.
+_TOOL_MADE = re.compile(r"^(anyseq_auto_setundef_|\\?\$)")
 
 
 def _fmt(name: str, width: int, bits: str) -> str:
@@ -27,7 +32,9 @@ def _fmt(name: str, width: int, bits: str) -> str:
     return f"{name} = {width}'b{bits}"   # x/z bits: show raw
 
 
-def summarize_vcd(vcd_path: Path) -> str:
+def summarize_vcd(vcd_path: Path, final_label: str = "failure") -> str:
+    """`final_label` names the last step: "failure" for a counterexample,
+    "cover reached" for a cover witness."""
     vars_by_id: dict[str, tuple[str, int]] = {}   # id -> (name, width)
     step_id: str | None = None
     in_module_scope = 0
@@ -47,7 +54,8 @@ def summarize_vcd(vcd_path: Path) -> str:
         if m:
             width, vid, name = int(m.group(1)), m.group(2), m.group(3)
             if in_module_scope > 0:
-                vars_by_id[vid] = (name, width)
+                if not _TOOL_MADE.match(name):
+                    vars_by_id[vid] = (name, width)
             elif name == "smt_step":
                 step_id = vid
             continue
@@ -83,6 +91,6 @@ def summarize_vcd(vcd_path: Path) -> str:
     lines.append("  At start state (step 0):")
     lines += block(first_step_values)
     label = f"step {final_step}" if final_step is not None else "final step"
-    lines.append(f"  At failure ({label}):")
+    lines.append(f"  At {final_label} ({label}):")
     lines += block(values)
     return "\n".join(lines)

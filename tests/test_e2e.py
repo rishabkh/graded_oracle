@@ -274,3 +274,53 @@ def test_compose_stateful_glue_is_necessary():
         timeout_s=120, keep_workdirs=False)
     assert r.verdict is NecessityVerdict.NECESSARY
     assert r.without_invariants.tier is Tier.NOT_INDUCTIVE
+
+
+# --- bigger designs (8 Oct 2026): real sby ---------------------------------
+
+BUF32 = """module buf32 (input wire clk, input wire push, input wire pop);
+    localparam DEPTH = 32;
+    reg [5:0] count = 0;
+    reg [7:0] mem [0:DEPTH-1];
+    always @(posedge clk) begin
+        if (push && !pop && count < DEPTH) count <= count + 6'd1;
+        else if (pop && !push && count > 0) count <= count - 6'd1;
+    end
+    always @(posedge clk) if (count == 6'd32) assert (count <= DEPTH);
+endmodule
+"""
+
+
+@requires_sby
+def test_real_deeper_look_reaches_a_full_32_slot_buffer(tmp_path):
+    sv = tmp_path / "buf32.sv"
+    sv.write_text(BUF32)
+    prop = PropertyInfo(top_module="buf32", antecedents=["count == 6'd32"])
+    r = grade(sv, prop, workdir_root=tmp_path / "runs", timeout_s=120,
+              cover_depth="auto")
+    assert r.tier is Tier.PROVEN, r.reason
+    covers = [ev for ev in r.runs if ev.mode == "cover"]
+    assert [ev.depth for ev in covers] == [20, 52]
+    assert covers[0].unreached_covers == ["count == 6'd32"]
+    assert covers[1].reached_covers == ["count == 6'd32"]
+    assert not any(ev.engine == "abc pdr" for ev in r.runs)
+    # keep everything: the full log and the tool's own output are on disk
+    for ev in r.runs:
+        assert ev.log_path and ev.log_path.exists()
+        assert (ev.workdir.parent / "sby_stderr.txt").exists()
+
+
+@requires_sby
+def test_every_worked_example_is_necessary(tmp_path):
+    """Every generator prompt shows one of these; a broken one would teach
+    the model to imitate it. The 64-bit timer (8 Oct 2026) needs the
+    deeper cover look: its condition is first reachable at step 48."""
+    from oracle import grade_triple_generated
+    examples = json.loads((Path(__file__).resolve().parent.parent
+                           / "initiator" / "exemplars.json").read_text())
+    assert list(examples) == ["A_fifo", "B_onehot", "C_kitest", "D_timer64"]
+    for name, ex in examples.items():
+        r = grade_triple_generated(json.dumps(ex), timeout_s=300,
+                                   pdr_timeout_s=10, cover_depth="auto",
+                                   workdir_root=tmp_path / name)
+        assert r.verdict is NecessityVerdict.NECESSARY, (name, r.reason)

@@ -30,6 +30,8 @@ class SbyOutcome:
     log_text: str
     trace_paths: list[Path] = field(default_factory=list)
     engine: str = DEFAULT_ENGINE
+    # the whole sby log on disk (None when sby never wrote one)
+    log_path: Path | None = None
 
 
 def sby_available() -> bool:
@@ -69,7 +71,7 @@ def run_sby(name: str, sv_path: Path, top_module: str, mode: str, depth: int,
     workdir = rundir / "job"
 
     start = time.monotonic()
-    stderr = ""
+    stdout = stderr = ""
     try:
         # cwd=rundir: sby resolves [files] entries relative to the process
         # CWD, not the .sby location.
@@ -79,10 +81,16 @@ def run_sby(name: str, sv_path: Path, top_module: str, mode: str, depth: int,
             capture_output=True, text=True,
             timeout=OUTER_GUARD_FACTOR * timeout_s + OUTER_GUARD_GRACE_S)
         rc: int | None = proc.returncode
-        stderr = proc.stderr or ""
-    except subprocess.TimeoutExpired:
+        stdout, stderr = proc.stdout or "", proc.stderr or ""
+    except subprocess.TimeoutExpired as exc:
         rc = None
+        stdout, stderr = _text(exc.stdout), _text(exc.stderr)
     duration = time.monotonic() - start
+    # keep everything (8 Oct 2026): sby's own screen and error output were
+    # never saved, and the error text is what tells a tool crash from a
+    # verdict
+    (rundir / "sby_stdout.txt").write_text(stdout)
+    (rundir / "sby_stderr.txt").write_text(stderr)
 
     logfile = workdir / "logfile.txt"
     if logfile.exists():
@@ -91,4 +99,11 @@ def run_sby(name: str, sv_path: Path, top_module: str, mode: str, depth: int,
         log_text = stderr
     traces = sorted(workdir.rglob("*.vcd")) if workdir.exists() else []
     return SbyOutcome(rc=rc, duration_s=duration, workdir=workdir,
-                      log_text=log_text, trace_paths=traces, engine=engine)
+                      log_text=log_text, trace_paths=traces, engine=engine,
+                      log_path=logfile if logfile.exists() else None)
+
+
+def _text(out) -> str:
+    if out is None:
+        return ""
+    return out.decode(errors="replace") if isinstance(out, bytes) else out

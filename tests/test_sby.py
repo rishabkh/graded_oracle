@@ -80,3 +80,41 @@ def test_run_sby_smoke_trivial_pass(tmp_path):
     out = run_sby("t", sv, "t", "prove", 5, 60, tmp_path / "runs")
     assert out.rc == 0
     assert "PASS" in out.log_text
+
+
+# --- keep everything (8 Oct 2026): the tool's own output is saved next to
+# its proof folder, and the evidence points at the full log ---
+
+def test_tool_output_is_saved_next_to_the_proof(monkeypatch, tmp_path):
+    def fake_run(*args, **kwargs):
+        job = Path(kwargs["cwd"]) / "job"
+        job.mkdir()
+        (job / "logfile.txt").write_text("line\n" * 100)
+        return subprocess.CompletedProcess(args=args, returncode=0,
+                                           stdout="screen text",
+                                           stderr="python crash text")
+    monkeypatch.setattr("oracle.sby.subprocess.run", fake_run)
+    sv = tmp_path / "m.sv"
+    sv.write_text("module m; endmodule\n")
+    out = run_sby("m", sv, "m", "prove", 5, 60, tmp_path / "runs")
+    rundir = out.workdir.parent
+    assert (rundir / "sby_stderr.txt").read_text() == "python crash text"
+    assert (rundir / "sby_stdout.txt").read_text() == "screen text"
+    assert out.log_path == out.workdir / "logfile.txt"
+    assert out.log_path.read_text().count("line") == 100
+
+
+def test_partial_output_of_a_hung_run_is_saved(monkeypatch, tmp_path):
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd="sby", timeout=1,
+                                        output=b"partial out",
+                                        stderr=b"partial err")
+    monkeypatch.setattr("oracle.sby.subprocess.run", fake_run)
+    sv = tmp_path / "m.sv"
+    sv.write_text("module m; endmodule\n")
+    out = run_sby("m", sv, "m", "prove", 5, 1, tmp_path / "runs")
+    rundir = out.workdir.parent
+    assert out.rc is None
+    assert (rundir / "sby_stderr.txt").read_text() == "partial err"
+    assert (rundir / "sby_stdout.txt").read_text() == "partial out"
+    assert out.log_path is None          # sby never wrote its log

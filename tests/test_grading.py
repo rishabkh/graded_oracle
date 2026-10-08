@@ -640,3 +640,202 @@ def test_sanity_pdr_inconclusive_keeps_warning(sv_file, tmp_path, monkeypatch):
     assert r.tier is Tier.PROVEN
     assert any("sanity_cover_unreached" in n
                for ev in r.runs for n in ev.notes)
+
+
+# --- bigger designs (8 Oct 2026) --------------------------------------------
+# A 64-slot buffer cannot fill in 20 steps, so its "full" condition went
+# straight to the slow pdr check, which times out on big storage and lost
+# the design. A deeper look at the conditions comes first now; the 20-step
+# proof itself is unchanged.
+
+def _recording_sby(cover_reached_at=None, deep_cover_rc=None, prove_rc=0,
+                   pdr_unreach_rc=2, trace_on_cover=False):
+    """cover_reached_at: expr -> the depth from which that cover is
+    reached (missing = reached at any depth). Every call is recorded."""
+    calls = []
+
+    def fake(name, sv_path, top_module, mode, depth, timeout_s,
+             workdir_root, engine=DEFAULT_ENGINE):
+        calls.append(dict(name=name, mode=mode, depth=depth,
+                          timeout_s=timeout_s, engine=engine,
+                          root=Path(workdir_root)))
+        wd = Path(workdir_root) / f"{name}_{mode}_{len(calls)}" / "job"
+        wd.mkdir(parents=True, exist_ok=True)
+        text = sv_path.read_text()
+        if engine == "abc pdr":
+            rc = pdr_unreach_rc if "ORACLE-INJECTED INVARIANTS" in text else 0
+            return SbyOutcome(rc=rc, duration_s=0.1, workdir=wd,
+                              log_text="pdr log", engine=engine)
+        if mode == "prove":
+            rc = prove_rc(text) if callable(prove_rc) else prove_rc
+            return SbyOutcome(rc=rc, duration_s=0.1, workdir=wd,
+                              log_text="prove log", engine=engine)
+        if depth > 20 and deep_cover_rc is not None:
+            return SbyOutcome(rc=deep_cover_rc, duration_s=0.1, workdir=wd,
+                              log_text="", engine=engine)
+        lines, unreached = [], False
+        for i, line in enumerate(text.splitlines(), 1):
+            m = re.search(r"cover \((.+)\);", line)
+            if not m:
+                continue
+            if depth >= (cover_reached_at or {}).get(m.group(1), 0):
+                lines.append(f"Reached cover statement in step 1 at "
+                             f"{top_module}: {sv_path.name}:{i}.5-{i}.9 (c)")
+            else:
+                unreached = True
+                lines.append(f"Unreached cover statement at "
+                             f"{top_module}: {sv_path.name}:{i}.5-{i}.9 (c)")
+        traces = []
+        if trace_on_cover:
+            t = wd / "engine_0" / "trace0.vcd"
+            t.parent.mkdir(parents=True, exist_ok=True)
+            t.write_text(MINI_VCD)
+            traces = [t]
+        return SbyOutcome(rc=2 if unreached else 0, duration_s=0.1,
+                          workdir=wd, log_text="\n".join(lines),
+                          trace_paths=traces, engine=engine)
+    return fake, calls
+
+
+def _deep_grade(sv_file, tmp_path, monkeypatch, fake, **kw):
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby", fake)
+    prop = PropertyInfo(top_module="m", antecedents=["full"],
+                        sanity_covers=kw.pop("sanity", []))
+    return grade(sv_file, prop, workdir_root=tmp_path / "runs", **kw)
+
+
+def test_a_deeper_look_reaches_what_20_steps_cannot(sv_file, tmp_path,
+                                                    monkeypatch):
+    fake, calls = _recording_sby(cover_reached_at={"full": 60})
+    r = _deep_grade(sv_file, tmp_path, monkeypatch, fake, cover_depth=84)
+    assert r.tier is Tier.PROVEN
+    assert [c["depth"] for c in calls if c["mode"] == "cover"] == [20, 84]
+    assert not any(c["engine"] == "abc pdr" for c in calls)   # no slow path
+    deep = [ev for ev in r.runs if ev.mode == "cover"][-1]
+    assert deep.depth == 84 and "full" in deep.reached_covers
+    assert any("deep_cover" in n for n in deep.notes)
+
+
+def test_without_a_deeper_look_nothing_changes(sv_file, tmp_path, monkeypatch):
+    fake, calls = _recording_sby(cover_reached_at={"full": 60})
+    r = _deep_grade(sv_file, tmp_path, monkeypatch, fake)
+    assert [c["depth"] for c in calls if c["mode"] == "cover"] == [20]
+    assert any(c["engine"] == "abc pdr" for c in calls)
+    assert r.tier is Tier.PROVEN          # pdr found it reachable
+
+
+def test_a_deeper_look_that_runs_out_of_time_falls_back_to_pdr(
+        sv_file, tmp_path, monkeypatch):
+    fake, calls = _recording_sby(cover_reached_at={"full": 60},
+                                 deep_cover_rc=8)
+    r = _deep_grade(sv_file, tmp_path, monkeypatch, fake, cover_depth=84)
+    assert r.tier is Tier.PROVEN          # not TIMEOUT: pdr still decides
+    assert any(c["engine"] == "abc pdr" for c in calls)
+    assert any("deep_cover" in n and "did not finish" in n
+               for ev in r.runs for n in ev.notes)
+
+
+def test_no_deeper_look_when_everything_is_reached(sv_file, tmp_path,
+                                                   monkeypatch):
+    fake, calls = _recording_sby()
+    _deep_grade(sv_file, tmp_path, monkeypatch, fake, cover_depth=84)
+    assert [c["depth"] for c in calls if c["mode"] == "cover"] == [20]
+
+
+def test_auto_depth_reads_the_storage_size(tmp_path, monkeypatch):
+    sv = tmp_path / "m.sv"
+    sv.write_text("module m (input wire clk);\n"
+                  "  localparam DEPTH = 64;\n"
+                  "  reg [31:0] mem [0:DEPTH-1];\n"
+                  "  always @(posedge clk) assert (1'b1);\nendmodule\n")
+    fake, calls = _recording_sby(cover_reached_at={"full": 70})
+    r = _deep_grade(sv, tmp_path, monkeypatch, fake, cover_depth="auto")
+    assert [c["depth"] for c in calls if c["mode"] == "cover"] == [20, 84]
+    assert r.tier is Tier.PROVEN
+
+
+def test_the_extra_pdr_checks_and_the_deeper_look_get_their_own_limit(
+        sv_file, tmp_path, monkeypatch):
+    # the rc=4 second opinion and the sanity reachability check get the
+    # short limit; the proof, the covers and the antecedent check that
+    # decides VACUOUS/TIMEOUT get the full one
+    fake, calls = _recording_sby(cover_reached_at={"full": 99, "s": 99},
+                                 prove_rc=4)
+    _deep_grade(sv_file, tmp_path, monkeypatch, fake, sanity=["s"],
+                timeout_s=300, pdr_timeout_s=120)
+    by = {(c["name"], c["mode"]): c["timeout_s"] for c in calls}
+    assert by[("m", "prove")] == 300 and by[("m", "cover")] == 300
+    assert by[("m_pdr2nd", "prove")] == 120
+    assert by[("m_sanity", "prove")] == 120
+    assert by[("m_unreach", "prove")] == 300
+
+
+def test_the_deeper_look_gets_the_short_limit(sv_file, tmp_path, monkeypatch):
+    # it can only add "reached", never fail a design, so it must not spend
+    # the full limit on a condition that is far away or unreachable
+    fake, calls = _recording_sby(cover_reached_at={"full": 99})
+    _deep_grade(sv_file, tmp_path, monkeypatch, fake, cover_depth=84,
+                timeout_s=300, pdr_timeout_s=120)
+    by = {(c["name"], c["mode"]): c["timeout_s"] for c in calls}
+    assert by[("m", "cover")] == 300 and by[("m_deep", "cover")] == 120
+
+
+def test_the_runs_with_and_without_helper_facts_get_their_own_folders(
+        sv_file, tmp_path, monkeypatch):
+    fake, calls = _recording_sby(prove_rc=INV_LOADBEARING)
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby", fake)
+    prop = PropertyInfo(top_module="m", invariants=["sa == sb"])
+    r = grade_triple(sv_file, prop, workdir_root=tmp_path / "proofs")
+    assert r.verdict is NecessityVerdict.NECESSARY
+    roots = {c["root"] for c in calls}
+    assert roots == {tmp_path / "proofs" / "with",
+                     tmp_path / "proofs" / "without"}
+
+
+def test_evidence_points_at_the_full_log(sv_file, tmp_path, monkeypatch):
+    def fake(name, sv_path, top_module, mode, depth, timeout_s,
+             workdir_root, engine=DEFAULT_ENGINE):
+        wd = Path(workdir_root) / "x" / "job"
+        wd.mkdir(parents=True, exist_ok=True)
+        (wd / "logfile.txt").write_text("full\n" * 90)
+        return SbyOutcome(rc=0, duration_s=0.1, workdir=wd,
+                          log_text="full\n" * 90,
+                          log_path=wd / "logfile.txt", engine=engine)
+    monkeypatch.setattr(grading, "sby_available", lambda: True)
+    monkeypatch.setattr(grading, "run_sby", fake)
+    r = grade(sv_file, PropertyInfo(top_module="m"),
+              workdir_root=tmp_path / "runs")
+    ev = r.runs[0]
+    assert ev.log_path.read_text().count("full") == 90
+    assert ev.log_excerpt.count("full") == 40      # the preview is unchanged
+
+
+def test_a_reached_cover_trace_is_labelled_as_reached(sv_file, tmp_path,
+                                                      monkeypatch):
+    fake, _ = _recording_sby(trace_on_cover=True)
+    r = _deep_grade(sv_file, tmp_path, monkeypatch, fake)
+    cover = [ev for ev in r.runs if ev.mode == "cover"][0]
+    assert "At cover reached" in cover.trace_text
+    assert "At failure" not in cover.trace_text
+
+
+def test_the_20_step_evidence_still_says_what_20_steps_found(
+        sv_file, tmp_path, monkeypatch):
+    fake, _ = _recording_sby(cover_reached_at={"full": 60})
+    r = _deep_grade(sv_file, tmp_path, monkeypatch, fake, cover_depth=84)
+    first, deep = [ev for ev in r.runs if ev.mode == "cover"]
+    assert first.depth == 20 and first.unreached_covers == ["full"]
+    assert first.reached_covers == []
+    assert deep.reached_covers == ["full"]
+
+
+
+def test_an_unfinished_deeper_look_claims_nothing(sv_file, tmp_path,
+                                                  monkeypatch):
+    fake, _ = _recording_sby(cover_reached_at={"full": 60}, deep_cover_rc=8)
+    r = _deep_grade(sv_file, tmp_path, monkeypatch, fake, cover_depth=84,
+                    sanity=["s"])
+    deep = [ev for ev in r.runs if ev.mode == "cover"][1]
+    assert deep.reached_covers == [] and deep.unreached_covers == []

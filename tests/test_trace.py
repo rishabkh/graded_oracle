@@ -77,3 +77,43 @@ def summarize_vcd_text():
         p = Path(td) / "trace_induct.vcd"
         p.write_text(CTI_VCD)
         return summarize_vcd(p)
+
+
+# --- bigger designs (8 Oct 2026): the tool's made-up signals filled repair
+# notes (2,100 anyseq_auto_setundef_* names across 4,000 saved traces) ---
+
+NOISY_VCD = CTI_VCD.replace(
+    "$var wire 32 n6 sb $end\n",
+    "$var wire 32 n6 sb $end\n"
+    "$var wire 8 n7 anyseq_auto_setundef_cc_550_execute_157 $end\n"
+    "$var wire 1 n8 \\$auto$proc_rom.cc:155:do_switch$13<0> $end\n"
+    "$var wire 8 n9 anyinit_procdff_72 $end\n").replace(
+    "b0 n4\n", "b0 n4\nb00000001 n7\nb1 n8\nb00000011 n9\n")
+
+
+def _summary(text, **kw):
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "trace_induct.vcd"
+        p.write_text(text)
+        return summarize_vcd(p, **kw)
+
+
+def test_tool_made_signals_are_left_out():
+    text = _summary(NOISY_VCD)
+    assert "anyseq_auto_setundef" not in text
+    assert "$auto$" not in text
+    assert "sa = 32'h00000000" in text
+
+
+def test_the_hidden_past_register_is_kept():
+    # anyinit_procdff_* is the register behind $past: real state, and the
+    # value a model must see to understand a $past counterexample
+    assert "anyinit_procdff_72 = 8'h03" in _summary(NOISY_VCD)
+
+
+def test_a_reached_cover_is_not_called_a_failure():
+    text = _summary(CTI_VCD, final_label="cover reached")
+    assert "At cover reached (step 21)" in text
+    assert "failure" not in text

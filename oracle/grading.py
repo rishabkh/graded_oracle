@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 from .contract import ContractViolation, parse_generator_output
+from .depth import suggest_cover_depth
 from .inject import (InjectionError, inject_covers, inject_invariants,
                      strip_assertions)
 from .parse import (parse_assert_failures, parse_cover_log,
@@ -39,13 +40,16 @@ def _evidence(mode: str, out: SbyOutcome, depth: int, *,
         mode=mode, rc=out.rc, depth=depth, engine=out.engine,
         duration_s=out.duration_s, workdir=out.workdir,
         log_excerpt=tail(out.log_text), trace_paths=out.trace_paths,
-        timeout_source=timeout_source,
+        timeout_source=timeout_source, log_path=out.log_path,
         failed_assert_lines=sorted(parse_assert_failures(out.log_text)))
     if out.trace_paths:
         # A .vcd cannot go in a prompt; render the trace as text. A
         # rendering failure is noted, never fatal — the .vcd path stays.
+        # A cover trace shows the condition being reached, not a failure.
         try:
-            ev.trace_text = summarize_vcd(out.trace_paths[0])
+            ev.trace_text = summarize_vcd(
+                out.trace_paths[0],
+                final_label="cover reached" if mode == "cover" else "failure")
         except Exception as exc:
             ev.notes.append(f"trace summary unavailable: {exc}")
     return ev
@@ -54,10 +58,22 @@ def _evidence(mode: str, out: SbyOutcome, depth: int, *,
 def grade(verilog_file: Path | str, prop: PropertyInfo, *,
           depth: int = 20, timeout_s: int = 300,
           workdir_root: Path | None = None,
-          keep_workdirs: bool = True) -> GradeResult:
+          keep_workdirs: bool = True,
+          cover_depth: int | str | None = None,
+          pdr_timeout_s: int | None = None) -> GradeResult:
+    """`cover_depth` (an int, or "auto" to read it off the design with
+    oracle.depth.suggest_cover_depth) lets the cover pass look further
+    for conditions unreached in `depth` steps, before the pdr check; None
+    keeps the old single pass. `pdr_timeout_s` limits the rc=4 pdr second
+    opinion (which can only turn NOT_INDUCTIVE into FALSE), the sanity
+    reachability check (a warning only) and the deeper cover look (which
+    can only add "reached"); none of them can make a design pass. None
+    means `timeout_s`."""
     result = _grade(Path(verilog_file), prop, depth, timeout_s,
                     Path(workdir_root) if workdir_root is not None
-                    else Path(__file__).resolve().parent.parent / "runs")
+                    else Path(__file__).resolve().parent.parent / "runs",
+                    cover_depth=cover_depth,
+                    pdr_timeout_s=pdr_timeout_s or timeout_s)
     if not keep_workdirs:
         for ev in result.runs:
             shutil.rmtree(ev.workdir.parent, ignore_errors=True)
@@ -68,7 +84,9 @@ def grade(verilog_file: Path | str, prop: PropertyInfo, *,
 def grade_generated(output_text: str, *,
                     depth: int = 20, timeout_s: int = 300,
                     workdir_root: Path | None = None,
-                    keep_workdirs: bool = True) -> GradeResult:
+                    keep_workdirs: bool = True,
+                    cover_depth: int | str | None = None,
+                    pdr_timeout_s: int | None = None) -> GradeResult:
     """Grade raw generator (LLM) output: one JSON object per attempt.
 
     Malformed output is a contract violation and grades ERROR — a
@@ -84,13 +102,16 @@ def grade_generated(output_text: str, *,
         sv = Path(td) / f"{gen.prop.top_module}.sv"
         sv.write_text(gen.verilog)
         return grade(sv, gen.prop, depth=depth, timeout_s=timeout_s,
-                     workdir_root=workdir_root, keep_workdirs=keep_workdirs)
+                     workdir_root=workdir_root, keep_workdirs=keep_workdirs,
+                     cover_depth=cover_depth, pdr_timeout_s=pdr_timeout_s)
 
 
 def grade_triple_generated(output_text: str, *,
                            depth: int = 20, timeout_s: int = 300,
                            workdir_root: Path | None = None,
-                           keep_workdirs: bool = True) -> TripleResult:
+                           keep_workdirs: bool = True,
+                           cover_depth: int | str | None = None,
+                           pdr_timeout_s: int | None = None) -> TripleResult:
     """Necessity-check raw generator output (see grade_generated)."""
     try:
         gen = parse_generator_output(output_text)
@@ -104,13 +125,17 @@ def grade_triple_generated(output_text: str, *,
         sv.write_text(gen.verilog)
         return grade_triple(sv, gen.prop, depth=depth, timeout_s=timeout_s,
                             workdir_root=workdir_root,
-                            keep_workdirs=keep_workdirs)
+                            keep_workdirs=keep_workdirs,
+                            cover_depth=cover_depth,
+                            pdr_timeout_s=pdr_timeout_s)
 
 
 def grade_triple(verilog_file: Path | str, prop: PropertyInfo, *,
                  depth: int = 20, timeout_s: int = 300,
                  workdir_root: Path | None = None,
-                 keep_workdirs: bool = True) -> TripleResult:
+                 keep_workdirs: bool = True,
+                 cover_depth: int | str | None = None,
+                 pdr_timeout_s: int | None = None) -> TripleResult:
     """The necessity criterion: grade twice, with and without invariants.
 
     A triple is Stage-4-worthy only if the strengthening is load-bearing:
@@ -122,7 +147,12 @@ def grade_triple(verilog_file: Path | str, prop: PropertyInfo, *,
     induction close unaided", so the cover stage would be wasted compute.
     """
     kwargs = dict(depth=depth, timeout_s=timeout_s,
-                  workdir_root=workdir_root, keep_workdirs=keep_workdirs)
+                  keep_workdirs=keep_workdirs, cover_depth=cover_depth,
+                  pdr_timeout_s=pdr_timeout_s)
+    # each leg in its own folder, so a kept proof says which leg it was
+    # (both legs' files share one name)
+    root = (Path(workdir_root) if workdir_root is not None
+            else Path(__file__).resolve().parent.parent / "runs")
     if not prop.invariants:
         return TripleResult(NecessityVerdict.NO_INVARIANTS,
                             "no invariants supplied — nothing to test "
@@ -145,7 +175,8 @@ def grade_triple(verilog_file: Path | str, prop: PropertyInfo, *,
     with tempfile.TemporaryDirectory() as td:
         strengthened = Path(td) / verilog_file.name
         strengthened.write_text(inj.text)
-        with_res = grade(strengthened, prop, **kwargs)
+        with_res = grade(strengthened, prop, workdir_root=root / "with",
+                         **kwargs)
 
     if with_res.tier is Tier.FALSE:
         # Attribution: WHICH assertion failed decides the repair route.
@@ -182,7 +213,8 @@ def grade_triple(verilog_file: Path | str, prop: PropertyInfo, *,
             with_invariants=with_res)
 
     prop_without = PropertyInfo(top_module=prop.top_module, clock=prop.clock)
-    without_res = grade(verilog_file, prop_without, **kwargs)
+    without_res = grade(verilog_file, prop_without,
+                        workdir_root=root / "without", **kwargs)
     if prop.antecedents:
         for ev in without_res.runs:
             if ev.mode == "prove":
@@ -223,7 +255,9 @@ def grade_triple(verilog_file: Path | str, prop: PropertyInfo, *,
 
 
 def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
-           timeout_s: int, root: Path) -> GradeResult:
+           timeout_s: int, root: Path, *, cover_depth=None,
+           pdr_timeout_s: int | None = None) -> GradeResult:
+    pdr_timeout_s = pdr_timeout_s or timeout_s
     runs: list[RunEvidence] = []
     if not sby_available():
         return GradeResult(Tier.ERROR,
@@ -276,7 +310,7 @@ def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
         # them; a false property must never reach the Fixer, because its
         # repair traces would contaminate the training corpus.
         pdr = run_sby(f"{verilog_file.stem}_pdr2nd", verilog_file,
-                      prop.top_module, "prove", depth, timeout_s, root,
+                      prop.top_module, "prove", depth, pdr_timeout_s, root,
                       engine=PDR_ENGINE)
         pdr_ev = _evidence("prove", pdr, depth)
         runs.append(pdr_ev)
@@ -337,16 +371,65 @@ def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
     cover_ev = _evidence("cover", cover, depth)
     runs.append(cover_ev)
     reached_lines, unreached_lines = parse_cover_log(cover.log_text)
+    first_reached, first_unreached = set(reached_lines), set(unreached_lines)
+
+    deep = (suggest_cover_depth(source, prop.antecedents + prop.sanity_covers,
+                                depth)
+            if cover_depth == "auto" else cover_depth)
+    if unreached_lines and isinstance(deep, int) and deep > depth:
+        # Bigger designs (8 Oct 2026): a 64-slot buffer cannot fill in
+        # `depth` steps. Look again, further, before the pdr check, whose
+        # bit-level search runs out of time on big storage. Only "reached"
+        # is taken from this pass; anything else falls through to pdr as
+        # before, so this can add evidence but never decide against a
+        # design.
+        with tempfile.TemporaryDirectory() as td:
+            inj_path = Path(td) / verilog_file.name
+            inj_path.write_text(inj.text)
+            deep_out = run_sby(f"{verilog_file.stem}_deep", inj_path,
+                               prop.top_module, "cover", deep, pdr_timeout_s,
+                               root)
+        deep_ev = _evidence("cover", deep_out, deep,
+                            timeout_source=("outer_guard" if deep_out.rc is None
+                                            else "sby" if deep_out.rc == 8
+                                            else None))
+        runs.append(deep_ev)
+        if deep_out.rc in (0, 2):
+            deep_reached, _ = parse_cover_log(deep_out.log_text)
+            newly = unreached_lines & deep_reached
+            reached_lines |= newly
+            unreached_lines -= newly
+            deep_ev.notes.append(
+                f"deep_cover: looked to depth {deep}; reached "
+                f"{len(newly)} condition(s) unreached at depth {depth}")
+        else:
+            deep_ev.notes.append(
+                f"deep_cover: the depth-{deep} look did not finish "
+                f"(rc={deep_out.rc}) - unreached conditions go to the pdr "
+                "check as before")
 
     unreached_antecedents: list[str] = []
     missing_antecedents: list[str] = []
     unreached_sanities: list[str] = []
     sanity_suspect = False
+    # each cover run's evidence says what IT found; the decision below
+    # uses everything found
+    # (a deeper look that did not finish found nothing, and says so)
+    deep_evs = [ev for ev in runs[runs.index(cover_ev) + 1:]
+                if ev.mode == "cover" and ev.rc in (0, 2)]
     for lineno, (kind, expr) in inj.line_map.items():
-        if lineno in reached_lines:
+        for dev in deep_evs:
+            if lineno in reached_lines:
+                dev.reached_covers.append(expr)
+            elif lineno in unreached_lines:
+                dev.unreached_covers.append(expr)
+        if lineno in first_reached:
             cover_ev.reached_covers.append(expr)
-        elif lineno in unreached_lines:
+        elif lineno in first_unreached:
             cover_ev.unreached_covers.append(expr)
+        if lineno in reached_lines:
+            continue
+        if lineno in unreached_lines:
             if kind == "antecedent":
                 unreached_antecedents.append(expr)
             else:
@@ -369,8 +452,8 @@ def _grade(verilog_file: Path, prop: PropertyInfo, depth: int,
             sanity_path = Path(td) / verilog_file.name
             sanity_path.write_text(neg.text)
             pdr = run_sby(f"{verilog_file.stem}_sanity", sanity_path,
-                          prop.top_module, "prove", depth, timeout_s, root,
-                          engine=PDR_ENGINE)
+                          prop.top_module, "prove", depth, pdr_timeout_s,
+                          root, engine=PDR_ENGINE)
         pdr_ev = _evidence("prove", pdr, depth)
         runs.append(pdr_ev)
         if pdr.rc == 2:

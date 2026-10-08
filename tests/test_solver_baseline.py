@@ -113,3 +113,11 @@ def test_out_of_scope_catches_submodule_names():
 
 def test_out_of_scope_accepts_top_level_names():
     assert out_of_scope(["on0 == 3'd1"], TWO_MOD, "outer") == set()
+
+
+def test_solving_checks_get_the_deeper_look_but_keep_their_time_limit():
+    """8 Oct 2026: a big design's condition may need more than 20 steps;
+    without the deeper look it went to pdr and could time out. The 120 s
+    limit stays, so earlier scores remain comparable."""
+    import solver_baseline as sb
+    assert sb.GRADE_KWARGS == {"timeout_s": 120, "cover_depth": "auto"}

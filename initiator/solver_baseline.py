@@ -41,7 +41,7 @@ from oracle import grade_triple_generated  # noqa: E402
 SOURCE_LOG = HERE / "logs" / "attempts.jsonl"
 CORPUS = HERE.parent / "extender" / "corpus.jsonl"
 OUT_LOG = HERE / "logs" / "solver_baseline.jsonl"
-GRADE_KWARGS = dict(timeout_s=120)
+GRADE_KWARGS = dict(timeout_s=120, cover_depth="auto")   # deeper look: 8 Oct 2026
 OPUS_MODEL = "claude-opus-5-5"
 
 # The bare prompt — the hard direction, no planting scaffold, no
