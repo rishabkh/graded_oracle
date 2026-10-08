@@ -60,8 +60,11 @@ _ACTIONS = {
 def fixable(rec):
     """A proof failure the Fixer can act on. A with-leg that ended in
     ERROR (toolchain missing, cover run crashed) carries no CTI - there
-    is nothing to repair, so it never enters the queue."""
-    return "grade is ERROR" not in str(rec.get("reason", ""))
+    is nothing to repair, so it never enters the queue. Nor does one that
+    ran out of time (8 Oct 2026): a slow proof is not a wrong fact, and
+    the fixer would be paid to change facts that may be fine."""
+    reason = str(rec.get("reason", ""))
+    return "grade is ERROR" not in reason and "grade is TIMEOUT" not in reason
 
 
 def route(verdict):

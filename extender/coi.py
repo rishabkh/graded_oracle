@@ -43,7 +43,7 @@ def coi_ratio(verilog, top_module):
                   f"write_json {out}")
         try:
             r = subprocess.run(["yosys", "-p", script], capture_output=True,
-                               text=True, timeout=60)
+                               text=True, timeout=300)   # was 60: bigger designs
         except subprocess.TimeoutExpired:
             return None
         if r.returncode != 0 or not out.exists():

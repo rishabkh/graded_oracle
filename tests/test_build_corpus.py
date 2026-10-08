@@ -267,3 +267,26 @@ def test_a_row_records_the_model_that_wrote_it():
     assert flatten_record(dict(RECORD, model="claude-opus-5-5"), 0)["model"] \
         == "claude-opus-5-5"
     assert "model" not in flatten_record(RECORD, 0)
+
+
+# --- change 11 (8 Oct 2026): the size count skipped storage. g0_131 holds
+# 32x8 = 256 stored bits and was counted as 22 ---
+
+STORE16 = """module store16 (input wire clk, input wire we, input wire [3:0] a,
+                input wire [7:0] d, output wire [7:0] q);
+    reg [7:0] mem [0:15];
+    reg [3:0] a_q = 0;
+    always @(posedge clk) begin
+        if (we) mem[a] <= d;
+        a_q <= a;
+    end
+    assign q = mem[a_q];
+endmodule
+"""
+
+
+@_pytest.mark.skipif(_shutil.which("yosys") is None,
+                     reason="yosys not on PATH (run hwtools)")
+def test_stored_bits_are_counted():
+    from extender.build_corpus import state_bits
+    assert state_bits(STORE16, "store16") == 16 * 8 + 4

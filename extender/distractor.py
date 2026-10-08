@@ -42,8 +42,33 @@ CORPUS = HERE / "corpus.jsonl"
 OUT_LOG = HERE / "logs" / "extensions.jsonl"
 MODEL = "claude-opus-5-5"
 EFFORT = "high"
-MAX_TOKENS = 16000
-GRADE_KWARGS = dict(timeout_s=120)
+MAX_TOKENS = 64000       # was 16000; bigger designs (8 Oct 2026) need room
+# Bigger designs (8 Oct 2026): 300 s per proof run (was 120); the pdr
+# second opinion, the sanity check and the deeper cover look keep 120 s
+# (none of them can make a design pass); conditions unreached in 20 steps
+# get a deeper look first (oracle/depth.py).
+GRADE_KWARGS = dict(timeout_s=300, pdr_timeout_s=120, cover_depth="auto")
+# Where proofs go. None keeps the shared runs/ folder; the batch runner
+# points it at <log-dir>/proofs so a run's proofs travel with its logs.
+PROOF_ROOT = None
+
+
+def grade_kwargs(record, leg=""):
+    """GRADE_KWARGS, plus this record's own proof folder when PROOF_ROOT is
+    set. The record keeps the folder as "proof_dir", relative to the log
+    folder; every check for one record lands under it (`leg` names extra
+    checks, e.g. "p2_alone" or "fix_a2")."""
+    kw = dict(GRADE_KWARGS)
+    if PROOF_ROOT is None:
+        return kw
+    if "proof_dir" not in record:
+        import uuid
+        record["proof_dir"] = (f"proofs/{record.get('extension_id', 'x')}_"
+                               f"{record.get('parent_id', '')}_"
+                               f"{uuid.uuid4().hex[:6]}")
+    folder = Path(PROOF_ROOT) / Path(record["proof_dir"]).name
+    kw["workdir_root"] = folder / leg if leg else folder
+    return kw
 
 DIFF_FORMAT = """\
 One directive per line:
@@ -262,7 +287,8 @@ def grade_extension(parent, patch_text, record):
                "invariants": parent["invariants"]}   # verbatim — the control
     t0 = time.monotonic()
     with Spinner(f"oracle re-grading {parent['top_module']}"):
-        result = grade_triple_generated(json.dumps(payload), **GRADE_KWARGS)
+        result = grade_triple_generated(json.dumps(payload),
+                                        **grade_kwargs(record))
     record["grade_wall_s"] = round(time.monotonic() - t0, 2)
     record["verdict"] = result.verdict.name
     record["reason"] = result.reason

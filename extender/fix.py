@@ -40,7 +40,7 @@ sys.path.insert(0, str(HERE))
 
 from build_corpus import extract_asserts                 # noqa: E402
 from extend import out_of_scope, property_copy           # noqa: E402
-from distractor import GRADE_KWARGS, MODEL, EFFORT, Spinner  # noqa: E402
+from distractor import MODEL, EFFORT, Spinner, grade_kwargs  # noqa: E402
 from promote import child_top, promote                   # noqa: E402
 
 import llm_client                                        # noqa: E402
@@ -50,7 +50,7 @@ CORPUS = HERE / "corpus.jsonl"
 QUEUE = HERE / "logs" / "fixer_queue.jsonl"
 ATTEMPT_LOG = HERE / "logs" / "fixer_attempts.jsonl"
 MAX_ATTEMPTS = 3
-MAX_TOKENS = 16000
+MAX_TOKENS = 64000       # was 16000: one answer already stopped there (8 Oct 2026)
 
 FIXER_PROMPT = """\
 You are repairing the strengthening invariants of a formally verified
@@ -152,11 +152,14 @@ def repaired_record(record, invariants, result):
 
 def pending_tasks(queue, attempted):
     """Queue entries not yet attempted, first occurrence per id (the
-    queue file is append-only and may hold duplicates)."""
+    queue file is append-only and may hold duplicates). A record the
+    fixer cannot act on (a tool error, or a check that ran out of time)
+    is skipped here too, not only in promote.py (8 Oct 2026 review)."""
+    from promote import fixable
     seen, out = set(), []
     for rec in queue:
         eid = rec.get("extension_id")
-        if eid in attempted or eid in seen:
+        if eid in attempted or eid in seen or not fixable(rec):
             continue
         seen.add(eid)
         out.append(rec)
@@ -253,11 +256,14 @@ def run_task(record, corpus_rows, call=None, max_attempts=MAX_ATTEMPTS):
                    "invariants": candidate}
         t0 = time.monotonic()
         with Spinner(f"repair try {attempt}/3: oracle checking"):
-            result = grade_triple_generated(json.dumps(payload), **GRADE_KWARGS)
+            result = grade_triple_generated(
+                json.dumps(payload),
+                **grade_kwargs(record, leg=f"fix_a{attempt}"))
         log["grade_wall_s"] = round(time.monotonic() - t0, 2)
         log["verdict"] = result.verdict.name
         log["reason"] = result.reason
         log["result"] = asdict(result)
+        log["proof_dir"] = record.get("proof_dir")
         _log(log)
         print(f"  attempt {attempt}: {result.verdict.name} - {result.reason[:80]}")
 

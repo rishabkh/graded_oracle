@@ -37,8 +37,8 @@ sys.path.insert(0, str(HERE))
 
 from build_corpus import (_mask_comments, extract_asserts,   # noqa: E402
                           state_bits)
-from distractor import (DIFF_FORMAT, GRADE_KWARGS, MODEL, EFFORT,   # noqa: E402
-                        Spinner, dump, load_parent)
+from distractor import (DIFF_FORMAT, MODEL, EFFORT,   # noqa: E402
+                        Spinner, dump, grade_kwargs, load_parent)
 from patch import PatchError, apply_patch                 # noqa: E402
 
 import llm_client                                               # noqa: E402
@@ -75,8 +75,9 @@ HARD RULES
    or always @(*) logic, immediate assertions only, no concurrent SVA, no
    system tasks.
 6. Do not use the -> implication operator. Yosys rejects it. Write !a || b.
-7. Keep datapath widths narrow, four to eight bits. Wide arithmetic over
-   free inputs makes the proof intractable and teaches nothing.
+7. Match the widths already in the module: new registers that hold the
+   module's data or counts take the module's own widths. Do not multiply
+   or divide wide free inputs; that makes the proof intractable.
 8. If a new register's declared width admits values outside its reachable
    range, add an invariant clause bounding it."""
 
@@ -363,7 +364,7 @@ REQUIREMENTS
    glue state itself. The glue clause is the point — it is the state
    neither parent's invariants describe.
 5. Same clock and reset names as the parents. Every new register gets a
-   reset and an initial value. Widths stay narrow.
+   reset and an initial value. Glue registers match the parents' widths.
 6. No assume, no cover, no -> implication, no system tasks.
 
 WORK IT OUT BEFORE YOU WRITE THE WRAPPER
@@ -383,7 +384,7 @@ VERILOG BOOLEAN EXPRESSIONS over top-level signals, never descriptions:
   `if (pool == 4'd0) assert (...)` the antecedent is "pool == 4'd0".
   If unconditional, use [].
 - sanity_covers: one or two expressions you believe genuinely reachable
-  within ~20 cycles, e.g. "pool == 4'd6". Prose like "pool reaches zero
+  from reset, e.g. "pool == 4'd6". Prose like "pool reaches zero
   after all credits are held" is rejected before grading.
 
 Reply with JSON: {{"glue_scheme": "...", "induction_gap": "...",
@@ -425,7 +426,7 @@ Its strengthening invariants (true of each instance):
 REQUIREMENTS
 
 1. The wrapper instantiates the parent exactly {n} times and owns a credit
-   pool: a shared budget register of TOTAL credits (TOTAL at most 8). An
+   pool: a shared budget register of TOTAL credits. An
    instance can only gain a unit of its resource when the pool has a free
    credit; releasing a unit returns the credit. The wrapper may rely only
    on signals the parent exposes through its ports.
@@ -441,8 +442,9 @@ REQUIREMENTS
    pool + t0 + ... + t{last} == TOTAL). Per-instance and pairwise clauses
    do not count as that aggregate.
 5. Same clock and reset names as the parent. Every new register gets a
-   reset in the wrapper's if (rst) branch and an initial value. Widths
-   stay narrow. Watch summation width: zero-extend operands so the sum
+   reset in the wrapper's if (rst) branch and an initial value. New
+   registers match the parent's widths. Watch summation width:
+   zero-extend operands so the sum
    cannot wrap.
 6. No assume, no cover, no -> implication, no system tasks.
 
@@ -464,7 +466,7 @@ VERILOG BOOLEAN EXPRESSIONS over top-level signals, never descriptions:
   `if (pool == 4'd0) assert (...)` the antecedent is "pool == 4'd0".
   If unconditional, use [].
 - sanity_covers: one or two expressions you believe genuinely reachable
-  within ~20 cycles, e.g. "pool == 4'd6". Prose like "pool reaches zero
+  from reset, e.g. "pool == 4'd6". Prose like "pool reaches zero
   after all credits are held" is rejected before grading.
 
 Reply with JSON: {{"pool_scheme": "...", "induction_gap": "...",
@@ -916,7 +918,8 @@ def grade_compose(pa, pb, out, record):
                "invariants": out["invariants"]}
     t0 = time.monotonic()
     with Spinner(f"oracle grading composed {top}"):
-        result = grade_triple_generated(json.dumps(payload), **GRADE_KWARGS)
+        result = grade_triple_generated(json.dumps(payload),
+                                        **grade_kwargs(record))
     record["grade_wall_s"] = round(time.monotonic() - t0, 2)
     record["verdict"] = result.verdict.name
     record["reason"] = result.reason
@@ -1004,7 +1007,8 @@ def grade_replicate(parent, out, record, n):
                "invariants": out["invariants"]}
     t0 = time.monotonic()
     with Spinner(f"oracle grading {top} (N={n})"):
-        result = grade_triple_generated(json.dumps(payload), **GRADE_KWARGS)
+        result = grade_triple_generated(json.dumps(payload),
+                                        **grade_kwargs(record))
     record["grade_wall_s"] = round(time.monotonic() - t0, 2)
     record["verdict"] = result.verdict.name
     record["reason"] = result.reason
@@ -1097,8 +1101,9 @@ def grade_step4(parent, ext_type, out, record):
             with Spinner("checking the second property does not prove unaided"):
                 solo = grade(f, PropertyInfo(top_module=parent["top_module"],
                                              clock=parent["clock"]),
-                             **GRADE_KWARGS)
+                             **grade_kwargs(record, leg="p2_alone"))
         record["p2_unaided_tier"] = solo.tier.name
+        record["p2_unaided_result"] = asdict(solo)   # keep everything
         if solo.tier.name == "PROVEN":
             record["verdict"] = "P2_PROVES_UNAIDED"
             record["error"] = ("second property proves by k-induction with "
@@ -1111,7 +1116,8 @@ def grade_step4(parent, ext_type, out, record):
                "invariants": out["invariants"]}
     t0 = time.monotonic()
     with Spinner(f"oracle grading extended {parent['top_module']}"):
-        result = grade_triple_generated(json.dumps(payload), **GRADE_KWARGS)
+        result = grade_triple_generated(json.dumps(payload),
+                                        **grade_kwargs(record))
     record["grade_wall_s"] = round(time.monotonic() - t0, 2)
     record["verdict"] = result.verdict.name
     record["reason"] = result.reason

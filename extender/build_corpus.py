@@ -130,17 +130,19 @@ def count_dff_bits(stat_output):
 
 def state_bits(verilog, top_module):
     """Flop bits per yosys: proc; opt; techmap lowers registers to
-    single-bit $_DFF_* cells, so the cell count IS the bit count."""
+    single-bit $_DFF_* cells, so the cell count IS the bit count. `memory`
+    first turns storage arrays into registers too (8 Oct 2026): without it
+    a 32x8 array counted as nothing, so storage-heavy designs looked tiny."""
     if shutil.which("yosys") is None:
         return None
     with tempfile.TemporaryDirectory() as d:
         f = Path(d) / "design.sv"
         f.write_text(verilog)
         script = (f"read_verilog -sv {f}; hierarchy -top {top_module}; "
-                  "proc; opt; techmap; opt; stat")
+                  "proc; opt; memory; opt; techmap; opt; stat")
         try:
             out = subprocess.run(["yosys", "-p", script], capture_output=True,
-                                 text=True, timeout=60)
+                                 text=True, timeout=300)
         except subprocess.TimeoutExpired:
             return None
     if out.returncode != 0:
