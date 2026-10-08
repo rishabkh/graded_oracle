@@ -65,3 +65,7 @@ def test_training_starts_from_the_untrained_base_only(tmp_path):
                       ).returncode != 0
     assert _guard_run({"OUT": out, "MODEL": "Qwen/Qwen2.5-Coder-32B-Instruct"}
                       ).returncode == 0
+
+
+def test_the_job_passes_the_raised_length_limit():
+    assert '--max-len "${MAXLEN:-16384}"' in JOB

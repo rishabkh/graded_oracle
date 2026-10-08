@@ -22,7 +22,7 @@ def main():
     p.add_argument("--model", required=True)
     p.add_argument("--pairs", required=True)
     p.add_argument("--index", type=int, default=0)
-    p.add_argument("--max-new", type=int, default=256)
+    p.add_argument("--max-new", type=int, default=2048)
     args = p.parse_args()
 
     import torch
@@ -36,7 +36,7 @@ def main():
     model.eval()
 
     pair = load_pairs(args.pairs)[args.index]
-    text = tok.apply_chat_template(to_messages(pair)[:1], tokenize=False,
+    text = tok.apply_chat_template(to_messages(pair)[:-1], tokenize=False,
                                    add_generation_prompt=True)
     ids = tok(text, return_tensors="pt").to(model.device)
     with torch.no_grad():

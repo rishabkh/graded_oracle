@@ -55,11 +55,13 @@ esac
 echo "training $MODEL on $PAIRS -> $OUT"
 nvidia-smi --query-gpu=name,memory.total --format=csv
 
+# 16384 since 8 Oct 2026 (bigger designs); MAXLEN=8192 gives the old limit
 python training/train_lora.py \
     --pairs "$PAIRS" \
     --model "$MODEL" \
     --out "$OUT" \
     --epochs 3 \
+    --max-len "${MAXLEN:-16384}" \
     --merge
 
 echo "=== loading the adapter back and answering one question ==="

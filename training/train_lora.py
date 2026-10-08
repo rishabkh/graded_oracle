@@ -26,23 +26,37 @@ from sft_data import IGNORE, load_pairs, mask_labels, split, to_messages
 
 def build_rows(pairs, tok, max_len):
     """One tokenised row per pair, with the question masked out. Rows
-    over the length budget are dropped and counted, never truncated: a
-    half design with a full answer is a lie to train on."""
-    rows, dropped = [], 0
+    over the length budget are dropped and counted by kind, never
+    truncated: a half design with a full answer is a lie to train on. The
+    question is every message before the answer, so a chat record keeps
+    its system message."""
+    rows, dropped = [], {}
     for pair in pairs:
         msgs = to_messages(pair)
-        question = tok.apply_chat_template(msgs[:1], tokenize=False,
+        question = tok.apply_chat_template(msgs[:-1], tokenize=False,
                                            add_generation_prompt=True)
         full = question + pair["completion"] + tok.eos_token
         ids = tok(full, add_special_tokens=False)["input_ids"]
         if len(ids) > max_len:
-            dropped += 1
+            kind = pair.get("kind", "solve")
+            dropped[kind] = dropped.get(kind, 0) + 1
             continue
         q_len = len(tok(question, add_special_tokens=False)["input_ids"])
         rows.append({"input_ids": ids,
                      "labels": mask_labels(ids, q_len),
                      "attention_mask": [1] * len(ids)})
     return rows, dropped
+
+
+def check_drops(dropped, kept, max_share):
+    """Stop the run when more than `max_share` of the examples were too
+    long (8 Oct 2026): with bigger designs a printed count was too easy to
+    miss, and the dropped ones are exactly the big designs."""
+    n = sum(dropped.values())
+    if n and n > max_share * (n + kept):
+        sys.exit(f"{n} of {n + kept} examples are over the length limit and "
+                 f"would be dropped ({dropped}); raise --max-len or pass a "
+                 "larger --max-drop-share on purpose")
 
 
 def collate(batch, pad_id):
@@ -65,7 +79,12 @@ def main():
     p.add_argument("--steps", type=int, default=-1,
                    help="stop after N steps; -1 runs --epochs instead")
     p.add_argument("--epochs", type=float, default=3.0)
-    p.add_argument("--max-len", type=int, default=8192)
+    # 8192 was Formal Disco's; bigger designs (8 Oct 2026) need more room:
+    # repair examples hold the design twice and passed 8192 at ~250 lines
+    p.add_argument("--max-len", type=int, default=16384)
+    p.add_argument("--max-drop-share", type=float, default=0.01,
+                   help="stop if more than this share of examples is too "
+                        "long to train on")
     p.add_argument("--batch", type=int, default=1)
     p.add_argument("--grad-accum", type=int, default=8)
     # defaults copied from formal-disco/config/distill.yaml so our run and
@@ -95,11 +114,17 @@ def main():
     train_pairs, eval_pairs = split(pairs, args.holdout, args.seed)
     train_rows, dropped = build_rows(train_pairs, tok, args.max_len)
     eval_rows, dropped_eval = build_rows(eval_pairs, tok, args.max_len)
+    kinds = {}
+    for pair in train_pairs:
+        kinds[pair.get("kind", "solve")] = kinds.get(
+            pair.get("kind", "solve"), 0) + 1
     print(f"{len(pairs)} pairs -> {len(train_rows)} train, "
-          f"{len(eval_rows)} eval, {dropped + dropped_eval} over "
-          f"{args.max_len} tokens and dropped")
+          f"{len(eval_rows)} eval; trained by kind {kinds}; over "
+          f"{args.max_len} tokens and dropped: {dropped} (train), "
+          f"{dropped_eval} (eval)")
     if not train_rows:
         sys.exit("no training rows survived the length budget")
+    check_drops(dropped, len(train_rows), args.max_drop_share)
 
     kw = {"dtype": torch.bfloat16, "device_map": "auto"}
     if args.load_4bit:
@@ -145,7 +170,8 @@ def main():
     (out / "run.json").write_text(json.dumps(
         {"pairs": args.pairs, "model": args.model, "steps": args.steps,
          "epochs": args.epochs, "rank": args.rank, "lr": args.lr,
-         "train_rows": len(train_rows), "dropped": dropped + dropped_eval,
+         "train_rows": len(train_rows), "max_len": args.max_len,
+         "dropped": dropped, "dropped_eval": dropped_eval,
          "train_loss": result.training_loss}, indent=2))
     print(f"\nsaved adapter -> {out / 'adapter'}  "
           f"(final loss {result.training_loss:.4f})")

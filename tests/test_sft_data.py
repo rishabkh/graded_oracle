@@ -77,3 +77,24 @@ def test_load_pairs_keeps_the_holdout_mark(tmp_path):
     p = write(tmp_path, [{"prompt": "q", "completion": "a", "holdout": True}])
     assert load_pairs(p) == [{"prompt": "q", "completion": "a",
                               "holdout": True}]
+
+
+# --- chat records with a system message (8 Oct 2026) -----------------------
+
+def test_load_pairs_reads_a_chat_record(tmp_path):
+    msgs = [{"role": "system", "content": "S"}, {"role": "user", "content": "U"}]
+    p = write(tmp_path, [{"prompt": msgs,
+                          "completion": [{"role": "assistant", "content": "A"}],
+                          "holdout": False, "kind": "generate"}])
+    [pair] = load_pairs(p)
+    assert pair["prompt"] == msgs and pair["completion"] == "A"
+    assert pair["kind"] == "generate" and pair["holdout"] is False
+    assert to_messages(pair) == msgs + [{"role": "assistant", "content": "A"}]
+
+
+def test_a_chat_record_that_already_ends_with_the_answer_is_refused(tmp_path):
+    msgs = [{"role": "user", "content": "U"},
+            {"role": "assistant", "content": "A"}]
+    p = write(tmp_path, [{"prompt": msgs, "completion": "A"}])
+    with pytest.raises(ValueError):
+        load_pairs(p)

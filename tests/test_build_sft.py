@@ -428,3 +428,161 @@ def test_the_command_writes_a_fully_marked_file(tmp_path):
     assert len(lines) == 24 and all(set(l) == {"prompt", "completion", "holdout"}
                                     for l in lines)
     assert sum(not l["holdout"] for l in lines[20:]) == 4
+
+
+# --- the training-file builder for generation too (8 Oct 2026) -------------
+# Formal Disco's rules (formal-disco/distill.py build_sft_records): only
+# successes; an idea counts only if a design built from it passed; the
+# question is the exact chat messages, the answer one assistant turn.
+
+SYS = {"role": "system", "content": "S"}
+
+
+def _ex(kind, response, outcome, user="U", **args):
+    return {"prompt": kind, "arguments": args, "response": response,
+            "outcome": outcome,
+            "metadata": {"verdict": "x",
+                         "messages": [SYS, {"role": "user", "content": user}]}}
+
+
+def _design(verilog):
+    return json.dumps({"top_module": "m", "verilog": verilog,
+                       "invariants": ["a == b"]})
+
+
+def test_only_successes_are_kept():
+    recs, counts = bs.generation_records([
+        _ex("generate", _design("module m; endmodule"), "success"),
+        _ex("generate", _design("module m2; endmodule"), "fail"),
+        _ex("repair", "cut off", "error")])
+    assert [r["kind"] for r in recs] == ["generate"]
+    assert counts["generate"] == {"kept": 1, "skipped": 1}
+    assert counts["repair"] == {"kept": 0, "skipped": 1}
+
+
+def test_an_idea_counts_only_if_a_design_built_from_it_passed():
+    recs, _ = bs.generation_records([
+        _ex("idea", "GOOD IDEA", "success"),
+        _ex("idea", "BAD IDEA", "success"),        # its design failed
+        _ex("implement", _design("module a; endmodule"), "success",
+            idea="GOOD IDEA"),
+        _ex("implement", _design("module b; endmodule"), "fail",
+            idea="BAD IDEA")])
+    kept = {(r["kind"], r["completion"][0]["content"]) for r in recs}
+    assert ("idea", "GOOD IDEA") in kept and ("idea", "BAD IDEA") not in kept
+
+
+def test_a_record_is_the_exact_messages_and_one_answer_turn():
+    [rec], _ = bs.generation_records(
+        [_ex("initiate", _design("module m; endmodule"), "success",
+             user="the exact question")])
+    assert rec["prompt"] == [SYS, {"role": "user",
+                                   "content": "the exact question"}]
+    assert rec["completion"] == [{"role": "assistant",
+                                  "content": _design("module m; endmodule")}]
+    assert rec["holdout"] is False
+
+
+def test_a_held_back_design_stays_held_back_in_every_record_that_shows_it():
+    held = "module held; endmodule"
+    recs, _ = bs.generation_records([
+        _ex("idea", "IDEA H", "success"),
+        _ex("implement", _design(held), "success", idea="IDEA H"),
+        _ex("repair", _design(held), "success"),
+        _ex("generate", _design("module free; endmodule"), "success")],
+        held_designs={held})
+    by = {r["kind"]: r["holdout"] for r in recs}
+    assert by == {"idea": True, "implement": True, "repair": True,
+                  "generate": False}
+
+
+def test_solving_examples_are_not_taken_from_the_call_log():
+    # solving pairs come from the corpus, asked exactly as the test asks
+    recs, counts = bs.generation_records([_ex("solve", "x", "success")])
+    assert recs == [] and "solve" not in counts
+
+
+def test_the_command_adds_generation_records_after_the_solving_pairs(tmp_path):
+    v2, new = tmp_path / "v2.jsonl", tmp_path / "new.jsonl"
+    rows = _rows("g0", 20)
+    v2.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    new.write_text("".join(json.dumps(r) + "\n" for r in _rows("c0", 4)))
+    held = bs.held_back(rows)
+    held_row = next(r for r in rows if bs.build_pair(r)["prompt"] in held)
+    distill = tmp_path / "distill.jsonl"
+    distill.write_text("".join(json.dumps(e) + "\n" for e in [
+        _ex("generate", _design("module new1; endmodule"), "success"),
+        _ex("generate", _design(held_row["verilog"]), "success"),
+        _ex("generate", _design("module bad; endmodule"), "fail")]))
+    out = tmp_path / "both.jsonl"
+    bs.main(["--corpus", str(v2), "--extra-corpus", str(new),
+             "--distill", str(distill), "--out", str(out)])
+    lines = [json.loads(l) for l in out.read_text().splitlines()]
+    assert len(lines) == 24 + 2
+    gen = lines[24:]
+    assert all(isinstance(l["prompt"], list) for l in gen)
+    assert [l["holdout"] for l in gen] == [False, True]
+    assert all(l["kind"] == "generate" for l in gen)
+    assert all(isinstance(l["prompt"], str) for l in lines[:24])
+
+
+def test_long_records_are_reported_before_training(tmp_path, capsys):
+    v2 = tmp_path / "v2.jsonl"
+    v2.write_text("".join(json.dumps(r) + "\n" for r in _rows("g0", 5)))
+    distill = tmp_path / "distill.jsonl"
+    distill.write_text(json.dumps(
+        _ex("generate", _design("x" * 80000), "success")) + "\n")
+    bs.main(["--corpus", str(v2), "--distill", str(distill),
+             "--out", str(tmp_path / "o.jsonl"), "--max-len", "16384"])
+    out = capsys.readouterr().out
+    assert "1 record(s) over 16384 tokens" in out and "generate" in out
+
+
+def test_held_designs_are_v2s_held_back_rows_and_skip_rows_without_facts():
+    rows = _rows("g0", 20) + [dict(ROW, id="g0_bare", invariants=[],
+                                   verilog="module bare; endmodule")]
+    held = bs.held_designs(rows)
+    prompts = bs.held_back(rows)
+    assert held == {r["verilog"] for r in rows[:20]
+                    if bs.build_pair(r)["prompt"] in prompts}
+    assert held
+
+
+
+# --- review fixes (8 Oct 2026) ---------------------------------------------
+
+def test_generation_records_cannot_be_combined_with_reasoning_or_one_step(
+        tmp_path):
+    import pytest
+    for extra in (["--reasoning", "r.jsonl"], ["--one-step", "o.jsonl"]):
+        with pytest.raises(SystemExit) as e:
+            bs.main(["--distill", "d.jsonl", "--out", str(tmp_path / "o"),
+                     *extra])
+        assert "cannot be combined" in str(e.value)
+
+
+def test_a_held_back_design_in_the_question_holds_the_record_back():
+    held = "module held;\n  reg a;\nendmodule"
+    # a repair question shows the broken design as pretty JSON: escaped
+    question = json.dumps({"verilog": held}, indent=2)
+    ex = _ex("repair", _design("module fixed; endmodule"), "success",
+             user=f"Your planted triple was checked and rejected.\n{question}")
+    [rec], _ = bs.generation_records([ex], {held})
+    assert rec["holdout"] is True
+
+
+def test_an_extend_record_is_held_back_by_the_design_it_made():
+    held = "module child; endmodule"
+    ex = _ex("extend", json.dumps({"patch": "+ x", "invariants": ["a"]}),
+             "success")
+    ex["metadata"]["design"] = held
+    [rec], _ = bs.generation_records([ex], {held})
+    assert rec["holdout"] is True
+
+
+def test_an_idea_answered_as_json_is_matched_to_its_design():
+    recs, _ = bs.generation_records([
+        _ex("idea", json.dumps({"idea": "GOOD IDEA"}), "success"),
+        _ex("implement", _design("module a; endmodule"), "success",
+            idea="GOOD IDEA")])
+    assert [r["kind"] for r in recs] == ["idea", "implement"]

@@ -13,24 +13,44 @@ IGNORE = -100     # what the loss skips, the HuggingFace convention
 
 
 def load_pairs(path):
+    """Two shapes of line: a solving pair (the question a plain string, as
+    the test asks it), or a chat record (8 Oct 2026, Formal Disco's shape:
+    the question a list of messages, system first, and the answer one
+    assistant turn). Both come back with the answer as plain text."""
     rows = []
     for n, line in enumerate(Path(path).read_text().splitlines(), 1):
         if not line.strip():
             continue
         row = json.loads(line)
-        if not row.get("prompt") or not row.get("completion"):
+        prompt, completion = row.get("prompt"), row.get("completion")
+        if isinstance(completion, list):
+            completion = (completion[0].get("content")
+                          if len(completion) == 1 and isinstance(
+                              completion[0], dict)
+                          and completion[0].get("role") == "assistant"
+                          else None)
+        if isinstance(prompt, list) and (
+                not prompt or not all(isinstance(m, dict) and m.get("content")
+                                      for m in prompt)
+                or prompt[-1].get("role") == "assistant"):
+            raise ValueError(f"{path} line {n}: a chat question must be "
+                             "messages that do not end with the answer")
+        if not prompt or not completion:
             raise ValueError(f"{path} line {n}: prompt and completion "
                              "must both be non-empty")
-        pair = {"prompt": row["prompt"], "completion": row["completion"]}
+        pair = {"prompt": prompt, "completion": completion}
         if "holdout" in row:
             pair["holdout"] = bool(row["holdout"])
+        if "kind" in row:
+            pair["kind"] = row["kind"]
         rows.append(pair)
     return rows
 
 
 def to_messages(pair):
-    return [{"role": "user", "content": pair["prompt"]},
-            {"role": "assistant", "content": pair["completion"]}]
+    question = (list(pair["prompt"]) if isinstance(pair["prompt"], list)
+                else [{"role": "user", "content": pair["prompt"]}])
+    return question + [{"role": "assistant", "content": pair["completion"]}]
 
 
 def split(rows, holdout=0.1, seed=0):

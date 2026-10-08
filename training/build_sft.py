@@ -27,6 +27,21 @@ pair is read back through the real scorer before anything is written.
   venv/bin/python training/build_sft.py \\
       --reasoning extender/logs/reasoning_regen.jsonl \\
       --out extender/sft_train_v3.jsonl
+
+Generation too (8 Oct 2026): `--distill` adds the generator's own calls
+(idea, implement, initiate, generate, repair, extend) from the training
+examples it saved (distill_log.py), under Formal Disco's rules
+(formal-disco/distill.py build_sft_records): successes only; an idea counts
+only if a design built from it passed; the question is the exact chat
+messages that were sent, the answer one assistant turn. Solving pairs still
+come from the corpus, asked exactly as the test asks. Any record that shows
+a design v2 holds back is held back too, so nothing held back leaks in
+through a generation answer.
+
+  venv/bin/python training/build_sft.py \\
+      --extra-corpus extender/corpus_v5.jsonl \\
+      --distill initiator/logs/distill_attempts_v5.jsonl \\
+      --out extender/sft_train_v5b.jsonl
 """
 import argparse
 import json
@@ -39,6 +54,7 @@ sys.path.insert(0, str(HERE.parent / "initiator"))
 
 from solver_baseline import SOLVER_PROMPT, parse_invariants  # noqa: E402
 from sft_data import split                                   # noqa: E402
+import distill_log                                           # noqa: E402
 
 CORPUS = HERE.parent / "extender" / "corpus.jsonl"
 FIXER_LOG = HERE.parent / "extender" / "logs" / "fixer_attempts.jsonl"
@@ -245,6 +261,13 @@ def held_back(rows):
     return {p["prompt"] for p in split(build_pairs(rows))[1]}
 
 
+def held_designs(rows):
+    """The Verilog of v2's held-back rows."""
+    prompts = held_back(rows)
+    return {r["verilog"] for r in rows if r.get("invariants")
+            and build_pair(r)["prompt"] in prompts}
+
+
 def build_combined_pairs(rows, extra_rows):
     """v2's pairs with v2's held-back marks, then a separate corpus's pairs
     (the catalog run, 8 Oct 2026), all trained on. Appending unmarked rows
@@ -259,6 +282,104 @@ def build_combined_pairs(rows, extra_rows):
     if clash:
         raise ValueError(f"questions already in v2's file: {clash[:5]}")
     return base + [dict(p, holdout=False) for p in extra]
+
+
+GEN_TYPES = ("idea", "implement", "initiate", "generate", "repair", "extend")
+CHARS_PER_TOKEN = 3.6     # the estimate this file has always printed
+
+
+def design_of(response):
+    """The Verilog inside a design answer, or None (an idea, a cut-off
+    reply)."""
+    try:
+        return json.loads(response).get("verilog")
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def idea_text(response):
+    """An idea answer is the text, or JSON {"idea": text} when the call
+    forced that shape."""
+    try:
+        obj = json.loads(response)
+    except (TypeError, ValueError):
+        return str(response)
+    return str(obj.get("idea")) if isinstance(obj, dict) else str(response)
+
+
+def _shows(example, held_forms):
+    """Does any part of the example (question, answer, or the design an
+    answer made, kept in metadata) contain a held-back design?"""
+    meta = example.get("metadata") or {}
+    parts = [str(example.get("response") or ""), str(meta.get("design") or "")]
+    parts += [str(m.get("content", "")) for m in meta.get("messages") or []]
+    return any(form in part for part in parts for form in held_forms)
+
+
+def generation_records(examples, held_designs=frozenset()):
+    """Formal Disco's rules over saved call examples. Returns the records,
+    in input order, and per-type counts of kept and skipped examples.
+    `held_designs` are the Verilog texts of held-back solving rows: a
+    record that shows one anywhere (its question, its answer, or the
+    design its answer made, also as escaped JSON text) is held back too,
+    and so is an idea whose kept design is one."""
+    held_forms = [f for d in held_designs for f in (d, json.dumps(d)[1:-1])]
+    good_ideas = {str(e["arguments"].get("idea")) for e in examples
+                  if e.get("prompt") == "implement"
+                  and e.get("outcome") == "success"
+                  and e.get("arguments", {}).get("idea")}
+    held_ideas = {str(e["arguments"].get("idea")) for e in examples
+                  if e.get("prompt") == "implement"
+                  and e.get("outcome") == "success"
+                  and _shows(e, held_forms)}
+    records, counts = [], {}
+    for e in examples:
+        kind = e.get("prompt")
+        if kind not in GEN_TYPES:
+            continue
+        c = counts.setdefault(kind, {"kept": 0, "skipped": 0})
+        response = e.get("response")
+        ok = (idea_text(response) in good_ideas if kind == "idea"
+              else e.get("outcome") == "success")
+        messages = (e.get("metadata") or {}).get("messages")
+        if not ok or response is None or not messages:
+            c["skipped"] += 1
+            continue
+        held = (idea_text(response) in held_ideas if kind == "idea"
+                else _shows(e, held_forms))
+        records.append({"prompt": messages,
+                        "completion": [{"role": "assistant",
+                                        "content": str(response)}],
+                        "holdout": held, "kind": kind})
+        c["kept"] += 1
+    return records, counts
+
+
+def record_tokens(rec):
+    """A rough token count of one training line (question and answer)."""
+    def chars(x):
+        if isinstance(x, str):
+            return len(x)
+        return sum(len(m.get("content", "")) for m in x)
+    return int((chars(rec["prompt"]) + chars(rec["completion"]))
+               / CHARS_PER_TOKEN)
+
+
+def report_lengths(lines, max_len):
+    """Training drops every line over its length limit; say so here, by
+    kind, before any GPU time is spent."""
+    over = {}
+    for line in lines:
+        if record_tokens(line) > max_len:
+            kind = line.get("kind", "solve")
+            over[kind] = over.get(kind, 0) + 1
+    n = sum(over.values())
+    if n:
+        print(f"  WARNING: {n} record(s) over {max_len} tokens (estimated), "
+              f"which training would drop: {over}")
+    else:
+        print(f"  every record fits in {max_len} tokens (estimated)")
+    return over
 
 
 def build_clean_pairs(rows, passing):
@@ -361,9 +482,21 @@ def main(argv=None):
                    help="with --out: v2's rows with v2's held-back marks, "
                         "plus every row of this corpus trained on (the "
                         "catalog run); every row carries a holdout mark")
+    p.add_argument("--distill", nargs="+", default=None,
+                   help="with --out: also the generator's own calls from "
+                        "these saved-example files (distill_*.jsonl), "
+                        "under Formal Disco's rules")
+    p.add_argument("--max-len", type=int, default=16384,
+                   help="the training length limit, to report records "
+                        "that training would drop")
     args = p.parse_args(argv)
-    if args.extra_corpus and not args.out:
-        sys.exit("--extra-corpus needs --out")
+    if (args.extra_corpus or args.distill) and not args.out:
+        sys.exit("--extra-corpus and --distill need --out")
+    if (args.extra_corpus or args.distill) and (args.reasoning
+                                                or args.one_step):
+        # they write different files; one would be silently skipped
+        sys.exit("--extra-corpus and --distill cannot be combined with "
+                 "--reasoning or --one-step; nothing was written")
     if (args.clean or args.preference) and not args.one_step:
         sys.exit("--clean and --preference need --one-step")
 
@@ -383,9 +516,10 @@ def main(argv=None):
         write_one_step_files(args, rows)
     elif args.reasoning:
         write_reasoning_file(args, rows)
-    elif args.extra_corpus:
-        extra = [json.loads(l) for l in
-                 Path(args.extra_corpus).read_text().splitlines() if l.strip()]
+    elif args.extra_corpus or args.distill:
+        extra = ([json.loads(l) for l in
+                  Path(args.extra_corpus).read_text().splitlines()
+                  if l.strip()] if args.extra_corpus else [])
         combined = build_combined_pairs(rows, extra)
         n_base = len(pairs)
         if Path(args.corpus).resolve() == CORPUS.resolve() and V2_FILE.exists():
@@ -398,14 +532,24 @@ def main(argv=None):
                 sys.exit(f"the v2 part differs from {V2_FILE.name}; "
                          "nothing was written")
             print(f"  v2 part matches {V2_FILE.name} line for line")
-        Path(args.out).write_text(
-            "".join(json.dumps({"prompt": q["prompt"],
-                                "completion": q["completion"],
-                                "holdout": q["holdout"]}) + "\n"
-                    for q in combined))
+        lines = [{"prompt": q["prompt"], "completion": q["completion"],
+                  "holdout": q["holdout"]} for q in combined]
         print(f"  {n_base} v2 pairs ({sum(q['holdout'] for q in combined)} "
-              f"held back) + {len(combined) - n_base} new pairs, all trained "
-              f"-> {args.out}")
+              f"held back) + {len(combined) - n_base} new pairs, all trained")
+        if args.distill:
+            examples = [e for f in args.distill for e in distill_log.read(f)]
+            held = held_designs(rows)
+            gen, counts = generation_records(examples, held)
+            print(f"  generation records from {len(args.distill)} file(s): "
+                  + ", ".join(f"{k} {c['kept']} kept / {c['skipped']} skipped"
+                              for k, c in sorted(counts.items())))
+            print(f"  {sum(r['holdout'] for r in gen)} generation record(s) "
+                  "held back because they show a held-back design")
+            lines += gen
+        report_lengths(lines, args.max_len)
+        Path(args.out).write_text("".join(json.dumps(l) + "\n"
+                                          for l in lines))
+        print(f"  {len(lines)} lines -> {args.out}")
     elif args.out:
         Path(args.out).write_text(
             "".join(json.dumps({"prompt": p["prompt"],
