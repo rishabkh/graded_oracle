@@ -39,9 +39,9 @@ a design v2 holds back is held back too, so nothing held back leaks in
 through a generation answer.
 
   venv/bin/python training/build_sft.py \\
-      --extra-corpus extender/corpus_v5.jsonl \\
-      --distill initiator/logs/distill_attempts_v5.jsonl \\
-      --out extender/sft_train_v5b.jsonl
+      --extra-corpus extender/corpus_2026-10-09.jsonl \\
+      --distill initiator/logs/distill_attempts_2026-10-09.jsonl \\
+      --out extender/sft_train_with_design_writing.jsonl
 """
 import argparse
 import json

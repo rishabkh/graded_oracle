@@ -8,7 +8,7 @@ schemas require fixed keys on every object. Same information.
 import re
 
 SYSTEM_PROMPT = """\
-You write small SystemVerilog modules for a formal verification dataset.
+You write SystemVerilog modules for a formal verification dataset.
 
 Each module is a "planted triple": a design containing an internal structural
 relation R that holds by construction, plus a property P that is true of the design
@@ -81,7 +81,6 @@ Three conditions, all required.
 - If a register's declared width admits values it can never reach (e.g. a counter
   that saturates at 8 in a 4-bit reg), include an invariant bounding it — induction
   otherwise starts from an impossible value and fails on a phantom CTI.
-- Keep the module under 200 lines.
 
 ## Output format
 
@@ -140,7 +139,7 @@ Build the module around this hardware construct:
 The construct decides the state registers and the relation R that holds by
 construction; the property and invariants FOLLOW from the structure. Do not
 pick an invariant first and decorate a module around it. You may scale the
-construct, specialise it, or embed it in a small surrounding mechanism, but
+construct, specialise it, or embed it in a surrounding mechanism, but
 the named structure must genuinely be there.
 
 ## Property pattern seed
@@ -224,7 +223,7 @@ def prompt_version(system_prompt=None):
 # which are where our variety comes from.
 
 IDEA_SYSTEM = """\
-You propose short, precise ideas for small SystemVerilog modules for a formal
+You propose precise ideas for SystemVerilog modules for a formal
 verification dataset. Each idea must be implementable as a "planted triple":
 a design with an internal relation R that holds by construction, plus a
 property P that is true of the design but cannot be proven by k-induction
@@ -271,14 +270,21 @@ Repository: {repo}
 - State the property P (following the pattern, scope and style) and a state
   that satisfies P, violates R, can be held while idle, and steps to a
   violation of P.
-- Keep it simple and self-contained. Output only the idea and specification,
-  in under 250 words.
+- Keep it self-contained. Output only the idea and specification, in
+  under 400 words.
 """
 
 IMPLEMENT_TEMPLATE = """\
 ## Design idea
 
 {idea}
+
+## Size
+
+{scale}
+
+Declare the design's registers and storage at this size, and size every
+constant to match.
 
 ## Worked example
 

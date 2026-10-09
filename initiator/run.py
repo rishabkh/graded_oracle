@@ -18,6 +18,7 @@ which model wrote it, so a refusal is logged and discarded, never
 silently rerouted to another model.
 """
 import argparse
+import contextlib
 import itertools
 import json
 import os
@@ -26,6 +27,7 @@ import re
 import sys
 import threading
 import time
+import traceback
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,11 +48,17 @@ from oracle.contract import parse_generator_output           # noqa: E402
 
 MODEL = "claude-opus-5-5"
 EFFORT = "high"
-# 32000 suits a frontier model with a huge window. A locally served 32k
-# model has no room for it: prompt plus budget is then over the limit and
-# every call is refused, so lower it when generating on the cluster.
-MAX_TOKENS = int(os.getenv("INITIATOR_MAX_TOKENS", "32000"))
-GRADE_KWARGS = dict(timeout_s=120)
+# 128000 is the model's own limit (9 Oct 2026; it was 32000): bigger
+# designs need long answers, thinking counts towards the limit, and an
+# answer cut off is paid for and lost. Only what an answer uses is paid
+# for. A locally served 32k model has no room for it: prompt plus budget
+# is then over the limit and every call is refused, so lower it with
+# INITIATOR_MAX_TOKENS when generating on the cluster.
+MAX_TOKENS = int(os.getenv("INITIATOR_MAX_TOKENS", "128000"))
+# Bigger designs (9 Oct 2026): 300 s per proof run (was 120); the pdr
+# second opinion and the sanity check keep 120 s; conditions unreached in
+# 20 steps get a deeper look first (oracle/depth.py).
+GRADE_KWARGS = dict(timeout_s=300, pdr_timeout_s=120, cover_depth="auto")
 LOG_PATH = HERE / "logs" / "attempts.jsonl"
 
 
@@ -62,9 +70,28 @@ class Spinner:
     CYAN, DIM, RESET = "\033[36m", "\033[2m", "\033[0m"
 
     def __init__(self, label):
+        """`label` is text, or a function giving the current text (9 Oct
+        2026: a status line that changes while it spins)."""
         self.label = label
         self._stop = threading.Event()
         self._thread = None
+        self._lock = threading.Lock()
+
+    def text(self):
+        if not callable(self.label):
+            return self.label
+        try:
+            return self.label()
+        except Exception:                 # a display must never stop a run
+            return "working (status unavailable)"
+
+    def say(self, text):
+        """Print a line without the spinner running through it."""
+        with self._lock:
+            if self._thread:
+                sys.stderr.write("\r\033[K")
+                sys.stderr.flush()
+            print(text, flush=True)
 
     def _spin(self):
         start = time.monotonic()
@@ -75,13 +102,15 @@ class Spinner:
             clock = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
             import shutil as _sh
             width = _sh.get_terminal_size().columns
-            label = self.label[:max(10, width - 12)]
-            sys.stderr.write(f"\r{self.CYAN}{frame}{self.RESET} {label} "
-                             f"{self.DIM}{clock}{self.RESET} ")
-            sys.stderr.flush()
+            label = self.text()[:max(10, width - 12)]
+            with self._lock:
+                sys.stderr.write(f"\r{self.CYAN}{frame}{self.RESET} {label} "
+                                 f"{self.DIM}{clock}{self.RESET}\033[K")
+                sys.stderr.flush()
             self._stop.wait(0.08)
-        sys.stderr.write("\r" + " " * (len(self.label) + 12) + "\r")
-        sys.stderr.flush()
+        with self._lock:
+            sys.stderr.write("\r\033[K")
+            sys.stderr.flush()
 
     def __enter__(self):
         if sys.stderr.isatty():
@@ -125,16 +154,29 @@ def load_pools(constructs_path=None, even=False):
     return exemplars, constructs, readmes, styles, patterns, scopes
 
 
+_BLOCK_START = re.compile(r"\b(always\w*|initial|assign|module)\b")
+
+
 def _property_is_conditional(verilog):
     """Does any assertion actually depend on something? Either guarded by
-    an `if` within the three lines above it, or written as an implication
-    (`!armed || ...`, or a ternary)."""
+    an `if` in the block it sits in, or written as an implication
+    (`!armed || ...`, or a ternary) anywhere in the assert statement. 9 Oct
+    2026: it looked only 3 lines up and at the assert's first line, which
+    bigger designs, with longer guarded blocks and wrapped asserts, beat."""
     lines = verilog.splitlines()
     for i, line in enumerate(lines):
-        if "assert" not in line:
+        if not re.search(r"\bassert\b", line):
             continue
-        window = " ".join(lines[max(0, i - 3):i + 1])
-        if re.search(r"if\s*\(", window) or "||" in line or "?" in line:
+        stmt, j = line, i
+        while ";" not in stmt and j + 1 < len(lines):
+            j += 1
+            stmt += " " + lines[j]
+        if "||" in stmt or "?" in stmt:
+            return True
+        k = i
+        while k > 0 and not _BLOCK_START.search(lines[k]):
+            k -= 1
+        if re.search(r"\bif\s*\(", " ".join(lines[k:i + 1])):
             return True
     return False
 
@@ -190,12 +232,16 @@ def check_contract():
           "cti_* fields ignored without violation")
 
 
-def assert_exemplar_pool(exemplars):
+def assert_exemplar_pool(exemplars, proof_root=None):
     """Preflight 0.2: every exemplar must grade NECESSARY, or the run
-    would teach the model to imitate a broken example."""
+    would teach the model to imitate a broken example. With `proof_root`,
+    each exemplar's proofs are kept in <proof_root>/<name>."""
     for name, ex in exemplars.items():
+        kw = dict(GRADE_KWARGS)
+        if proof_root is not None:
+            kw["workdir_root"] = Path(proof_root) / name
         with Spinner(f"grading exemplar {name}"):
-            r = grade_triple_generated(json.dumps(ex), **GRADE_KWARGS)
+            r = grade_triple_generated(json.dumps(ex), **kw)
         assert r.verdict is NecessityVerdict.NECESSARY, \
             f"exemplar {name}: {r.verdict.name} - {r.reason}"
         print(f"exemplar {name}: NECESSARY")
@@ -258,6 +304,29 @@ def calls_path(log_path):
     """Every API call of a run, next to its run log (llm_client.call_log)."""
     log = Path(log_path or LOG_PATH)
     return log.with_name("calls_" + log.name)
+
+
+def proofs_dir(log_path):
+    """Kept proof folders, next to the run log (9 Oct 2026, keep
+    everything): <log stem>_proofs/. They travel with the log."""
+    log = Path(log_path or LOG_PATH)
+    return log.with_name(f"{log.stem}_proofs")
+
+
+def design_proofs(log_path, record):
+    """One design's proof folder: its path relative to the log's folder
+    (what rows record, so it works on any machine) and its real path. Each
+    check of the design gets a round inside it: r0, then r1, r2 per
+    repair."""
+    log = Path(log_path or LOG_PATH)
+    rel = f"{proofs_dir(log).name}/{record['run_id']}_a{record['attempt']:03d}"
+    return rel, log.parent / rel
+
+
+def timed_out(j):
+    """The checker ran out of time: a repair cannot fix that."""
+    return j.get("verdict") == "INCONCLUSIVE" or \
+        "TIMEOUT" in (j.get("reason") or "")
 
 
 def dump(record, path=None):
@@ -362,11 +431,12 @@ def plan_attempts(n, *, cmd, grade, model, constructs_path, scales_path,
     return exemplars, run_id, plans
 
 
-def judge(raw_json, stop, scope, grade=True, label=""):
+def judge(raw_json, stop, scope, grade=True, label="", proof_root=None,
+          spin=True):
     """The checker on one answer, the same on every path: no design
     (refused, cut off, unreadable), then the scope gate, then the oracle.
     Returns verdict, reason, result and grading time (verdict None when
-    grading is off)."""
+    grading is off). `proof_root` is where this check's proofs are kept."""
     out = {"verdict": None, "reason": None, "result": None,
            "grade_wall_s": None}
     if raw_json is None:
@@ -379,8 +449,13 @@ def judge(raw_json, stop, scope, grade=True, label=""):
     if not grade:
         return out
     t0 = time.monotonic()
-    with Spinner(f"{label} oracle grading"):
-        result = grade_triple_generated(raw_json, **GRADE_KWARGS)
+    kw = dict(GRADE_KWARGS)
+    if proof_root is not None:
+        kw["workdir_root"] = proof_root
+    # a run with one status line for everything turns this spinner off
+    with (Spinner(f"{label} oracle grading") if spin
+          else contextlib.nullcontext()):
+        result = grade_triple_generated(raw_json, **kw)
     return {"verdict": result.verdict.name, "reason": result.reason,
             "result": asdict(result),
             "grade_wall_s": round(time.monotonic() - t0, 2)}
@@ -398,7 +473,10 @@ def finish_attempt(i, record, raw_json, usage, stop, raw_text, *, grade,
         record["raw_json"] = raw_json
         if show_raw:
             print(json.dumps(json.loads(raw_json), indent=2))
-    j = judge(raw_json, stop, record["scope"], grade, label=f"[{i}]")
+    rel, root = design_proofs(log_path, record)
+    record["proof_dir"] = rel
+    j = judge(raw_json, stop, record["scope"], grade, label=f"[{i}]",
+              proof_root=root / "r0")
     if raw_json is None:
         record["verdict"] = j["verdict"]
         record["raw_text"] = raw_text
@@ -411,6 +489,7 @@ def finish_attempt(i, record, raw_json, usage, stop, raw_text, *, grade,
     elif grade:
         record["grade_wall_s"] = j["grade_wall_s"]
         record["verdict"] = j["verdict"]
+        record["reason"] = j["reason"]
         record["result"] = j["result"]
         tally[j["verdict"]] = tally.get(j["verdict"], 0) + 1
         print(f"[{i}] {j['verdict']:12s} ({record['grade_wall_s']}s) "
@@ -422,6 +501,8 @@ def finish_attempt(i, record, raw_json, usage, stop, raw_text, *, grade,
                            raw_json if raw_json is not None else raw_text,
                            record.get("verdict"),
                            _messages(SYSTEM_PROMPT, user_msg),
+                           reason=record.get("reason"),
+                           proof_dir=f"{rel}/r0",
                            call={"usage": usage, "stop": stop,
                                  "batch_id": record.get("batch_id"),
                                  "custom_id": record.get("custom_id")},
@@ -442,7 +523,8 @@ def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
         n, cmd=cmd, grade=grade, model=model, constructs_path=constructs_path,
         scales_path=scales_path, even_seeds=even_seeds)
     if grade:
-        assert_exemplar_pool(exemplars)
+        assert_exemplar_pool(exemplars, proof_root=proofs_dir(log_path)
+                             / f"{run_id}_exemplars")
     tally = {}
     distill_path = distill_path or default_distill(log_path)
     with llm_client.call_log(calls_path(log_path)):
@@ -483,9 +565,10 @@ def run_batch(n, grade=True, cmd="", constructs_path=None, scales_path=None,
     exemplars, run_id, plans = plan_attempts(
         n, cmd=cmd, grade=grade, model=model, constructs_path=constructs_path,
         scales_path=scales_path, even_seeds=even_seeds)
-    if grade:
-        assert_exemplar_pool(exemplars)
     log = Path(log_path or LOG_PATH)
+    if grade:
+        assert_exemplar_pool(exemplars, proof_root=proofs_dir(log)
+                             / f"{run_id}_exemplars")
     manifest = log.parent / f"batch_{run_id}.json"
     attempts = [{"custom_id": f"a{i:04d}", "record": record,
                  "user_msg": user_msg, "extras": extras}
@@ -585,32 +668,119 @@ def collect(manifest, poll_s=60):
 # also saved as a training example in Formal Disco's shape (distill_log):
 #   one-step, no repairs   initiate   the answer as given
 #   one-step, repairs      generate   the ORIGINAL question -> the final design
-#   two-step               idea       the idea, counted a success only when its
-#                                     implementation passed (Formal Disco's rule)
-#                          implement  the idea -> the final design
+#   two-step               idea       the idea as the model sent it, counted a
+#                                     success only when its implementation
+#                                     passed (Formal Disco's rule)
+#                          implement  the idea -> the FIRST design, judged on
+#                                     its own; fixes are repair examples
+#                                     (Formal Disco's rule, 9 Oct 2026)
 #   every repair round     repair     design + checker findings -> new design
+# A check that ran out of time is never sent for repair (a repair cannot
+# fix the checker's clock) and its example is saved as an error. Every
+# check keeps its proof folder, one round per check (proofs_dir).
 # Designs run in parallel threads, so with batch=True every call goes
 # through llm_client's batch gate at half price; checking is limited to a
 # few at a time so a returning batch cannot overload the machine and push
 # checks past their time limit.
 
-NOTES_CAP = 4000
+# 12000 since 9 Oct 2026 (was 4000): a 32-bit, 8-entry design already gave a
+# 15,096-character counterexample, so bigger designs lost what broke
+NOTES_CAP = 12000
+
+
+class PipelineStatus:
+    """What every design of a two-step or self-repair run is doing, for one
+    status line (9 Oct 2026: these runs went silent while a batch was out,
+    sometimes for many minutes). Batches out are read from the manifests
+    the batch gate writes; spend from the records' usage."""
+    def __init__(self, n, model, batch, manifest_dir):
+        self.n, self.model, self.batch = n, model, batch
+        self.manifest_dir = Path(manifest_dir) if manifest_dir else None
+        self.started = datetime.now(timezone.utc)
+        self.records = []
+        self.spinner = None
+        self._stage = {}
+        self._lock = threading.Lock()
+        self._batches = (float("-inf"), "")
+
+    def set(self, i, stage):
+        """stage: writing (waiting for the model), checking or done."""
+        with self._lock:
+            self._stage[i] = stage
+
+    def say(self, text):
+        (self.spinner.say if self.spinner else print)(text)
+
+    def _batch_text(self, force=False):
+        if not self.batch or self.manifest_dir is None:
+            return ""
+        now = time.monotonic()
+        if not force and now - self._batches[0] < 2:
+            return self._batches[1]
+        out, oldest = 0, 0.0
+        for f in self.manifest_dir.glob("batch_*.json"):
+            try:
+                m = json.loads(f.read_text())
+                created = datetime.fromisoformat(m["created"])
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+            if created < self.started or m.get("ended") or m.get("error"):
+                continue
+            out += 1
+            oldest = max(oldest, (datetime.now(timezone.utc)
+                                  - created).total_seconds())
+        text = (f"{out} batch{'es' if out > 1 else ''} out for "
+                f"{int(oldest) // 60}:{int(oldest) % 60:02d}" if out else "")
+        self._batches = (now, text)
+        return text
+
+    def label(self, force=False):
+        with self._lock:
+            stages = [self._stage.get(i, "queued") for i in range(self.n)]
+        count = lambda s: sum(x == s for x in stages)            # noqa: E731
+        line = (f"{self.n} designs: {count('writing')} waiting for the "
+                f"model, {count('checking')} being checked, {count('done')} "
+                "done")
+        if count("queued"):
+            line += f", {count('queued')} not started"
+        parts = [line]
+        batches = self._batch_text(force)
+        if batches:
+            parts.append(batches)
+        spent_in = sum((r.get("usage") or {}).get("input", 0)
+                       for r in self.records)
+        spent_out = sum((r.get("usage") or {}).get("output", 0)
+                        for r in self.records)
+        parts.append(f"${llm_client.dollars(self.model, spent_in, spent_out, batch=self.batch):.2f} so far")
+        return " | ".join(parts)
+
+
+def _full_log(run):
+    """The whole proof log when it was kept, else the 40-line excerpt."""
+    path = run.get("log_path")
+    try:
+        if path and Path(path).exists():
+            return Path(path).read_text(errors="replace")
+    except OSError:
+        pass
+    return run.get("log_excerpt") or ""
 
 
 def checker_notes(verdict, reason, result):
     """What the checker found, for a repair question: the verdict and its
     reason, each leg's reason, the counterexample trace, and any error
-    lines from the proof logs."""
+    lines from the proof logs. A cover run's trace shows a condition being
+    reached, not a failure, so it is left out (9 Oct 2026)."""
     parts = [f"Verdict: {verdict}", f"Reason: {reason or '(none given)'}"]
     for leg in ("with_invariants", "without_invariants"):
         info = (result or {}).get(leg) or {}
         if info.get("reason"):
             parts.append(f"{leg.replace('_', ' ')}: {info['reason']}")
         for run in info.get("runs") or []:
-            if run.get("trace_text"):
+            if run.get("trace_text") and run.get("mode") != "cover":
                 parts.append(f"Counterexample ({leg.replace('_', ' ')}):\n"
                              f"{run['trace_text']}")
-            errors = [l.strip() for l in (run.get("log_excerpt") or "").splitlines()
+            errors = [l.strip() for l in _full_log(run).splitlines()
                       if "ERROR" in l or "error:" in l]
             if errors:
                 parts.append("Tool errors:\n" + "\n".join(errors[:6]))
@@ -641,9 +811,17 @@ def _step(user_msg, model, system=None, schema=None):
 
 
 def design_pipeline(i, record, user_msg, extras, *, mode, repairs, model,
-                    grade, log_path, distill_path, slots, tally, lock):
+                    grade, log_path, distill_path, slots, tally, lock,
+                    status=None):
+    stage = status.set if status else (lambda i, s: None)
+    say = status.say if status else print
     usage = {"input": 0, "output": 0}
     record.update(mode=mode, usage=usage)
+    stage(i, "writing")
+    rel, root = design_proofs(log_path, record)
+    record["proof_dir"] = rel
+    # filled in as the design goes, so a crash keeps the rounds already done
+    history = record["history"] = []
     seeds = seed_arguments(record, extras)
     meta = lambda: _meta(record)                               # noqa: E731
     if mode == "two-step":
@@ -662,6 +840,7 @@ def design_pipeline(i, record, user_msg, extras, *, mode, repairs, model,
                                  }.get(stop, "UNPARSEABLE")
             record["failed_step"] = "idea"
             record["raw_text"] = idea_raw
+            stage(i, "done")
             dump(record, log_path)
             distill_log.record(distill_path, "idea", seeds, idea_raw,
                                record["verdict"],
@@ -672,7 +851,9 @@ def design_pipeline(i, record, user_msg, extras, *, mode, repairs, model,
         first_kind, first_args = "implement", {
             "idea": idea, "exemplar_id": record["exemplar_id"]}
         first_user = IMPLEMENT_TEMPLATE.format(
-            idea=idea, exemplar=json.dumps(extras["exemplar"], indent=2))
+            idea=idea, scale=record.get("scale") or
+            "(no size seed: choose ordinary sizes)",
+            exemplar=json.dumps(extras["exemplar"], indent=2))
     else:
         first_kind = "generate" if repairs else "initiate"
         first_args, first_user = seeds, user_msg
@@ -680,12 +861,22 @@ def design_pipeline(i, record, user_msg, extras, *, mode, repairs, model,
     current, u, stop, last_call, raw_text = _step(first_user, model)
     _add(usage, u)
     with slots:
-        j = judge(current, stop, record["scope"], grade, label=f"[{i}]")
-    history = [dict(j, design=current if current is not None else raw_text,
-                    call=last_call)]
+        stage(i, "checking")
+        j = judge(current, stop, record["scope"], grade, label=f"[{i}]",
+                  proof_root=root / "r0", spin=status is None)
+    stage(i, "writing")
+    history.append(dict(j, design=current if current is not None else raw_text,
+                        call=last_call, proof_dir=f"{rel}/r0"))
+    # the first answer and its own result: Formal Disco's implement example
+    first = {"answer": current if current is not None else raw_text,
+             "verdict": j["verdict"], "reason": j["reason"], "call": last_call}
     attempt = 0
     while j["verdict"] != "NECESSARY" and current is not None \
             and attempt < repairs:
+        if timed_out(j):
+            record["repair_skipped"] = ("the checker ran out of time; a "
+                                        "repair cannot fix that")
+            break
         notes = checker_notes(j["verdict"], j["reason"], j["result"])
         pretty = json.dumps(json.loads(current), indent=2)
         repair_user = REPAIR_TEMPLATE.format(triple=pretty, notes=notes)
@@ -693,40 +884,58 @@ def design_pipeline(i, record, user_msg, extras, *, mode, repairs, model,
         _add(usage, u)
         attempt += 1
         with slots:
-            jn = judge(new, stop, record["scope"], grade, label=f"[{i}]")
+            stage(i, "checking")
+            jn = judge(new, stop, record["scope"], grade, label=f"[{i}]",
+                       proof_root=root / f"r{attempt}", spin=status is None)
+        stage(i, "writing")
         distill_log.record(distill_path, "repair",
                            {"triple": current, "notes": notes},
                            new if new is not None else new_raw, jn["verdict"],
                            _messages(SYSTEM_PROMPT, repair_user),
-                           repair_round=attempt, call=call, **meta())
+                           reason=jn["reason"], repair_round=attempt,
+                           proof_dir=f"{rel}/r{attempt}", call=call, **meta())
         history.append(dict(jn, design=new if new is not None else new_raw,
-                            call=call))
+                            call=call, proof_dir=f"{rel}/r{attempt}"))
         if new is None:
             break                       # nothing new to judge or repair
         current, j, last_call = new, jn, call
 
     record.update(verdict=j["verdict"], reason=j["reason"], result=j["result"],
-                  grade_wall_s=j["grade_wall_s"], repair_attempts=attempt,
-                  history=history)
+                  grade_wall_s=j["grade_wall_s"], repair_attempts=attempt)
     if current is not None:
         record["raw_json"] = current
     else:
         record["raw_text"] = raw_text
     dump(record, log_path)
-    distill_log.record(distill_path, first_kind, first_args,
-                       current if current is not None else raw_text,
-                       j["verdict"], _messages(SYSTEM_PROMPT, first_user),
-                       repair_attempts=attempt, call=last_call,
-                       chain_usage=usage, **meta())
+    if first_kind == "generate":
+        # the self-repairing generator: the question -> its final design
+        distill_log.record(distill_path, "generate", first_args,
+                           current if current is not None else raw_text,
+                           j["verdict"], _messages(SYSTEM_PROMPT, first_user),
+                           reason=j["reason"], repair_attempts=attempt,
+                           proof_dir=rel, call=last_call, chain_usage=usage,
+                           **meta())
+    else:
+        distill_log.record(distill_path, first_kind, first_args,
+                           first["answer"], first["verdict"],
+                           _messages(SYSTEM_PROMPT, first_user),
+                           reason=first["reason"], repair_attempts=attempt,
+                           proof_dir=f"{rel}/r0", call=first["call"],
+                           chain_usage=usage, **meta())
     if mode == "two-step":
-        distill_log.record(distill_path, "idea", seeds, record["idea"],
-                           j["verdict"], _messages(IDEA_SYSTEM, idea_user),
+        # as the model sent it (JSON), counted good only if its first design
+        # passed
+        distill_log.record(distill_path, "idea", seeds, idea_raw,
+                           first["verdict"], _messages(IDEA_SYSTEM, idea_user),
+                           reason=first["reason"], proof_dir=f"{rel}/r0",
                            call=record["idea_call"], chain_usage=usage,
                            **meta())
     with lock:
         tally[j["verdict"]] = tally.get(j["verdict"], 0) + 1
-    print(f"[{i}] {mode:9s} {str(j['verdict']):12s} after {attempt} "
-          f"repair(s)", flush=True)
+    stage(i, "done")
+    say(f"[{i}] {mode:9s} {str(j['verdict']):12s} after {attempt} "
+        f"repair(s)" + (" (checker ran out of time)"
+                        if record.get("repair_skipped") else ""))
     return record
 
 
@@ -735,16 +944,16 @@ def run_pipeline(n, *, mode="initiate", repairs=0, workers=8, batch=False,
                  constructs_path=None, scales_path=None, log_path=None,
                  model=None, even_seeds=False, distill_path=None):
     from concurrent.futures import ThreadPoolExecutor
-    import contextlib
     if mode not in ("initiate", "two-step"):
         raise ValueError(f"mode must be initiate or two-step, not {mode!r}")
     model = model or MODEL
     exemplars, run_id, plans = plan_attempts(
         n, cmd=cmd, grade=grade, model=model, constructs_path=constructs_path,
         scales_path=scales_path, even_seeds=even_seeds)
-    if grade:
-        assert_exemplar_pool(exemplars)
     log = Path(log_path or LOG_PATH)
+    if grade:
+        assert_exemplar_pool(exemplars, proof_root=proofs_dir(log)
+                             / f"{run_id}_exemplars")
     distill_path = distill_path or default_distill(log)
     slots = threading.BoundedSemaphore(
         grade_slots or max(1, (os.cpu_count() or 4) - 2))
@@ -758,22 +967,34 @@ def run_pipeline(n, *, mode="initiate", repairs=0, workers=8, batch=False,
         if batch:
             record["batch"] = True
 
+    status = PipelineStatus(len(plans), model, batch,
+                            log.parent / "batches" if batch else None)
+    status.records = [record for record, *_ in plans]
+
     def one(item):
         i, (record, user_msg, scope, extras) = item
         try:
             return design_pipeline(
                 i, record, user_msg, extras, mode=mode, repairs=repairs,
                 model=model, grade=grade, log_path=log,
-                distill_path=distill_path, slots=slots, tally=tally, lock=lock)
+                distill_path=distill_path, slots=slots, tally=tally, lock=lock,
+                status=status)
         except Exception as exc:
+            # the rounds already done stay in record["history"]
             record["error"] = f"{type(exc).__name__}: {exc}"
+            record["traceback"] = traceback.format_exc()
             dump(record, log)
-            print(f"[{i}] error: {record['error'][:120]} - logged, continuing")
+            status.set(i, "done")
+            status.say(f"[{i}] error: {record['error'][:120]} - logged, "
+                       "continuing")
             return record
 
     with llm_client.call_log(calls_path(log)), gate:
-        with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
-            out = list(ex.map(one, list(enumerate(plans))))
+        with Spinner(status.label) as spinner:
+            status.spinner = spinner
+            with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
+                out = list(ex.map(one, list(enumerate(plans))))
+        status.spinner = None
     if tally:
         print("\nverdict distribution:", dict(sorted(tally.items(),
                                                        key=lambda kv: str(kv[0]))))

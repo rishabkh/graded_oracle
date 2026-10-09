@@ -16,13 +16,12 @@ from prompts import SYSTEM_PROMPT, prompt_version                  # noqa: E402
 from extender.build_corpus import flatten_record                   # noqa: E402
 
 
-def test_the_current_prompt_stamps_its_line_cap():
-    """Read off the live prompt rather than pinned to a number, so
-    raising the cap does not require editing a test to match."""
+def test_the_current_prompt_has_no_line_cap_and_says_so():
+    """9 Oct 2026: the 200-line cap was removed, so new rows say "nocap",
+    apart from every earlier population ("200cap", "800cap", none)."""
     import re
-    m = re.search(r"under\s+(\d+)\s+lines", SYSTEM_PROMPT)
-    assert m, "the system prompt no longer states a line cap"
-    assert prompt_version(SYSTEM_PROMPT) == f"{m.group(1)}cap"
+    assert not re.search(r"under\s+(\d+)\s+lines", SYSTEM_PROMPT)
+    assert prompt_version(SYSTEM_PROMPT) == "nocap"
 
 
 def test_a_prompt_with_no_cap_says_so():

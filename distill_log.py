@@ -32,26 +32,34 @@ TYPES = ("idea", "implement", "initiate", "generate", "repair", "extend",
          "solve")
 SUCCESS = {"NECESSARY", "PROVEN"}
 # no design reached the checker, or the checker itself could not judge
+# (INCONCLUSIVE: the check without helper facts gave no verdict)
 ERROR = {"REFUSED", "TRUNCATED", "UNPARSEABLE", "ERROR", "TIMEOUT",
-         "CRASH", "check_error"}
+         "CRASH", "check_error", "INCONCLUSIVE"}
 
 _lock = threading.Lock()
 
 
-def outcome_of(verdict):
+def outcome_of(verdict, reason=None):
+    """A check that ran out of time says nothing about the design (9 Oct
+    2026: bigger designs make it common), so it is an error, not a
+    failure the model should learn to avoid."""
     if verdict in SUCCESS:
         return "success"
-    if verdict is None or verdict in ERROR:
+    if verdict is None or verdict in ERROR or "TIMEOUT" in (reason or ""):
         return "error"
     return "fail"
 
 
-def record(log, kind, arguments, response, verdict, messages, **metadata):
-    """Append one example. `messages` are the exact chat messages sent."""
+def record(log, kind, arguments, response, verdict, messages, reason=None,
+           **metadata):
+    """Append one example. `messages` are the exact chat messages sent;
+    `reason` is the checker's, which tells a timeout from a rejection."""
     if kind not in TYPES:
         raise ValueError(f"unknown call type {kind!r}; one of {TYPES}")
+    if reason is not None:
+        metadata["reason"] = reason
     line = {"prompt": kind, "arguments": arguments, "response": response,
-            "outcome": outcome_of(verdict),
+            "outcome": outcome_of(verdict, reason),
             "metadata": dict(metadata, verdict=verdict, messages=messages)}
     text = json.dumps(line, default=str) + "\n"
     log = Path(log)

@@ -121,7 +121,7 @@ def test_output_budget_can_be_lowered_for_a_local_server(monkeypatch):
     finally:
         monkeypatch.delenv("INITIATOR_MAX_TOKENS")
         importlib.reload(R)
-    assert R.MAX_TOKENS == 32000
+    assert R.MAX_TOKENS == 128000      # the model's own limit (9 Oct 2026)
 
 
 def test_a_generation_run_records_which_model_answered(monkeypatch):
@@ -207,7 +207,7 @@ def _fake_run(monkeypatch, tmp_path):
               "verilog": "module m(input clk);\n reg armed = 0;\n"
                          " always @(posedge clk) if (armed) assert (1);\n"
                          "endmodule\n", "invariants": ["1"]}
-    monkeypatch.setattr(R, "assert_exemplar_pool", lambda ex: None)
+    monkeypatch.setattr(R, "assert_exemplar_pool", lambda ex, **kw: None)
     asked = []
 
     def call_model(msg, model=None):
@@ -354,7 +354,7 @@ def _fake_batch(monkeypatch, R, outcome=None, fail_submit=False):
 
 
 DROP = {"timestamp", "run_id", "cmd", "batch_id", "custom_id", "batch",
-        "grade_wall_s"}
+        "grade_wall_s", "proof_dir"}      # proof_dir holds the run id
 
 
 def test_a_batch_run_judges_every_answer_exactly_like_a_direct_run(monkeypatch,

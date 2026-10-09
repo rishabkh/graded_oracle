@@ -54,7 +54,7 @@ class Fake:
         self.real_call_model = R.call_model
         monkeypatch.setattr(R, "call_model", call_model)
         monkeypatch.setattr(R, "grade_triple_generated", grade)
-        monkeypatch.setattr(R, "assert_exemplar_pool", lambda ex: None)
+        monkeypatch.setattr(R, "assert_exemplar_pool", lambda ex, **kw: None)
         self.log = tmp_path / "log.jsonl"
         self.distill = tmp_path / "distill.jsonl"
 
@@ -107,7 +107,9 @@ def test_two_step_saves_the_idea_and_its_implementation(monkeypatch, tmp_path):
     assert f.prompts[1][1].startswith("## Design idea\n\nIDEA TEXT")
     by = {e["prompt"]: e for e in ex}
     assert set(by) == {"idea", "implement"}
-    assert by["idea"]["response"] == "IDEA TEXT" and by["idea"]["outcome"] == "success"
+    # saved exactly as the model sent it (JSON, forced by IDEA_SCHEMA)
+    assert json.loads(by["idea"]["response"]) == {"idea": "IDEA TEXT"}
+    assert by["idea"]["outcome"] == "success"
     assert by["idea"]["arguments"]["construct"] == row["construct"]
     assert by["idea"]["arguments"]["readme"]                     # the full README text
     assert by["implement"]["arguments"]["idea"] == "IDEA TEXT"
