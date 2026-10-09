@@ -1,4 +1,4 @@
-# Size seeds for v5 (8 Oct 2026). 100 lines; a repeated line weighs more.
+# Size seeds weighted like real hardware (8 Oct 2026). 100 lines; a repeated line weighs more.
 # Rule: cover the sizes real chips use, weighted the way real chips use
 # them, decided from general sources only, never from the test sets.
 # Sources (gathered and double-checked by two agents, 8 Oct 2026): lowRISC

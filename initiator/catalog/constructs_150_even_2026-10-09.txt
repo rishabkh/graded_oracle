@@ -1,0 +1,150 @@
+Activation function LUT: Maps an input value to a nonlinear output using a piecewise table memory with optional interpolation registers.
+Binary encoder: Converts an asserted input line into its binary index, combinationally.
+Gated event counter: Counts external input edges only while a gate input is asserted and latches the total when the gate closes, keeping an edge counter, a gate-state flop and a latched-result register.
+Montgomery multiplier: Computes modular products in Montgomery form by interleaved multiply-and-reduce steps, keeping partial-product, modulus, and loop-index registers.
+Bayer demosaic unit: Reconstructs full-color pixels from a mosaic sensor pattern using neighborhood registers and a phase indicator for the filter position.
+SIMD partitioned divider: Performs several independent narrow divisions in parallel lanes of one wide iterative datapath, keeping per-lane partial-remainder, divisor and quotient fields plus a lane-width mode register.
+2D strided transfer engine: Moves a rectangular region by transferring rows of fixed length and skipping a programmable stride between them, keeping row-length, row-count, source/destination stride and current row/column counters.
+Breakpoint comparator unit: Compares instruction or data addresses against programmed watch values, keeping address, mask, and control registers.
+Welch spectral averager: Averages power spectra across successive FFT frames by accumulating squared bin magnitudes in per-bin memory, keeping the bin accumulation RAM, a bin index counter and a frame counter.
+Nonlinear feedback shift register: Shifts a register by one position per clock and feeds back a nonlinear Boolean function of selected taps into the input to generate sequences, holding the N-bit state register.
+AXI ID remapper: Compresses wide upstream transaction IDs into a smaller downstream ID space, keeping a table of remapped-ID entries each with its original ID and an outstanding-transaction count.
+Edge detector: Flags rising or falling transitions by comparing a signal with its value stored in a delay flop.
+Clocked SR flip-flop: Keeps one state bit that is set by the S input or cleared by the R input, with changes taking effect only on the active clock edge.
+I2C spike suppression filter: Removes glitches shorter than a programmed width from SCL and SDA inputs, keeping a per-line sample shift register, a stable-output register and a filter-length configuration register.
+Secure key slot vault: Stores cryptographic keys in a bank of write-only slots that feed cipher cores directly without software readback, keeping per-slot key registers, usage-permission bits and sticky lock bits.
+8b/10b encoder: Maps data bytes to balanced ten-bit symbols, keeping a running disparity bit.
+LSSD shift-register latch: A level-sensitive scan design latch pair in which an L1 latch with separate system and scan clocks feeds an L2 latch, and each latch keeps one bit.
+RMS power meter: Measures signal power by squaring samples, accumulating them over a programmable window and outputting the mean square or its root, keeping a sum-of-squares accumulator, a window counter and a result register.
+Interleaved floating-point accumulator: Hides adder latency by rotating additions across several partial-sum registers selected by a slot counter and reducing them into one sum at the end of a sequence.
+Synchronous binary up counter: Increments a binary count register by one on every enabled clock edge, using a common clock and parallel carry logic; it keeps a single N-bit count register.
+Hamming encoder: Computes check bits for a data word and emits the combined codeword, optionally registering it.
+Hardware page-table walker: Issues memory reads to traverse page-table levels, keeping level counter, current descriptor, and walk-state registers.
+Belt register file: Replaces named destinations with a fixed-length queue of recent results addressed by position from the front, storing the belt slots and a head index advanced as each result drops onto it.
+Fletcher checksum unit: Computes a Fletcher checksum over a byte stream using two modular running-sum registers that are updated on every input word.
+Fractional-N modulus controller: Generates a per-cycle divide-ratio sequence whose average equals an integer plus a fraction using a multi-stage sigma-delta modulator, keeping the integer and fraction setting registers and the modulator accumulator registers.
+PRBS checker with error counter: Self-synchronizes to an incoming PRBS stream and counts bit mismatches, keeping a local reference shift register, a sync flag and a saturating error counter.
+Keypad row-drive decoder: Cycles a row counter and decodes it so one keypad row is driven low at a time while the columns are sampled, keeping the row counter and a per-row scan timer.
+Muller C-element: Sets its output to the common input value when all inputs agree and otherwise holds its previous output, keeping that one output bit as state.
+Return address stack: Pushes return addresses on calls and pops them on returns, keeping an address array and a top-of-stack pointer.
+Leading-zero counter: Reports how many zero bits precede the most significant one bit of an input word, using a priority reduction tree.
+Modulo-by-constant reducer: Computes the remainder of a wide input modulo a fixed constant by folding chunks with precomputed weights, keeping a folded-residue accumulator and chunk index register.
+Microcode sequencer: Selects the next control-store address from branch, jump, and increment sources, keeping a microprogram counter and a microsubroutine return register.
+Polar successive-cancellation decoder: Decodes polar codes by traversing a binary tree of f/g LLR operations, keeping an LLR memory per tree stage, partial-sum registers and a frozen-bit mask ROM.
+Memory-protection region checker: Compares an access address against several base/limit region pairs to decide whether it falls inside a permitted region, storing per-region base, limit and permission registers plus a registered fault flag.
+Tiled multi-precision multiplier: Builds a wide product by scheduling narrower hardware multiplies over operand limb pairs and accumulating them at the correct shifted offsets; it keeps limb index counters, operand limb buffers and a wide multi-word accumulator.
+Branch mask allocator: Assigns each in-flight speculative branch a tag bit and broadcasts kill or clear signals when branches resolve, keeping a free-tag vector and per-instruction branch dependency masks.
+LIN bus controller: Sends and receives LIN frames including the break field, sync byte, protected identifier and classic or enhanced checksum, keeping a frame-phase state register, an identifier register, a data buffer and a running checksum register.
+Command/address parity retry unit: Computes parity on each issued command and address, logs commands in a replay history and re-issues them after the DRAM signals a parity alert, holding the history buffer, a replay pointer and an error status register.
+GPIO port: Provides software-controlled pin output, input sampling, and direction, keeping output-data, direction, and input-capture registers.
+Microwire interface: Implements the National Microwire half-duplex serial protocol with start bit, opcode, address and data phases, keeping a phase state register, an opcode/address shift register and a data shift register.
+Carry-save adder: Reduces three input vectors to a sum vector and a carry vector, optionally registering both outputs for the next reduction stage.
+Table-based routing lookup: Maps a packet's destination ID to an output port through a programmable routing table memory, with configuration write registers for updating entries.
+Atomic compare-and-swap unit: Reads a memory location, compares it to an expected value, and conditionally writes, keeping read-data, expected, and success-flag registers.
+Farrow fractional-delay interpolator: Produces samples at arbitrary fractional positions by evaluating a polynomial in the fractional delay over sub-filter outputs, keeping a shared input delay line, the sub-filter output registers and a fractional-mu register.
+Residue number system ALU: Performs addition, subtraction and multiplication independently in several small moduli channels with no carry between them; it keeps one residue register per modulus channel.
+Von Neumann debiaser: Removes bias from a raw random bitstream by examining non-overlapping bit pairs and emitting one bit for each unequal pair, storing the pending first bit of a pair and an output-valid flag.
+Min/max selector: Routes the smaller and the larger of two inputs to separate outputs using a single magnitude decision, holding the selected results in output registers.
+Snooping bus cache controller: Watches the shared bus for other masters' transactions, looks up their addresses in a duplicate tag copy and supplies data, invalidates or downgrades lines, keeping the duplicate tags and a pending-snoop register.
+IQ imbalance corrector: Compensates gain and phase mismatch between the I and Q branches by applying a correction matrix to each complex sample, holding programmable gain and phase coefficients and pipelined corrected outputs.
+Multi-lane deskew buffer: Aligns data from several lanes by delaying each lane until all have seen a common alignment marker, keeping per-lane delay FIFOs, per-lane marker-seen flags and an aligned flag.
+Dirty-bit tracking RAM: A RAM that sets a per-block dirty flag whenever any word in that block is written so software can find modified regions; it keeps the data array and a dirty-bit array.
+Programmable logic array: Generates sum-of-products outputs from a programmable AND plane feeding a programmable OR plane, keeping the configuration bits of both planes and optionally registered outputs.
+Edge-combining frequency doubler: Produces a clock at twice the input frequency by XORing the input with a delayed copy of itself, keeping a delay-select register that sets the output pulse width.
+AXI interconnect address decoder: Routes transactions to target ports based on address ranges stored in region base/limit registers.
+Gamma lookup table: Maps input intensity values through a writable table memory to corrected output values.
+Banked memory conflict arbiter: Resolves simultaneous accesses from many ports to multiple memory banks by arbitrating separately per bank, keeping a priority pointer per bank and a per-port stall register.
+Registered 1-to-N demultiplexer: Steers one input word onto the output chosen by a select code and holds every output in its own register, with the select itself captured in a select register.
+UART auto-baud detector: Measures the width of the start bit or a known sync character on the receive line to derive a baud divisor, holding an edge-capture timer, a measurement-state register and the resulting divisor register.
+Bitfield insert unit: Left-shifts a field to a given offset and merges it into a destination word under a generated mask, keeping the destination, field, offset and length registers.
+SD card host controller: Issues command/response transactions and block data transfers, keeping argument, response, and transfer-state registers.
+Programmable-watermark FIFO: Adds configurable almost-full and almost-empty threshold registers to a FIFO and keeps registered flags that update when the fill level crosses those thresholds.
+Asynchronous SRAM/NOR bus controller: Generates chip-select, output-enable and write-enable strobes with programmable setup, access and hold wait states for external parallel memories, keeping per-chip-select timing registers and a phase counter.
+JTAG TAP controller: Sequences the standard test access state machine and routes data to instruction and data registers.
+Discrete cosine transform unit: Transforms a block of samples into frequency coefficients through row and column passes, keeping an intermediate block memory.
+Shadowed configuration register bank: Accepts writes into shadow registers and transfers them to active registers on a commit strobe.
+Trivium stream cipher core: Generates keystream bits from three coupled nonlinear shift registers totaling 288 bits, holding that register state and a warm-up cycle counter used during initialization.
+Zigzag scan reorder buffer: Reorders an 8x8 coefficient block between raster and zigzag order using a block memory and an index-sequence ROM.
+Stream buffer: Prefetches sequential lines after a miss into a small FIFO beside the cache and supplies them on later misses, keeping the stream head address, entry tags, valid bits and line data.
+Keccak-f permutation core: Executes the theta, rho, pi, chi and iota steps of the Keccak-f[1600] permutation for SHA-3 and SHAKE, keeping the 5x5 lane state array and a round index counter.
+Performance counter block: Counts selected microarchitectural events in programmable counters with per-counter event-select registers.
+I2S audio interface: Serializes or deserializes left/right audio samples against word-select and bit clocks, keeping sample shift registers and a channel flag.
+Stepper motor sequencer: Drives coil phase patterns in order at a programmable step rate, keeping a phase index register and step-rate divider.
+Reset escalation controller: Promotes repeated local fault resets to a broader subsystem or chip-wide reset, keeping a fault occurrence counter, an escalation level register and a decay timer.
+USB endpoint buffer manager: Manages per-endpoint data buffers and toggle bits, keeping endpoint configuration, buffer pointers, and data-toggle flags.
+Frame delineation synchronizer: Finds frame boundaries in a serial stream by moving through hunt, presync and sync states, holding the state register plus counters of consecutive good and bad frame headers.
+Complex digital mixer: Multiplies incoming I/Q samples by a complex local-oscillator sample to shift the signal in frequency, holding pipeline registers for the four partial products and the summed outputs.
+Rounding unit: Applies a selected rounding mode to a truncated result using guard, round, and sticky bits stored in a small status register.
+Instruction fetch unit: Generates fetch addresses and captures returned instruction bytes, keeping a fetch pointer and an alignment buffer.
+Framebuffer scanout controller: Reads pixel data from memory in raster order to feed a display, keeping a base-address register, current-address counter, and line counter.
+SMBus timeout and PEC unit: Monitors SMBus transactions for SCL-low timeouts and computes the CRC-8 packet error code over transferred bytes, keeping a low-time counter, a timeout flag and a PEC accumulator register.
+Memory BIST controller: Generates march-test address and data patterns and compares read-back data, keeping address counter, pattern state, and fail flag registers.
+Read-response return multiplexer: Routes read data back from whichever target answered a request to the requester, keeping a table of outstanding transaction IDs mapped to source ports.
+Serializer: Converts a parallel word into a high-rate serial bitstream using a load register, shift register, and bit counter.
+Exponential backoff controller: Schedules retransmission after collisions in a shared-medium protocol, holding a collision-attempt counter, a randomly loaded backoff slot counter and a waiting/transmitting state.
+eFuse/OTP controller: Sequences programming and sensing of one-time-programmable bits, keeping a shadow register of read fuse values and a program state machine.
+Trace buffer: Records a rolling window of sampled signals into a circular memory with a write pointer and trigger-position register.
+Flow-hash steering demultiplexer: Hashes header fields of each incoming packet and uses the hash to index an indirection table that names the destination queue, storing the hash register and the programmable table.
+MISR signature analyzer: Compresses an observed data stream into a signature register updated each cycle by feedback and XOR.
+OR gate: Outputs logic 1 when any of its inputs is 1, and holds no internal state.
+Bidirectional associative map: Holds paired fields that can each be searched in parallel, so a lookup by either key or value returns the address and the partner field, keeping two content arrays and valid bits.
+Metastability-detecting synchronizer: Samples an asynchronous input in parallel flops and flags disagreement between the main and a shadow sampling register, keeping both sample registers and an error-flag register.
+Constellation mapper ROM: Maps groups of coded bits to in-phase and quadrature amplitude levels for a selected modulation scheme, keeping I and Q level tables per modulation and a modulation-select register.
+LZ77 match finder: Searches a history window for the longest match with current input, keeping a history memory, candidate position registers, and match-length register.
+Lockstep duplicate-and-compare checker: Runs two copies of a logic block on the same inputs and raises a fault on any output mismatch, keeping a registered mismatch flag and a sticky error-status register.
+Interrupt vector table unit: Translates an accepted interrupt id into a handler address through a programmable table memory.
+Gray-to-binary converter: Converts a Gray-coded input into plain binary via a prefix-XOR network, holding no state.
+Valid/ready stream demultiplexer: Forwards a handshaked input to one selected output channel, propagating that channel's ready back upstream, and keeps a registered select plus a per-output valid register.
+Sticky-bit right-shift register: Shifts a mantissa-style word right one position per clock while ORing every bit that falls off the low end into a sticky flip-flop, storing the data register and the sticky bit.
+Quadrature decoder: Derives position and direction from two phase-shifted encoder inputs, keeping previous-sample flops and a position counter.
+Weighted round-robin arbiter: Cycles through requesters in turn but lets each hold the grant for several consecutive slots, keeping a rotating pointer, per-requester weight registers and a remaining-slots counter.
+DVFS controller: Requests voltage and frequency operating points based on load inputs, keeping current-point and request-pending registers.
+Layer-2 MAC learning table: Learns source addresses with their ingress ports and looks up destination addresses in parallel to return a port, keeping MAC keys, port fields, valid bits and per-entry aging bits refreshed on hits.
+Floating-point log2 approximation unit: Computes log2 of a floating-point input by taking the unbiased exponent as the integer part and a table-plus-polynomial evaluation of the significand, holding coefficient ROM and partial-result pipeline registers.
+Range mask decoder: Takes start and end bit indices and produces a contiguous mask of asserted lines between them, as used for bit-field insert and extract, holding the start and end index registers.
+Cycle timestamp counter: Provides a free-running wide cycle count readable as a register pair with a latched snapshot register.
+Elliptic-curve point adder/doubler: Performs point addition and doubling in projective or Jacobian coordinates by sequencing field multiplications and additions, holding the X, Y, Z coordinate registers of the operands and temporaries.
+SIMD packed ALU: Performs one selected add, subtract or logic operation in parallel on byte, halfword or word lanes of a wide operand, breaking carries at lane boundaries per a lane-size control; it keeps a result register and a per-lane flag vector register.
+Memory-to-stream reader: Reads a memory buffer and emits it as a stream with start and last markers on packet boundaries, keeping read pointer, remaining-length counter and packet-size registers.
+Serial Wire Debug target port: Decodes SWD request packets, drives acknowledge and data phases with parity, and handles line turnaround, keeping a request register, a data shift register, a parity accumulator and a protocol-phase register.
+Goertzel tone detector: Measures the energy of one frequency bin over a block of samples with a second-order recursion, keeping two state registers, a sample counter and a coefficient register.
+Xorshift PRNG: Generates pseudorandom words by shifting and XORing an internal state register each cycle.
+Cross-domain register access bridge: Carries bus read/write transactions between domains by holding address, write data and read data in registers and exchanging request and response toggles through synchronizers.
+Programmable delay pulse generator: Outputs a pulse of programmed width starting a programmed delay after an input trigger, keeping a delay register, a width register, a phase counter and a delay/width/idle phase register.
+Gated JK latch: A level-enabled latch whose J and K inputs set, reset or invert the stored bit while the enable is asserted, and it holds that bit otherwise.
+Majority-vote sample filter: Shifts the most recent N samples of a noisy input into a short register and drives a filtered output equal to the majority value of that window, keeping the sample window register and the registered output.
+Data bus inversion encoder: Inverts a byte lane on write when more than half its bits would be driven low and restores data on read, keeping the per-lane DBI flag registers for the current beat.
+Scan lockup latch: A latch placed between scan segments in different clock domains that holds the shifted bit for half a cycle to prevent hold races during scan shift.
+Hilbert transformer: Produces a 90-degree phase-shifted quadrature copy of a real input with an antisymmetric FIR, holding a delay line of input samples and a matched delay that aligns the in-phase output.
+NaN propagation and canonicalization unit: Selects which input NaN, if any, propagates to the result, quiets signaling NaNs or replaces them with a canonical NaN, and registers the chosen payload and an invalid indication.
+Presettable loadable counter: Counts normally but can be loaded in parallel with an arbitrary value from an input bus on a load strobe; it keeps a count register.
+Chipkill symbol-correcting decoder: Corrects failure of an entire DRAM device by treating each chip's bits as one symbol of a symbol-based code, keeping a syndrome register and a failed-chip identifier register.
+Translation lookaside buffer: Caches virtual-to-physical page translations in a tag/data array with valid, ASID, and permission bits.
+Vector register file: Stores wide vector registers sliced into lanes, each lane with its own read and write ports feeding a vector ALU lane, plus per-register element-length configuration state.
+Parity tree: Reduces a data word to a single parity bit through an XOR tree, with an optional output register.
+PLL startup sequencer: Steps a PLL through power-up, band calibration, loop closure and lock wait before releasing the output clock, keeping a sequence state register and a settle-time counter.
+WS2812 single-wire LED encoder: Translates 24-bit colour words into the timed high/low pulse pattern for addressable LED strings followed by a reset latch interval, keeping a pixel shift register, a bit counter, a pulse-width timer and a reset-gap counter.
+Mutual-exclusion request arbiter: Resolves two asynchronous requests with a cross-coupled latch followed by a metastability filter, holding which requester currently owns the shared resource.
+Indirect target predictor: Predicts targets of register-indirect jumps by hashing the branch address with path history into a tagged target table, keeping target addresses, tags and a path-history register.
+Leading-zero anticipator: Predicts the normalization shift amount in parallel with mantissa addition from the two aligned operands, holding a registered indicator string and predicted shift count.
+Constant reciprocal-multiply divider: Divides by a fixed or preloaded divisor by multiplying with a stored magic reciprocal and shifting, holding the magic constant, shift amount and pipelined product registers.
+Vending machine controller: Accepts coin inputs, tracks deposited value in a credit register and the transaction step in a state register, and issues vend and change-return outputs when a selection is made.
+Convolutional interleaver: Spreads burst errors by delaying successive symbols through branches of increasing length, implemented with per-branch delay memories and a commutator branch counter.
+GF(2^m) multiplier: Multiplies two binary-field elements with polynomial reduction, keeping an accumulator register and the irreducible-polynomial configuration.
+Dependency matrix wakeup unit: Wakes waiting instructions when their producers issue by consulting a matrix of producer-consumer dependency bits, keeping the dependency matrix and per-entry pending-source flags.
+CAN protocol controller: Handles arbitration, bit stuffing, CRC, and acknowledgement for frames, keeping frame buffers, bit timing counters, and error counters.
+Read-after-write hazard detector: Compares incoming read addresses against pending entries in the write queue and forwards or stalls on a match, keeping an address/byte-mask array of queued writes and a match vector.
+Tri-state buffer: Drives its input onto the output when enabled and leaves the output high-impedance otherwise, holding no stored state.
+SPI master: Drives chip-select, clock, and serial data for a transfer, keeping a shift register, bit counter, and mode configuration bits.
+Saturating fixed-point adder: Adds two fixed-point values and clamps the result to the representable range, keeping a sticky saturation flag register.
+Benes permutation network: Realizes arbitrary permutations through two butterfly halves of 2x2 switches whose settings are held in configuration registers.
+Doorbell register block: Lets a remote agent set notification bits that a local agent reads and clears, keeping per-channel pending bits.
+Polyphase resampler: Changes sample rate using sub-filter banks selected by a phase accumulator, keeping sample history and phase registers.
+Stochastic computing ALU: Operates on random bitstreams whose density encodes values, using AND gates for multiplication and multiplexers for scaled addition, then counts output ones to recover a result; it keeps the output ones counter and a stream-length counter.
+Ring-oscillator entropy harvester: Samples free-running oscillator phases to collect raw entropy bits into a collection shift register and sample counter.
+Mode-selectable signed/unsigned comparator: Produces less-than, equal and greater-than flags for two operands under either two's-complement or unsigned interpretation, with a mode register selecting the interpretation and a registered flag output.
+Snoop filter: Tracks which caches may hold which lines using a presence-vector array indexed by address.
+Automatic gain control loop: Adjusts an applied gain from measured signal amplitude, keeping an amplitude estimate register and a gain register.
+DFE tap adaptation engine: Adjusts decision-feedback equalizer tap weights using sign-sign LMS on slicer errors, keeping a coefficient register per tap, a history of past decided bits and a step-size register.
+ROM block: Returns fixed constant data for an applied address, optionally through a registered output stage.
+Pulse-swallow counter: Combines a dual-modulus prescaler with a program counter and a swallow counter to realize an overall division ratio of N times P plus S; it keeps the program count register and the swallow count register.

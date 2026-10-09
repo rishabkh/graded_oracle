@@ -1,0 +1,29 @@
+{
+ "timestamp": "2026-10-08T22:28:18.926568+00:00",
+ "replaces": "the plain seeded draw of 150 from the 300 (8 Oct 2026; in git history), which held 16 adders and touched 63 of 119 outside categories",
+ "pool": "all 1008 new checked kinds (the 500 new kinds in use plus the 508 leftovers that passed the same repeat check); the original 32 are left out because the September designs used them",
+ "excluded": {
+  "adders_with_no_state_of_their_own": [
+   "Ripple-carry adder",
+   "Carry-select adder",
+   "Kogge-Stone prefix adder",
+   "Sparse-tree adder",
+   "Carry-increment adder",
+   "Full subtractor",
+   "Borrow-propagate subtractor",
+   "Incrementer",
+   "Absolute-value unit",
+   "Signed-digit redundant adder"
+  ],
+  "why": "the same job (a + b) with a different speed trick, or a trivial piece, holding no state; our designs are about relations between stored values",
+  "judges_disagreed": 18
+ },
+ "usable": 980,
+ "categories_from": "kind_categories_2026-10-09.json (category = the primary area both judges chose)",
+ "rule": "catalog_kinds.even_draw(usable, 150, seed): one kind from every category, then a second from categories that still have one, categories and kinds in a seeded random order",
+ "seed": 20261009,
+ "categories_covered": 102,
+ "categories_with_two": 48,
+ "split": "catalog_kinds.balanced_split(the 150, family, seed): a category with two kinds puts one in each half; categories with one kind are dealt to the halves in turn, family by family, so every family differs by at most one. First half -> constructs_150_even_2026-10-09_twostep.txt (idea, then design); second -> constructs_150_even_2026-10-09_onestep.txt (design directly, with self-repair). Replaces alternating down the draw order, which put 17 arithmetic kinds in one half and 4 in the other (checked 9 Oct 2026, before any design was made).",
+ "split_seed": 20261009
+}

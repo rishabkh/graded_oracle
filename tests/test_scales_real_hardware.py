@@ -1,4 +1,4 @@
-"""The v5 size seeds (8 Oct 2026): sizes real chips use, weighted the way
+"""The size seeds weighted like real hardware (8 Oct 2026): sizes real chips use, weighted the way
 real chips use them, from general sources only."""
 import re
 import sys
@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT / "initiator"))
 
 import run as R                                                   # noqa: E402
 
-FILE = ROOT / "initiator" / "scales_v5.txt"
+FILE = ROOT / "initiator" / "scales_real_hardware.txt"
 LINES = R._pool(FILE)
 
 
@@ -52,3 +52,12 @@ def test_the_file_records_where_the_weights_came_from():
     for word in ("never from the test sets", "Ibex", "OpenTitan",
                  "seed 20261008", "Rishab's call"):
         assert word in head, word
+
+
+def test_the_trial_seeds_are_the_biggest_real_hardware_seeds():
+    """For trials that measure cost and proof time at the top of the range
+    (9 Oct 2026): every distinct line with 64 or more storage entries or
+    128-bit words, once each, and nothing else."""
+    big = R._pool(ROOT / "initiator" / "scales_biggest_for_trials.txt")
+    want = sorted({l for l in LINES if _entries(l) >= 64 or _width(l) == 128})
+    assert sorted(big) == want and len(big) == len(set(big))

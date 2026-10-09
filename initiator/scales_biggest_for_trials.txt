@@ -1,0 +1,22 @@
+# The biggest size seeds of scales_real_hardware.txt, once each: every distinct line
+# with 64 or more storage entries or 128-bit words. For trials that
+# measure cost and proof time at the top of the range (9 Oct 2026);
+# real runs use scales_real_hardware.txt, weighted like real chips.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 96 entries.
+Make the design's counters and data words 8-bit (wider only where a count needs more); if it stores several items, give that storage 128 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 96 entries.
+Make the design's counters and data words 16-bit (wider only where a count needs more); if it stores several items, give that storage 256 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 128 entries.
+Make the design's counters and data words 32-bit (wider only where a count needs more); if it stores several items, give that storage 256 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 64 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 128 entries.
+Make the design's counters and data words 64-bit (wider only where a count needs more); if it stores several items, give that storage 256 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 2 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 4 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 8 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 16 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 24 entries.
+Make the design's data words 128-bit, with counters and pointers only as wide as they need to be; if it stores several items, give that storage 128 entries.

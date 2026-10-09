@@ -296,6 +296,69 @@ def pick(kinds, k, seed):
     return random.Random(seed).sample(kinds, k)
 
 
+def even_draw(items, k, seed):
+    """`items` are (category, kind) pairs. Take one kind from every
+    category, then a second from every category that still has one, and so
+    on, until `k` are taken. The categories, and the kinds within each, are
+    first put in a random order fixed by `seed` (kinds sorted by name
+    before shuffling, so the input order does not matter). Returns the
+    (category, kind) pairs in draw order. 9 Oct 2026: a plain draw followed
+    our lists' lean towards textbook arithmetic."""
+    if k > len(items):
+        raise ValueError(f"cannot draw {k} from {len(items)}")
+    rng = random.Random(seed)
+    by = {}
+    for cat, kind in items:
+        by.setdefault(cat, []).append(kind)
+    cats = sorted(by)
+    rng.shuffle(cats)
+    for c in cats:
+        by[c].sort(key=lambda kind: kind["name"])
+        rng.shuffle(by[c])
+    out, depth = [], 0
+    while len(out) < k:
+        for c in cats:
+            if depth < len(by[c]) and len(out) < k:
+                out.append((c, by[c][depth]))
+        depth += 1
+    return out
+
+
+def balanced_split(items, family, seed):
+    """Split (category, kind) pairs into two halves with the same mix, so
+    the two ways of making designs can be compared fairly (9 Oct 2026). A
+    category with two kinds puts one in each half; categories with one
+    kind are dealt to the halves in turn, family by family (`family` maps a
+    category to its family), so every family's count differs by at most
+    one and the halves differ in size by at most one. The order within each
+    category and family is fixed by `seed`; the input order does not
+    matter. Returns (first half, second half)."""
+    rng = random.Random(seed)
+    by = {}
+    for cat, kind in items:
+        by.setdefault(cat, []).append(kind)
+    halves, singles = ([], []), []
+    for cat in sorted(by):
+        kinds = sorted(by[cat], key=lambda kind: kind["name"])
+        if len(kinds) == 1:
+            singles.append((cat, kinds[0]))
+            continue
+        rng.shuffle(kinds)
+        for n, kind in enumerate(kinds):
+            halves[n % 2].append((cat, kind))
+    by_family = {}
+    for cat, kind in singles:
+        by_family.setdefault(family[cat], []).append((cat, kind))
+    turn = 0
+    for fam in sorted(by_family):
+        group = by_family[fam]
+        rng.shuffle(group)
+        for pair in group:
+            halves[turn % 2].append(pair)
+            turn += 1
+    return halves
+
+
 def construct_line(kind):
     """One generator seed line, in the format of constructs.txt."""
     return " ".join(f"{kind['name']}: {kind['description']}".split())

@@ -244,3 +244,72 @@ def test_by_category_reports_progress_after_every_call(monkeypatch):
     ck.by_category(3, 2, known=[], call=call, workers=2,
                    progress=lambda done, total, usage: seen.append((done, total)))
     assert sorted(seen) == [(1, 4), (2, 4), (3, 4), (4, 4)]
+
+
+# --- an even draw across outside categories (9 Oct 2026) -------------------
+# A plain random draw of 150 from our lists gave 16 adders and touched 63 of
+# 119 outside categories, because the lists lean on textbook arithmetic.
+
+def _items(spec):
+    return [(c, {"name": f"{c}{i}", "description": "d"})
+            for c, n in spec.items() for i in range(n)]
+
+
+def test_an_even_draw_takes_one_per_category_before_any_second():
+    from collections import Counter
+    items = _items({"A": 5, "B": 1, "C": 3, "D": 2})
+    first = ck.even_draw(items, 4, seed=1)
+    assert sorted(c for c, _ in first) == ["A", "B", "C", "D"]
+    got = ck.even_draw(items, 7, seed=1)
+    assert Counter(c for c, _ in got) == {"A": 2, "B": 1, "C": 2, "D": 2}
+    assert sorted(c for c, _ in got[:4]) == ["A", "B", "C", "D"]
+
+
+def test_an_even_draw_is_fixed_by_its_seed_not_by_input_order():
+    items = _items({"A": 5, "B": 4, "C": 3})
+    a = ck.even_draw(items, 6, seed=7)
+    b = ck.even_draw(list(reversed(items)), 6, seed=7)
+    assert a == b
+    assert len({k["name"] for _, k in a}) == 6          # no repeats
+
+
+def test_an_even_draw_cannot_take_more_than_there_is():
+    with pytest.raises(ValueError):
+        ck.even_draw(_items({"A": 2}), 3, seed=1)
+
+
+# --- splitting the 150 between the two ways of making designs --------------
+# (9 Oct 2026) Alternating down the draw order put 17 arithmetic kinds in
+# one half and 4 in the other, so comparing the two methods would have
+# compared categories instead.
+
+def _fam_items():
+    fam = {"A": "arith", "B": "arith", "C": "arith", "D": "mem", "E": "mem",
+           "F": "video", "G": "video", "H": "video"}
+    items = _items({"A": 2, "B": 1, "C": 1, "D": 2, "E": 1, "F": 1, "G": 1,
+                    "H": 1})
+    return items, fam
+
+
+def test_a_category_with_two_kinds_puts_one_in_each_half():
+    items, fam = _fam_items()
+    a, b = ck.balanced_split(items, fam, seed=3)
+    for cat in ("A", "D"):
+        assert sum(c == cat for c, _ in a) == 1
+        assert sum(c == cat for c, _ in b) == 1
+
+
+def test_every_family_differs_by_at_most_one_and_the_halves_are_equal():
+    from collections import Counter
+    items, fam = _fam_items()
+    a, b = ck.balanced_split(items, fam, seed=3)
+    assert len(a) == len(b) == 5
+    fa, fb = Counter(fam[c] for c, _ in a), Counter(fam[c] for c, _ in b)
+    assert all(abs(fa[f] - fb[f]) <= 1 for f in set(fam.values()))
+    assert sorted(k["name"] for _, k in a + b) == sorted(k["name"] for _, k in items)
+
+
+def test_the_split_is_fixed_by_its_seed_not_by_input_order():
+    items, fam = _fam_items()
+    assert ck.balanced_split(items, fam, 3) == \
+        ck.balanced_split(list(reversed(items)), fam, 3)
