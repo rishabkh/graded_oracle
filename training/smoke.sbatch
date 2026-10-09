@@ -21,10 +21,14 @@ cd "$HOME/graded_oracle"
 
 # override with: sbatch --export=ALL,MODEL=Qwen/Qwen2.5-Coder-7B-Instruct ...
 MODEL="${MODEL:-Qwen/Qwen2.5-Coder-0.5B-Instruct}"
-echo "practice run on $MODEL"
+# any training file (9 Oct 2026), e.g. the chat-record sample
+# extender/sft_smoke_with_design_writing.jsonl:
+#   sbatch --export=ALL,PAIRS=extender/sft_smoke_with_design_writing.jsonl training/smoke.sbatch
+PAIRS="${PAIRS:-extender/sft_smoke.jsonl}"
+echo "practice run on $MODEL with $PAIRS"
 
 python training/train_lora.py \
-    --pairs extender/sft_smoke.jsonl \
+    --pairs "$PAIRS" \
     --model "$MODEL" \
     --out runs/smoke \
     --steps 20
@@ -32,4 +36,4 @@ python training/train_lora.py \
 python training/check_adapter.py \
     --adapter runs/smoke/adapter \
     --model "$MODEL" \
-    --pairs extender/sft_smoke.jsonl
+    --pairs "$PAIRS"

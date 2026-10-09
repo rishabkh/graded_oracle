@@ -1,0 +1,11 @@
+{
+ "timestamp": "2026-10-09T07:17:47.727384+00:00",
+ "what": "the second 150 kinds drawn on 9 Oct 2026, for 150 more designs; none of them is in constructs_150_even_2026-10-09.txt",
+ "pool": "the same 1,008 new checked kinds as the first round, minus the 150 already used, minus the same 10 adders with no state of their own, minus kinds the judges disagreed on: 830 usable",
+ "categories_from": "kind_categories_2026-10-09.json",
+ "rule": "catalog_kinds.even_draw(usable, 150, seed), then catalog_kinds.balanced_split(drawn, family, seed)",
+ "seed": 202610092,
+ "categories_covered": 85,
+ "categories_with_two": 65,
+ "split": "first half -> ..._round2_twostep.txt (idea, then design); second half -> ..._round2_onestep.txt (design directly, with self-repair)"
+}
