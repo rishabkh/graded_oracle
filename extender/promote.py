@@ -35,7 +35,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
 from build_corpus import (extract_asserts, pdr_wall_s, state_bits,   # noqa: E402
-                          template)
+                          template, without_main_s)
 from coi import coi_ratio                                            # noqa: E402
 
 CORPUS = HERE / "corpus.jsonl"
@@ -86,9 +86,34 @@ def new_shapes(child_invariants, parent_invariants):
                   - {template(c) for c in parent_invariants})
 
 
+# A child this much bigger than its parent is kept even without a new kind
+# of claim (Rishab, 17 Oct 2026: at least 50-75%; "we want to see rapid
+# growth"). The rule turned away 7% of tries on 50-100-line parents and 19%
+# by generation 5, and real designs do repeat patterns, like many stages.
+GROWTH_EXEMPT = 0.5
+
+
+def growth(record, parents):
+    """How much bigger the child is than its biggest parent: the larger
+    of the line growth and the flip-flop growth, as a fraction (0.5 is
+    half again as big). None when nothing can be compared."""
+    rows = [p for p in parents if p and p.get("verilog")]
+    child_v = record.get("child_verilog")
+    out = []
+    if rows and child_v:
+        before = max(len(p["verilog"].splitlines()) for p in rows)
+        out.append(len(child_v.splitlines()) / before - 1)
+    pb, cb = record.get("parent_state_bits"), record.get("child_state_bits")
+    if isinstance(pb, list):
+        pb = max([b for b in pb if b] or [0])
+    if pb and cb:
+        out.append(cb / pb - 1)
+    return round(max(out), 3) if out else None
+
+
 def ratchet(record, parents):
     """Keep a proved child only if it needs a kind of claim its
-    parent(s) did not.
+    parent(s) did not, or grew by GROWTH_EXEMPT or more.
 
     Measured 26 Sep 2026 over 142 parent-to-child pairs: with NECESSARY
     as the only rule, 56% of children left the signals-per-clause count
@@ -103,10 +128,13 @@ def ratchet(record, parents):
     old = [c for row in parents if row for c in row.get("invariants", [])]
     fresh = new_shapes(record.get("invariants", []), old)
     record["new_shapes"] = fresh
-    if not fresh:
+    grew = growth(record, parents)
+    record["grew_by"] = grew
+    if not fresh and (grew is None or grew < GROWTH_EXEMPT):
         record["verdict"] = "NO_NEW_SHAPE"
         record["reason"] = ("proved, but needs no kind of claim its "
-                            "parent did not already have")
+                            "parent did not already have, and grew by less "
+                            f"than {GROWTH_EXEMPT:.0%}")
     return record
 
 
@@ -193,6 +221,8 @@ def promote(corpus_rows, ext_records, compute_metrics=True):
                 "coi_ratio": (coi_ratio(child_v, top)
                               if compute_metrics else None),
                 "pdr_wall_s": pdr_wall_s(rec),
+                # the branch stop reads this when a later run starts
+                "without_main_s": without_main_s(rec),
                 "clause_count": len(invariants),
                 "invariant_templates": [template(x) for x in invariants],
             },

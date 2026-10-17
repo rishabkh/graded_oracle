@@ -2,9 +2,11 @@
 agenda framework.
 
 Stopping conditions, per the directive:
-- a branch stops extending when its without-run exceeds 60 seconds
-  (grading is about to stop being free), when the design passes 1000
-  lines, or after three consecutive failures on that branch;
+- a branch stops extending when the main proof of its without-run
+  reaches the checker's own limit (300 s; until 17 Oct 2026 it was 60 s
+  on the slowest run, which the 120 s second opinion alone could cross),
+  when the design passes 1000 lines, or after three consecutive failures
+  on that branch;
 - the run stops at a HARD CAP of LLM calls, because the loop is
   recursive and an unbounded one is how a budget disappears overnight.
 
@@ -34,11 +36,12 @@ sys.path.insert(0, str(HERE))
 from extend import (MOVE_WEIGHTS, SECOND_PROPERTY_RATE,          # noqa: E402
                     REPLICATE_SCHEMA, SECOND_SCHEMA, STRUCTURAL_SCHEMA,
                     COMPOSE_SCHEMA, COMPOSE_TEMPLATE, build_prompt,
-                    call_model, compose_hidden_signals, grade_compose,
-                    grade_replicate, grade_step4, keep_reasoning)
+                    call_model, expose_for_wrapper, grade_compose,
+                    grade_replicate, grade_step4, keep_reasoning, wrappable)
 import llm_client                                                 # noqa: E402
+from build_corpus import without_main_s                           # noqa: E402
 from distractor import (Spinner, dump, OUT_LOG, MODEL, EFFORT,    # noqa: E402
-                        build_prompt as distractor_prompt,
+                        GRADE_KWARGS, build_prompt as distractor_prompt,
                         call_model as distractor_call, grade_extension)
 from promote import FIXER_QUEUE, promote, ratchet, route         # noqa: E402
 import distractor                                                # noqa: E402
@@ -63,13 +66,17 @@ _progress_lock = threading.Lock()
 CORPUS = HERE / "corpus.jsonl"
 QUEUE_LOG = HERE / "logs" / "batch_queue.jsonl"
 
-MAX_WITHOUT_S = 60.0      # branch stop: grading about to get expensive
-MAX_LINES = 1000          # branch stop: design too big to read
+# branch stop: the main proof without facts reached the checker's own
+# limit (was 60 s on any run: 7 of 17 children stopped on 15 Oct, 4 of them
+# only because the 120 s second opinion was slow)
+MAX_WITHOUT_S = float(GRADE_KWARGS["timeout_s"])
+MAX_LINES = 1000          # branch stop: about what one training example holds
 BRANCH_FAILS = 3          # branch stop: three consecutive failures
-MAX_GEN = 6               # was 3: answers grow about x1.45 a generation,
-                          # so 3 stopped two short of real-core size
+MAX_GEN = 12              # was 6 (and 3 before it): real blocks are about
+                          # 1,900 lines; ours start at about 70 (17 Oct 2026)
 MAX_ATTEMPTS = 3          # per-task retries on format failures
-MULTIPLIER_RATE = 0.15    # replicate/compose share when eligible
+MULTIPLIER_RATE = 0.4     # replicate/compose share when eligible (was 0.15:
+                          # they grow a design 3-4x in a step, 17 Oct 2026)
 DISTRACTOR_RATE = 1 / 6   # the control: irrelevant logic, invariants verbatim.
                           # The only move that lowers coi_ratio — without it
                           # every extension lands inside the cone and the
@@ -77,20 +84,21 @@ DISTRACTOR_RATE = 1 / 6   # the control: irrelevant logic, invariants verbatim.
 
 
 def without_wall(record):
-    """Longest prove-run wall time on the without leg — the number the
-    60-second branch stop reads."""
-    runs = ((record.get("result") or {}).get("without_invariants")
-            or {}).get("runs") or []
-    times = [r.get("duration_s") for r in runs
-             if r.get("mode") == "prove" and r.get("duration_s") is not None]
-    return max(times) if times else None
+    """Main proof wall time on the without leg — the number the branch
+    stop reads (build_corpus.without_main_s)."""
+    return without_main_s(record)
 
 
 def extendable(row, without_s, max_gen=MAX_GEN):
+    """`without_s` is the time just measured; a row carried into a new run
+    has its own on file (metrics.without_main_s), so the stop holds across
+    runs as well as within one."""
     if row.get("generation", 0) >= max_gen:
         return False
     if len(row["verilog"].splitlines()) > MAX_LINES:
         return False
+    if without_s is None:
+        without_s = (row.get("metrics") or {}).get("without_main_s")
     if without_s is not None and without_s > MAX_WITHOUT_S:
         return False
     return True
@@ -99,12 +107,12 @@ def extendable(row, without_s, max_gen=MAX_GEN):
 def sample_task(rng, parent, corpus_rows):
     """One weighted task for a parent. GUARD is weight 0; distractor and
     second-property each run at ~1-in-6; multipliers only between
-    eligible parents."""
-    eligible_self = not compose_hidden_signals(parent)
+    parents a wrapper can reach, after the port step (extend.wrappable)."""
+    eligible_self = wrappable(parent)
     partners = [r for r in corpus_rows
                 if r["id"] != parent["id"]
                 and r["top_module"] != parent["top_module"]
-                and not compose_hidden_signals(r)]
+                and wrappable(r)] if eligible_self else []
     can_multiply = eligible_self and rng.random() < MULTIPLIER_RATE
     if can_multiply and partners and rng.random() < 0.5:
         partner = rng.choice(partners)
@@ -121,7 +129,7 @@ def sample_task(rng, parent, corpus_rows):
         return {"ext_type": "second", "parent_id": parent["id"],
                 "parent2_id": None, "move": None}
     moves = [m for m, w in MOVE_WEIGHTS.items() for _ in range(w)]
-    k = rng.choice([1, 1, 1, 4])      # occasional magnitude on STAGE
+    k = rng.choice([1, 4, 4, 8])      # pipeline runs, mostly several stages
     move = rng.choice(moves)
     return {"ext_type": "structural", "parent_id": parent["id"],
             "parent2_id": None, "move": move,
@@ -130,7 +138,8 @@ def sample_task(rng, parent, corpus_rows):
 
 def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
              rng=None, on_task=None, on_fixer=None, workers=1,
-             on_promote=None, order="shuffle", per_family=3):
+             on_promote=None, order="shuffle", per_family=3,
+             start_ids=None):
     """The while loop, now a worker pool. `executor(task, corpus_rows) ->
     record` is injectable so tests run without API or sby. `workers`
     threads share one frontier under one lock; the executor runs
@@ -139,18 +148,30 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
     in-flight work never exceeds the hard cap. `on_promote(row)` fires
     under the lock for every accepted row — the checkpoint hook: a
     killed run keeps everything promoted before the kill.
-    Returns promoted rows."""
+    `start_ids` names the only rows the run starts from (every row stays
+    a possible partner for a composition); order "chase" extends each
+    accepted child next, so a lineage goes deep within one run (17 Oct
+    2026). Returns promoted rows."""
     rng = rng or random.Random()
     corpus_rows = list(corpus_rows)
-    start = [r for r in corpus_rows if extendable(r, None, max_gen)]
-    if order == "depth":
-        # deepest and rarest first, round-robin across families so one
-        # lineage cannot absorb the run (see frontier.py)
-        from frontier import order_frontier
-        start = order_frontier(start, {r["id"]: r for r in corpus_rows},
-                               per_family=per_family)
+    if start_ids:
+        by_id = {r["id"]: r for r in corpus_rows}
+        missing = [i for i in start_ids if i not in by_id]
+        if missing:
+            raise ValueError(f"no such starting rows: {missing}")
+        # in the order given
+        start = [by_id[i] for i in start_ids
+                 if extendable(by_id[i], None, max_gen)]
     else:
-        rng.shuffle(start)   # sample the corpus, not the oldest rows first
+        start = [r for r in corpus_rows if extendable(r, None, max_gen)]
+        if order == "depth":
+            # deepest and rarest first, round-robin across families so one
+            # lineage cannot absorb the run (see frontier.py)
+            from frontier import order_frontier
+            start = order_frontier(start, {r["id"]: r for r in corpus_rows},
+                                   per_family=per_family)
+        else:
+            rng.shuffle(start)   # sample the corpus, not the oldest rows first
     frontier = deque(start)
     branch_fails = Counter()
     dead_branches = set()
@@ -195,7 +216,10 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
                 if on_promote:
                     on_promote(child)
                 if extendable(child, w, max_gen):
-                    frontier.append(child)
+                    if order == "chase":
+                        frontier.appendleft(child)   # the newest goes next
+                    else:
+                        frontier.append(child)
             frontier.append(parent)      # a healthy parent stays live
             return False
         if action == "fixer" and on_fixer:
@@ -253,6 +277,19 @@ def finalize_distractor(record):
     return record
 
 
+def _ready_for_wrapper(record, rows):
+    """The rows a wrapper will instantiate, after the port step; the
+    record keeps which internal registers got a mirror port."""
+    ready = [expose_for_wrapper(r) for r in rows]
+    for r, out in zip(rows, ready):
+        if out is None:
+            raise ValueError(f"{r['id']} cannot be wrapped: a fact needs a "
+                             "memory or a function no port can mirror")
+        if out.get("exposed"):
+            record.setdefault("mirrored_ports", {})[r["id"]] = out["exposed"]
+    return ready
+
+
 def _real_executor(task, corpus_rows):
     by_id = {r["id"]: r for r in corpus_rows}
     parent = by_id[task["parent_id"]]
@@ -285,7 +322,8 @@ def _real_executor(task, corpus_rows):
                     finalize_distractor(grade_extension(parent, out["patch"],
                                                         record))
         elif task["ext_type"] == "compose":
-            p2 = by_id[task["parent2_id"]]
+            parent, p2 = _ready_for_wrapper(
+                record, [parent, by_id[task["parent2_id"]]])
             prompt = COMPOSE_TEMPLATE.format(
                 verilog_a=parent["verilog"], verilog_b=p2["verilog"],
                 property_a="; ".join(parent["property"]),
@@ -306,6 +344,8 @@ def _real_executor(task, corpus_rows):
                 with _grading():
                     grade_compose(parent, p2, out, record)
         else:
+            if task["ext_type"] == "replicate":
+                parent, = _ready_for_wrapper(record, [parent])
             prompt = build_prompt(parent, task["ext_type"], task.get("move"),
                                   n=task.get("instances", 6),
                                   k=task.get("k", 1))
@@ -361,10 +401,17 @@ def main(argv=None):
                    help="parallel workers (threads); model calls are "
                         "network-bound and grading is subprocesses, so "
                         "N workers is close to N-fold")
-    p.add_argument("--order", default="shuffle", choices=["shuffle", "depth"],
+    p.add_argument("--order", default="shuffle",
+                   choices=["shuffle", "depth", "chase"],
                    help="shuffle samples the whole corpus; depth draws the "
                         "deepest and rarest rows first, round-robin across "
-                        "families, which is what grows generation 2 and 3")
+                        "families, which is what grows generation 2 and 3; "
+                        "chase extends every accepted child next, so a "
+                        "lineage grows many rounds in one run")
+    p.add_argument("--start", default=None,
+                   help="comma-separated row ids to start from (the only "
+                        "lineages the run grows; every row can still be a "
+                        "partner for a composition)")
     p.add_argument("--per-family", type=int, default=3,
                    help="frontier entries one lineage may contribute, with "
                         "--order depth. Raise it to drive a single lineage "
@@ -412,7 +459,11 @@ def main(argv=None):
     if args.dry:
         frontier = [r for r in corpus_rows
                     if extendable(r, None, args.max_gen)]
-        rng.shuffle(frontier)
+        if args.start:
+            wanted = args.start.split(",")
+            frontier = [r for i in wanted for r in frontier if r["id"] == i]
+        else:
+            rng.shuffle(frontier)
         print(f"frontier: {len(frontier)} extendable rows; "
               f"first {min(args.max_calls, 15)} planned tasks:")
         for parent in frontier[:min(args.max_calls, 15)]:
@@ -467,7 +518,9 @@ def main(argv=None):
                                 max_gen=args.max_gen, rng=rng,
                                 on_task=log_task, on_fixer=to_fixer_queue,
                                 workers=args.workers, on_promote=checkpoint,
-                                order=args.order, per_family=args.per_family)
+                                order=args.order, per_family=args.per_family,
+                                start_ids=(args.start.split(",")
+                                           if args.start else None))
     finally:
         GRADE_SLOTS = None
     print(f"\nrun complete: {len(new_rows)} promoted "

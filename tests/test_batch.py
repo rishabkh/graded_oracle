@@ -35,8 +35,9 @@ def test_extendable_blocks_thousand_lines():
 
 
 def test_extendable_blocks_slow_without_run():
-    assert not extendable(row(), 61.0)
-    assert extendable(row(), 59.0)
+    # the checker's own 300 s limit since 17 Oct 2026 (was 60 s)
+    assert not extendable(row(), 301.0)
+    assert extendable(row(), 299.0)
     assert extendable(row(), None)      # no measurement -> allowed
 
 
@@ -65,6 +66,9 @@ def test_sample_task_never_picks_guard_and_respects_eligibility():
 def test_sample_task_draws_distractor_about_one_in_six():
     rng = random.Random(11)
     draws = [sample_task(rng, row(), [row()]) for _ in range(3000)]
+    # one in six of the draws that are not a combination or a copy: those
+    # are drawn first, 40% of the time for a parent that can be wrapped
+    draws = [t for t in draws if t["ext_type"] not in ("compose", "replicate")]
     share = sum(t["ext_type"] == "distractor" for t in draws) / len(draws)
     assert abs(DISTRACTOR_RATE - 1 / 6) < 1e-9
     assert 0.12 < share < 0.21, share

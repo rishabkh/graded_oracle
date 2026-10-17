@@ -95,13 +95,14 @@ def test_promotion_applies_the_rule_on_the_manual_path_too():
     assert buckets["reject"] and buckets["reject"][0]["verdict"] == "NO_NEW_SHAPE"
 
 
-def test_rows_may_now_grow_to_generation_six():
+def test_rows_may_now_grow_to_generation_twelve():
     """The cap was 3, two generations short of answers the size a real
-    core check needs (about 20 clauses by the measured x1.45 a step)."""
+    core check needs (about 20 clauses by the measured x1.45 a step), then
+    6; since 17 Oct 2026 it is 12, for designs that grow to real size."""
     from batch import MAX_GEN, extendable
-    assert MAX_GEN == 6
-    row = {"id": "g5_000", "generation": 5, "top_module": "m",
+    assert MAX_GEN == 12
+    row = {"id": "g11_000", "generation": 11, "top_module": "m",
            "verilog": "module m;\nendmodule", "invariants": ["a"]}
     assert extendable(row, None)
-    row["generation"] = 6
+    row["generation"] = 12
     assert not extendable(row, None)

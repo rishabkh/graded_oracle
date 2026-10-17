@@ -98,9 +98,15 @@ to "hello / world / a / b cd / line2 / line3" yields
 DISTRACTOR_PROMPT = """\
 You are extending a formally verified SystemVerilog module. The module's \
 property is proven by k-induction with the strengthening invariant(s) listed \
-below. Your task is the DISTRACTOR extension: add a small piece of new \
+below. Your task is the DISTRACTOR extension: add a realistic block of new \
 sequential logic that is completely irrelevant to the property, so the proof \
-still closes with the SAME invariants, unchanged.
+still closes with the SAME invariants, unchanged. Make it the kind of feature \
+real modules carry that this property never looks at, for example status and \
+statistics counters, an error logger, a watchdog timer or a debug register bank.
+
+Size: the module now has {n} lines; add roughly {lo} to {hi} new lines \
+(half to three quarters of its current size), written out as real logic, not \
+padding, comments or copies of existing lines.
 
 The module:
 
@@ -227,11 +233,14 @@ def load_parent(parent_id):
 
 
 def build_prompt(parent):
+    # the same half-to-three-quarters growth the big moves ask for; the
+    # arithmetic is repeated here because extend.py imports this module
+    n = len(parent["verilog"].splitlines())
     return DISTRACTOR_PROMPT.format(
         verilog=parent["verilog"],
         property="\n".join(parent["property"]),
         invariants="\n".join(parent["invariants"]),
-        diff_format=DIFF_FORMAT)
+        diff_format=DIFF_FORMAT, n=n, lo=round(n * 0.5), hi=round(n * 0.75))
 
 
 def call_model(prompt_text):

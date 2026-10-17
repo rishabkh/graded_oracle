@@ -110,7 +110,43 @@ MOVES = {
                "any flag - must be an output port: a future wrapper must "
                "be able to state every invariant from outside the module, "
                "and a hidden register makes the child a dead end."),
+    # 17 Oct 2026: an accepted step added a median of 12 lines, so six
+    # rounds took a 73-line design to about 200 against real blocks of
+    # about 1,900. These two grow a design by half or more in one step.
+    "SUBUNIT": ("Add a complete new functional unit that works with the "
+                "existing logic, the way the next feature of a real block "
+                "is added: for example a request queue in front of an "
+                "existing input, a second channel that shares an existing "
+                "resource, a control and status register bank that "
+                "configures an existing behaviour, or a retry or backoff "
+                "controller around an existing operation. It holds real "
+                "state of its own (several registers and the logic that "
+                "drives them), and it writes or gates something the "
+                "property or the parent invariants read."),
+    "STORAGE": ("Add storage on the path the property depends on: a "
+                "register file, FIFO or lookup table (an array with a "
+                "write side and a read side) that holds values before they "
+                "reach existing state, sized with the module's own widths. "
+                "The invariant list must relate the stored entries, or how "
+                "many of them are in use, to the existing state."),
 }
+
+# the moves that add a whole piece of design; their question says how big
+BIG_MOVES = ("SUBUNIT", "STORAGE", "PEER")
+
+SIZE_TEXT = """
+        Size: this is a substantial addition. The module now has {n} lines;
+        your patch should add roughly {lo} to {hi} new lines (half to three
+        quarters of its current size), written out as real logic, not
+        padding, comments or copies of existing lines."""
+
+
+def size_target(verilog):
+    """(lines now, fewest, most) new lines for a step that grows a design
+    by half to three quarters (Rishab, 17 Oct 2026: "we want to see rapid
+    growth")."""
+    n = len(verilog.splitlines())
+    return n, round(n * 0.5), round(n * 0.75)
 
 # Batch-runner sampling policy, from measured state-bit returns per call:
 # STAGE +9, SPLIT +9, PEER +7, BOUND +4, GUARD +1. GUARD is dead weight;
@@ -119,8 +155,10 @@ MOVES = {
 # LEDGER back on (Rishab, 2026-09-06): the bookkeeping family is where
 # a single model call struggles but our oracle+fixer loop still wins -
 # so these rows are exactly the ones worth making.
-MOVE_WEIGHTS = {"STAGE": 3, "SPLIT": 3, "PEER": 2, "BOUND": 1, "GUARD": 0,
-                "LEDGER": 2}
+# 17 Oct 2026: the big moves (SUBUNIT, STORAGE, PEER) now take most
+# draws, so a lineage grows several times its first size in a run.
+MOVE_WEIGHTS = {"STAGE": 2, "SPLIT": 1, "PEER": 2, "BOUND": 1, "GUARD": 0,
+                "LEDGER": 2, "SUBUNIT": 4, "STORAGE": 3}
 SECOND_PROPERTY_RATE = 1 / 6
 
 STAGE_K_TEXT = """
@@ -357,6 +395,9 @@ REQUIREMENTS
 2. Expose any per-parent signal your invariants mention as a named
    top-level wire. NEVER write inst.signal — hierarchical references are
    rejected (the toolchain silently turns them into dangling wires).
+   Where a parent's facts need an internal register, the parent carries a
+   mirror output port for it (for example `assign count_o = count;`):
+   connect that port to a wrapper wire and state the fact through it.
 3. The wrapper contains exactly ONE new assertion about the composed
    behaviour, guarded by an antecedent where natural.
 4. The invariant list must contain: every parent clause renamed to the
@@ -433,7 +474,10 @@ REQUIREMENTS
 2. Expose every per-instance signal your invariants mention as a named
    top-level wire with an instance-numbered name (t0..t{last}, h0..h{last}).
    NEVER write inst.signal — hierarchical references are rejected: the
-   toolchain silently turns them into dangling wires.
+   toolchain silently turns them into dangling wires. Where the parent's
+   facts need an internal register, the parent carries a mirror output
+   port for it (for example `assign count_o = count;`): connect that port
+   to a wrapper wire per instance and state the fact through it.
 3. The wrapper contains exactly ONE new assertion: a property of the pool,
    immediate assertion, guarded by an antecedent where natural.
 4. The invariant list must contain, for EVERY parent clause, one renamed
@@ -611,6 +655,10 @@ def remove_asserts(source, exprs):
 
 
 _ID = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# 4'b0101, 8'sd1, 'hff: numbers, not names. The signed and unsized forms
+# were read as names ("sd1") until 17 Oct 2026, which made a fact like
+# acc >= -8'sd1 look as if it needed a signal no design declares.
+_BASED_LITERAL = r"\d*'[sS]?[bodhBODH][0-9a-fA-FxXzZ_?]+"
 _VERILOG_NOISE = {"posedge", "negedge", "always", "assert", "module",
                   "endmodule", "begin", "end", "if", "else", "wire", "reg",
                   "input", "output", "initial", "assign",
@@ -622,7 +670,7 @@ _VERILOG_NOISE = {"posedge", "negedge", "always", "assert", "module",
 
 def identifiers(text):
     text = _mask_comments(text)   # comment words are not identifiers
-    ids = set(_ID.findall(re.sub(r"\d+'[bodhBODH][0-9a-fA-FxXzZ_?]+", " ",
+    ids = set(_ID.findall(re.sub(_BASED_LITERAL, " ",
                                  text)))
     return ids - _VERILOG_NOISE
 
@@ -675,7 +723,7 @@ _IDX_NAME = re.compile(r"([A-Za-z_][A-Za-z0-9_]*?)_?(\d+)$")
 def _instance_indices(expr):
     """Map base-name -> set of instance indices, read from suffixed
     identifiers (t0, credits_3) and constant bit-selects (gnt[2])."""
-    masked = re.sub(r"\d+'[bodhBODH][0-9a-fA-FxXzZ_?]+", " ", expr)
+    masked = re.sub(_BASED_LITERAL, " ", expr)
     out = {}
     for m in _BIT_SELECT.finditer(masked):
         out.setdefault(m.group(1), set()).add(int(m.group(2)))
@@ -731,22 +779,167 @@ _PORT_HEADER = re.compile(r"module\s+(\w+)\s*\((.*?)\)\s*;", re.S)
 
 
 def ports_of(verilog, top_module):
-    """Names declared in the module's port header."""
-    for m in _PORT_HEADER.finditer(_mask_comments(verilog)):
-        if m.group(1) == top_module:
-            return identifiers(m.group(2))
-    return set()
+    """Names declared in the module's port header. Reads past a
+    `#( parameter ... )` list (17 Oct 2026): the old one-line pattern
+    found no header there, so every signal of a parameterised module,
+    ports included, counted as hidden."""
+    masked = _mask_comments(verilog)
+    span = _port_list_span(masked, top_module)
+    return identifiers(masked[span[0]:span[1]]) if span else set()
+
+
+def _port_list_span(masked, top_module):
+    """(start, end) of the text inside the top module's port parentheses,
+    in comment-masked source, or None when it has no port list."""
+    m = re.search(r"\bmodule\s+%s\b" % re.escape(top_module), masked)
+    if not m:
+        return None
+    i = m.end()
+    while i < len(masked) and masked[i].isspace():
+        i += 1
+    if masked.startswith("#", i):
+        j = masked.find("(", i)
+        k = _matching(masked, j) if j >= 0 else None
+        if k is None:
+            return None
+        i = k + 1
+        while i < len(masked) and masked[i].isspace():
+            i += 1
+    if not masked.startswith("(", i):
+        return None
+    close = _matching(masked, i)
+    return (i + 1, close) if close is not None else None
 
 
 def compose_hidden_signals(row):
     """Invariant identifiers a wrapper could never reach: mentioned in the
-    parent's invariants but not exposed through its ports. Non-empty means
-    the parent is ineligible for COMPOSE (and REPLICATE)."""
+    parent's invariants but not exposed through its ports, directly or by
+    a mirror port the port step added (`exposed`). Non-empty means the
+    parent is ineligible for COMPOSE (and REPLICATE)."""
     ports = ports_of(row["verilog"], row["top_module"])
     used = set()
     for clause in row["invariants"]:
         used |= identifiers(clause)
-    return used - ports
+    return used - ports - set(row.get("exposed", {}))
+
+
+# --- the port step (17 Oct 2026) ---
+# 243 of the 252 new designs could not be combined or copied: their facts
+# name internal registers, and a wrapper may not reach inside an instance.
+# Mirroring each such register on an output port changes no behaviour and
+# makes 220 of them eligible; the other 23 need a memory or a function.
+
+def _split_outside_brackets(text):
+    """Split on commas that are outside (), [] and {}."""
+    out, cur, depth = [], [], 0
+    for ch in text:
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    out.append("".join(cur))
+    return out
+
+
+_DECL_START = re.compile(r"(?:^|\n)[ \t]*(reg|logic|wire|bit)\b[ \t]*"
+                         r"(signed\b)?\s*((?:\[[^\]]*\]\s*)*)", re.S)
+
+
+def _declaration(body, name):
+    """(signed, packed dimensions) of an internal reg/logic/wire/bit
+    declared as `name` in a module body with comments masked, or None
+    when it is not declared that way or is an array: a port cannot
+    mirror a memory."""
+    for stmt in body.split(";"):
+        for m in _DECL_START.finditer(stmt):
+            for part in _split_outside_brackets(stmt[m.end():]):
+                d = re.match(r"\s*([A-Za-z_]\w*)\s*(\[)?", part)
+                if d and d.group(1) == name:
+                    if d.group(2):
+                        return None
+                    return bool(m.group(2)), " ".join(m.group(3).split())
+    return None
+
+
+def _matching(text, i):
+    """Index of the bracket closing the one at text[i]."""
+    pairs = {"(": ")", "[": "]", "{": "}"}
+    stack = []
+    for j in range(i, len(text)):
+        if text[j] in pairs:
+            stack.append(pairs[text[j]])
+        elif stack and text[j] == stack[-1]:
+            stack.pop()
+            if not stack:
+                return j
+    return None
+
+
+def expose_for_wrapper(row):
+    """`row` with every internal register its facts mention mirrored on a
+    new output port (`output wire [..] count_o` and `assign count_o =
+    count;`), so a wrapper can state the facts per instance. The design's
+    behaviour, property and facts are unchanged. Returns `row` itself when
+    nothing is hidden, and None when a hidden name cannot be mirrored (an
+    array, a function, a non-ANSI port list)."""
+    hidden = compose_hidden_signals(row)
+    if not hidden:
+        return row
+    src, top = row["verilog"], row["top_module"]
+    masked = _mask_comments(src)
+    m = re.search(_TOP_MODULE_RE % re.escape(top), masked, re.S)
+    if not m:
+        return None
+    body = masked[m.start(1):m.end(1)]
+    decls = {}
+    for name in sorted(hidden):
+        d = _declaration(body, name)
+        if d is None:
+            return None
+        decls[name] = d
+    span = _port_list_span(masked, top)
+    if span is None:
+        return None
+    ports_text, close = masked[span[0]:span[1]], span[1]
+    if not re.search(r"\b(input|output|inout)\b", ports_text):
+        return None                       # names-only (non-ANSI) port list
+    taken = identifiers(src)
+    mapping, port_lines, assigns = {}, [], []
+    for name in sorted(hidden):
+        signed, dims = decls[name]
+        port = next(p for p in [f"{name}_o", f"{name}_obs"]
+                    + [f"{name}_obs{k}" for k in range(2, 99)]
+                    if p not in taken)
+        taken.add(port)
+        mapping[name] = port
+        kind = "output wire" + (" signed" if signed else "") \
+            + (f" {dims}" if dims else "")
+        port_lines.append(f"    {kind} {port}")
+        assigns.append(f"    assign {port} = {name};\n")
+    lead = ",\n" if ports_text.strip() else "\n"
+    insert_ports = lead + ",\n".join(port_lines) + "\n"
+    end = masked.rfind("endmodule", m.start(), m.end())
+    line_start = src.rfind("\n", 0, end) + 1
+    out = (src[:close] + insert_ports + src[close:line_start]
+           + "".join(assigns) + src[line_start:])
+    return dict(row, verilog=out, exposed=mapping)
+
+
+_WRAPPABLE = {}
+
+
+def wrappable(row):
+    """Can a wrapper combine or copy this row, after the port step?
+    Remembered per design: the sampler asks it of every row, every task."""
+    key = (row.get("id"), hash(row["verilog"]), tuple(row["invariants"]))
+    if key not in _WRAPPABLE:
+        _WRAPPABLE[key] = expose_for_wrapper(row) is not None
+    return _WRAPPABLE[key]
 
 
 _DIFF_MARKER = re.compile(r"^(---\s|\+\+\+\s|@@)", re.M)
@@ -823,6 +1016,9 @@ def build_prompt(parent, ext_type, move=None, n=6, k=1):
         fields["move"] = f"{move}   {MOVES[move]}"
         if move == "STAGE" and k > 1:
             fields["move"] += STAGE_K_TEXT.format(k=k)
+        if move in BIG_MOVES:
+            n, lo, hi = size_target(parent["verilog"])
+            fields["move"] += SIZE_TEXT.format(n=n, lo=lo, hi=hi)
     return tmpl.format(**fields)
 
 
@@ -1175,8 +1371,11 @@ def main():
         for line in CORPUS.read_text().splitlines():
             row = json.loads(line)
             hidden = compose_hidden_signals(row)
-            mark = "OK " if not hidden else "no "
-            extra = "" if not hidden else f"  hidden: {sorted(hidden)}"
+            ready = expose_for_wrapper(row)
+            mark = "OK " if ready is not None else "no "
+            extra = ("" if not hidden else
+                     f"  mirrored: {sorted(hidden)}" if ready is not None
+                     else f"  cannot mirror: {sorted(hidden)}")
             print(f"{mark} {row['id']} {row['top_module']}{extra}")
         return
 
@@ -1202,28 +1401,33 @@ def main():
           f"invariants={parent['invariants']}")
     parent2 = None
     if args.type == "replicate":
-        hidden = compose_hidden_signals(parent)
-        if hidden:
+        ready = expose_for_wrapper(parent)
+        if ready is None:
             p.error(
                 f"{parent['id']} ({parent['top_module']}) is not "
-                f"replicate-eligible: invariants mention non-port "
-                f"signal(s) {sorted(hidden)} a wrapper cannot reach - no "
-                "legal invariant list could close the wrapper proof. Pick "
-                "another parent (see --list-compose).")
+                f"replicate-eligible: invariants mention signal(s) "
+                f"{sorted(compose_hidden_signals(parent))} that no port can "
+                "mirror (a memory or a function). Pick another parent "
+                "(see --list-compose).")
+        parent = ready
     if args.type == "compose":
         if not args.parent2:
             p.error("--parent2 required for compose")
         parent2 = load_parent(args.parent2)
         if parent2["top_module"] == parent["top_module"]:
             p.error("compose parents must have distinct module names")
+        ready = []
         for row in (parent, parent2):
-            hidden = compose_hidden_signals(row)
-            if hidden:
+            r = expose_for_wrapper(row)
+            if r is None:
                 p.error(
                     f"{row['id']} ({row['top_module']}) is not compose-"
-                    f"eligible: invariants mention non-port signal(s) "
-                    f"{sorted(hidden)} a wrapper cannot reach. Pick another "
-                    "parent (see --list-compose).")
+                    f"eligible: invariants mention signal(s) "
+                    f"{sorted(compose_hidden_signals(row))} that no port can "
+                    "mirror (a memory or a function). Pick another parent "
+                    "(see --list-compose).")
+            ready.append(r)
+        parent, parent2 = ready
         print(f"parent2 {parent2['id']} {parent2['top_module']} "
               f"invariants={parent2['invariants']}")
         prompt = COMPOSE_TEMPLATE.format(

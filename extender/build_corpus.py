@@ -119,6 +119,20 @@ def pdr_wall_s(record):
     return None
 
 
+def without_main_s(record):
+    """Wall time of the main proof run on the without-invariants leg: the
+    k-induction run, not the pdr second opinion or other side checks. The
+    branch stop reads this (17 Oct 2026): it used to read the slowest
+    prove run, so a second opinion capped at 120 s ended lineages whose
+    main check took under a second."""
+    runs = ((record.get("result") or {}).get("without_invariants")
+            or {}).get("runs") or []
+    times = [r.get("duration_s") for r in runs
+             if r.get("mode") == "prove" and r.get("engine") != "abc pdr"
+             and r.get("duration_s") is not None]
+    return max(times) if times else None
+
+
 # stat prints count first, then cell name:  "       26   $_SDFFE_PP0P_"
 _DFF_LINE = re.compile(r"^\s+(\d+)\s+(\$_[A-Z]*DFF[A-Z0-9_]*)\s*$", re.M)
 
@@ -132,14 +146,17 @@ def state_bits(verilog, top_module):
     """Flop bits per yosys: proc; opt; techmap lowers registers to
     single-bit $_DFF_* cells, so the cell count IS the bit count. `memory`
     first turns storage arrays into registers too (8 Oct 2026): without it
-    a 32x8 array counted as nothing, so storage-heavy designs looked tiny."""
+    a 32x8 array counted as nothing, so storage-heavy designs looked tiny.
+    `flatten` merges the modules first (17 Oct 2026): `stat` lists every
+    module once and then the whole design again, so a top with three 8-bit
+    counters and a 4-bit pool read as 40 bits instead of 28."""
     if shutil.which("yosys") is None:
         return None
     with tempfile.TemporaryDirectory() as d:
         f = Path(d) / "design.sv"
         f.write_text(verilog)
         script = (f"read_verilog -sv {f}; hierarchy -top {top_module}; "
-                  "proc; opt; memory; opt; techmap; opt; stat")
+                  "proc; flatten; opt; memory; opt; techmap; opt; stat")
         try:
             out = subprocess.run(["yosys", "-p", script], capture_output=True,
                                  text=True, timeout=300)
