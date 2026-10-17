@@ -37,6 +37,7 @@ sys.path.insert(0, str(HERE))
 from build_corpus import (extract_asserts, pdr_wall_s, state_bits,   # noqa: E402
                           template, without_main_s)
 from coi import coi_ratio                                            # noqa: E402
+import gates                                                         # noqa: E402
 
 CORPUS = HERE / "corpus.jsonl"
 EXT_LOG = HERE / "logs" / "extensions.jsonl"
@@ -54,6 +55,12 @@ _ACTIONS = {
     # proved, but no harder than its parent (see ratchet): correct, so
     # nothing for the Fixer, and it counts against the parent's branch
     "NO_NEW_SHAPE": "reject",
+    # proved, but weak or wrong as a design (gates.py, 18 Oct 2026): the
+    # facts are not what is wrong, so nothing for the Fixer either
+    **{v: "reject" for v in gates.VERDICTS},
+    # judged meaningless as hardware by the second-model review
+    # (sense_check.py, run only with batch.py --sense-check)
+    "NONSENSE": "reject",
 }
 
 
@@ -86,17 +93,14 @@ def new_shapes(child_invariants, parent_invariants):
                   - {template(c) for c in parent_invariants})
 
 
-# A child this much bigger than its parent is kept even without a new kind
-# of claim (Rishab, 17 Oct 2026: at least 50-75%; "we want to see rapid
-# growth"). The rule turned away 7% of tries on 50-100-line parents and 19%
-# by generation 5, and real designs do repeat patterns, like many stages.
-GROWTH_EXEMPT = 0.5
-
-
 def growth(record, parents):
     """How much bigger the child is than its biggest parent: the larger
     of the line growth and the flip-flop growth, as a fraction (0.5 is
-    half again as big). None when nothing can be compared."""
+    half again as big). None when nothing can be compared. Recorded for
+    reports only: from 17 to 18 Oct 2026 a child that grew by half was
+    kept without a new kind of claim, and the only children that rule
+    kept were three meaningless combinations and a contrived 64-bit
+    drain window (hand review of the 17 Oct trial), so it was dropped."""
     rows = [p for p in parents if p and p.get("verilog")]
     child_v = record.get("child_verilog")
     out = []
@@ -113,7 +117,7 @@ def growth(record, parents):
 
 def ratchet(record, parents):
     """Keep a proved child only if it needs a kind of claim its
-    parent(s) did not, or grew by GROWTH_EXEMPT or more.
+    parent(s) did not, and it passes the design checks in gates.py.
 
     Measured 26 Sep 2026 over 142 parent-to-child pairs: with NECESSARY
     as the only rule, 56% of children left the signals-per-clause count
@@ -122,19 +126,21 @@ def ratchet(record, parents):
     would have been turned away. It asks for a new shape rather than a
     higher shape count, so a child that swaps an old idea for a new one
     still passes. Idempotent; mutates and returns the record."""
-    if (record.get("verdict") != "NECESSARY"
-            or record.get("ext_type") in RATCHET_EXEMPT):
+    if record.get("verdict") != "NECESSARY":
         return record
-    old = [c for row in parents if row for c in row.get("invariants", [])]
-    fresh = new_shapes(record.get("invariants", []), old)
-    record["new_shapes"] = fresh
-    grew = growth(record, parents)
-    record["grew_by"] = grew
-    if not fresh and (grew is None or grew < GROWTH_EXEMPT):
-        record["verdict"] = "NO_NEW_SHAPE"
-        record["reason"] = ("proved, but needs no kind of claim its "
-                            "parent did not already have, and grew by less "
-                            f"than {GROWTH_EXEMPT:.0%}")
+    if record.get("ext_type") not in RATCHET_EXEMPT:
+        old = [c for row in parents if row
+               for c in row.get("invariants", [])]
+        fresh = new_shapes(record.get("invariants", []), old)
+        record["new_shapes"] = fresh
+        record["grew_by"] = growth(record, parents)
+        if not fresh:
+            record["verdict"] = "NO_NEW_SHAPE"
+            record["reason"] = ("proved, but needs no kind of claim its "
+                                "parent did not already have")
+            return record
+    # once per record: the result is kept on it (gates.apply)
+    gates.apply(record, parents)
     return record
 
 

@@ -45,6 +45,8 @@ from distractor import (Spinner, dump, OUT_LOG, MODEL, EFFORT,    # noqa: E402
                         call_model as distractor_call, grade_extension)
 from promote import FIXER_QUEUE, promote, ratchet, route         # noqa: E402
 import distractor                                                # noqa: E402
+import gates                                                     # noqa: E402
+import sense_check                                               # noqa: E402
 
 import contextlib
 
@@ -52,6 +54,10 @@ import contextlib
 # it: a batch returns many answers together, and checking them all at the
 # same time would push checks past their time limit and change verdicts.
 GRADE_SLOTS = None
+
+# The second-model review of combinations and copies (sense_check.py), off
+# until it has been tried on the hand-labelled 17 Oct trial; --sense-check.
+SENSE_CHECK = False
 
 
 def _grading():
@@ -75,8 +81,9 @@ BRANCH_FAILS = 3          # branch stop: three consecutive failures
 MAX_GEN = 12              # was 6 (and 3 before it): real blocks are about
                           # 1,900 lines; ours start at about 70 (17 Oct 2026)
 MAX_ATTEMPTS = 3          # per-task retries on format failures
-MULTIPLIER_RATE = 0.4     # replicate/compose share when eligible (was 0.15:
-                          # they grow a design 3-4x in a step, 17 Oct 2026)
+MULTIPLIER_RATE = 0.25    # replicate/compose share when eligible (0.15, then
+                          # 0.4 on 17 Oct; 0.25 since 18 Oct: they grow a
+                          # design 2-4x a step, but gave 1 good design in 15)
 DISTRACTOR_RATE = 1 / 6   # the control: irrelevant logic, invariants verbatim.
                           # The only move that lowers coi_ratio — without it
                           # every extension lands inside the cone and the
@@ -104,24 +111,105 @@ def extendable(row, without_s, max_gen=MAX_GEN):
     return True
 
 
+# Which hardware groups are combined (18 Oct 2026). Partners drawn from the
+# whole corpus gave 0 good combinations out of 7 in the 17 Oct trial: a
+# power sequencer feeding a DCT, a CRC checker or a random-number generator,
+# a breakpoint unit feeding a multiplier. A design may now be combined only
+# with one from its own group or a group it is commonly wired to; a
+# judgement call over the catalog's 17 groups, read both ways.
+_NEAR = {
+    "memory": {"interface", "interconnect", "processor", "DSP",
+               "video/image", "networking", "accelerators",
+               "data integrity", "test/debug"},
+    "interface": {"peripherals", "networking", "data integrity",
+                  "interconnect", "crypto", "video/image"},
+    "interconnect": {"processor", "networking", "test/debug",
+                     "accelerators"},
+    "processor": {"peripherals", "control", "arithmetic", "test/debug"},
+    "DSP": {"arithmetic", "video/image", "accelerators"},
+    "arithmetic": {"crypto", "accelerators"},
+    "crypto": {"data integrity"},
+    "data integrity": {"networking"},
+    "clocking/reset/power": {"control", "peripherals"},
+    "control": {"peripherals"},
+}
+GROUP_FIT = {}
+for _g, _near in _NEAR.items():
+    for _h in _near:
+        GROUP_FIT.setdefault(_g, set()).add(_h)
+        GROUP_FIT.setdefault(_h, set()).add(_g)
+CATALOG = HERE.parent / "initiator" / "catalog" / \
+    "kind_categories_2026-10-09.json"
+_KIND_GROUP = None
+
+
+def _kind_group(kind):
+    global _KIND_GROUP
+    if _KIND_GROUP is None:
+        cat = json.loads(CATALOG.read_text()) if CATALOG.exists() else \
+            {"areas": [], "kinds": []}
+        group = {a["id"]: a["group"] for a in cat["areas"]}
+        _KIND_GROUP = {k["name"].strip(): group.get(k["category"])
+                       for k in cat["kinds"]}
+    return _KIND_GROUP.get(kind)
+
+
+def design_groups(row, by_id, _seen=None):
+    """The hardware groups a design belongs to: its kind's group, or for a
+    grown design the groups of the designs it was grown from."""
+    seen = _seen if _seen is not None else set()
+    if row is None or row["id"] in seen:
+        return set()
+    seen.add(row["id"])
+    kind = (row.get("construct") or "").split(":", 1)[0].strip()
+    if kind and _kind_group(kind):
+        return {_kind_group(kind)}
+    out = set()
+    for pid in (row.get("parent"), row.get("parent2")):
+        if pid:
+            out |= design_groups(by_id.get(pid), by_id, seen)
+    return out
+
+
+def fits(a, b, by_id):
+    """May these two designs be combined? Same group, or groups commonly
+    wired together; never when either group is unknown."""
+    ga, gb = design_groups(a, by_id), design_groups(b, by_id)
+    return any(x == y or y in GROUP_FIT.get(x, ()) for x in ga for y in gb)
+
+
+def copies_that_fit(n_facts):
+    """How many copies keep the restated fact list (one renamed set per
+    copy, plus the pool's own) within gates.MAX_FACTS."""
+    return [n for n in (4, 6) if n * n_facts + 1 <= gates.MAX_FACTS]
+
+
 def sample_task(rng, parent, corpus_rows):
     """One weighted task for a parent. GUARD is weight 0; distractor and
     second-property each run at ~1-in-6; multipliers only between
-    parents a wrapper can reach, after the port step (extend.wrappable)."""
+    parents a wrapper can reach, after the port step (extend.wrappable),
+    with partners that fit (fits) and while the facts stay within
+    gates.MAX_FACTS."""
     eligible_self = wrappable(parent)
+    n_facts = len(parent["invariants"])
+    by_id = {r["id"]: r for r in corpus_rows}
     partners = [r for r in corpus_rows
                 if r["id"] != parent["id"]
                 and r["top_module"] != parent["top_module"]
-                and wrappable(r)] if eligible_self else []
-    can_multiply = eligible_self and rng.random() < MULTIPLIER_RATE
-    if can_multiply and partners and rng.random() < 0.5:
+                and n_facts + len(r["invariants"]) + 1 <= gates.MAX_FACTS
+                and wrappable(r) and fits(parent, r, by_id)] \
+        if eligible_self else []
+    copies = copies_that_fit(n_facts) if eligible_self else []
+    can_multiply = bool(partners or copies) and \
+        rng.random() < MULTIPLIER_RATE
+    if can_multiply and partners and (not copies or rng.random() < 0.5):
         partner = rng.choice(partners)
         return {"ext_type": "compose", "parent_id": parent["id"],
                 "parent2_id": partner["id"], "move": None}
     if can_multiply:
         return {"ext_type": "replicate", "parent_id": parent["id"],
                 "parent2_id": None, "move": None,
-                "instances": rng.choice([4, 6])}
+                "instances": rng.choice(copies)}
     if rng.random() < DISTRACTOR_RATE:
         return {"ext_type": "distractor", "parent_id": parent["id"],
                 "parent2_id": None, "move": None}
@@ -377,6 +465,8 @@ def _real_executor(task, corpus_rows):
     by_id = {r["id"]: r for r in corpus_rows}
     ratchet(record, [by_id.get(task["parent_id"]),
                      by_id.get(task.get("parent2_id"))])
+    if SENSE_CHECK:
+        sense_check.review(record)
     dump(record)
     with _progress_lock:
         PROGRESS["done"] += 1
@@ -437,11 +527,16 @@ def main(argv=None):
                         "one has arrived for this many seconds")
     p.add_argument("--dry", action="store_true",
                    help="print the planned first tasks, call nothing")
+    p.add_argument("--sense-check", action="store_true",
+                   help="have a second model review every proved "
+                        "combination or copy (sense_check.py); paid, one "
+                        "call per such design")
     args = p.parse_args(argv)
     # 8 Oct 2026: --corpus used to change only the corpus. The logs stayed
     # v2's, so a later promote or fix run could copy another corpus's
     # designs into v2's corpus under clashing names.
-    global QUEUE_LOG, FIXER_QUEUE, GRADE_SLOTS
+    global QUEUE_LOG, FIXER_QUEUE, GRADE_SLOTS, SENSE_CHECK
+    SENSE_CHECK = args.sense_check
     if not args.dry and args.log_dir is None and \
             args.corpus.resolve() != CORPUS.resolve():
         sys.exit("a corpus other than extender/corpus.jsonl needs its own "

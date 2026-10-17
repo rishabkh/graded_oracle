@@ -66,20 +66,25 @@ HARD RULES
 1. The existing property text survives verbatim. Do not modify, move, or
    delete the existing assertion. Do not add assume or cover statements.
 2. Emit a PATCH in the diff format given below. Never a rewritten module.
-3. The port list is fixed. Do not add, remove, or rename ports. New state
-   must be observable through an existing output, directly or through
-   existing logic.
+3. Keep every existing port as it is: do not remove, rename or retype one,
+   and add no inputs. You may add OUTPUT ports for new state. New state must
+   be observable through an output, directly or through existing logic.
 4. Every new register gets a reset in the existing if (rst) branch and an
    initial value, matching the style already in the module.
 5. Same Verilog subset as the module: synthesizable always @(posedge clk)
    or always @(*) logic, immediate assertions only, no concurrent SVA, no
    system tasks.
 6. Do not use the -> implication operator. Yosys rejects it. Write !a || b.
-7. Match the widths already in the module: new registers that hold the
-   module's data or counts take the module's own widths. Do not multiply
-   or divide wide free inputs; that makes the proof intractable.
+7. Match the widths already in the module for data: a new register that
+   holds the module's data takes the module's data width. Counters, indexes
+   and credit counts are sized to the range they hold, as an engineer would
+   (six credits need 3 bits, not 64). Do not multiply or divide wide free
+   inputs; that makes the proof intractable.
 8. If a new register's declared width admits values outside its reachable
-   range, add an invariant clause bounding it."""
+   range, add an invariant clause bounding it.
+9. Do not add a register that only copies one the module already has: a
+   fact saying `new == old` means the new register adds nothing, and the
+   extension is rejected."""
 
 MOVES = {
     "SPLIT": ("Take a quantity that is currently held in one register and "
@@ -157,8 +162,11 @@ def size_target(verilog):
 # so these rows are exactly the ones worth making.
 # 17 Oct 2026: the big moves (SUBUNIT, STORAGE, PEER) now take most
 # draws, so a lineage grows several times its first size in a run.
-MOVE_WEIGHTS = {"STAGE": 2, "SPLIT": 1, "PEER": 2, "BOUND": 1, "GUARD": 0,
-                "LEDGER": 2, "SUBUNIT": 4, "STORAGE": 3}
+# 18 Oct 2026, hand review of the 17 Oct trial: the big moves gave 5 real
+# designs out of 5, the small ones (STAGE k=1, SPLIT, BOUND, LEDGER's forced
+# gating) 4 contrived ones out of 4, so the big moves take 12 draws in 17.
+MOVE_WEIGHTS = {"STAGE": 1, "SPLIT": 1, "PEER": 3, "BOUND": 1, "GUARD": 0,
+                "LEDGER": 2, "SUBUNIT": 5, "STORAGE": 4}
 SECOND_PROPERTY_RATE = 1 / 6
 
 STAGE_K_TEXT = """
@@ -200,6 +208,19 @@ source and the parent clause is false whenever that latch is set. The
 correct disposition is superseded by `fault == (timer == 4'd0 || err_latch)`,
 reason "the fault condition now has a second source"."""
 
+# What a structural move's new state must do. LEDGER's counters only watch
+# a transition: asked to write or gate something as well, the 17 Oct trial's
+# ledger child added a gate that was always true (hand review, 18 Oct 2026).
+EFFECT_RULE = """\
+The new state must write, or gate the write of, something the property or
+the parent invariants read. If your new logic only reads existing state and
+never affects it, that is a distractor, not a structural extension."""
+
+LEDGER_EFFECT_RULE = """\
+The new counters observe an existing transition.
+They do not need to write or gate anything: their difference must equal
+existing state, and that relation goes in your invariant list."""
+
 STRUCTURAL_TEMPLATE = """\
 Extension type: STRUCTURAL.
 
@@ -222,9 +243,7 @@ The parent's strengthening invariants:
 
 REQUIREMENTS SPECIFIC TO THIS TYPE
 
-The new state must write, or gate the write of, something the property or
-the parent invariants read. If your new logic only reads existing state and
-never affects it, that is a distractor, not a structural extension.
+{effect_rule}
 
 Your new invariant list must contain at least one clause mentioning both a
 new identifier and an existing one. That coupling clause is the point of
@@ -386,7 +405,10 @@ B's invariants: {invariants_b}
 REQUIREMENTS
 
 1. The wrapper instantiates A once and B once, and connects a value A
-   produces to an input B consumes — NEVER through a plain wire. Put a
+   produces to an input B consumes — NEVER through a plain wire. Connect
+   them the way a real design would: what A sends must mean something to B
+   (data into a data input, an event into a trigger or enable), never a
+   value forced into an input that expects something else. Put a
    register stage, a valid/data handshake pair, or a small buffer between
    them, and the glue must HOLD its contents while its enable is low. A
    plain wire makes B's proof trivial and the extension worthless; glue
@@ -405,7 +427,9 @@ REQUIREMENTS
    glue state itself. The glue clause is the point — it is the state
    neither parent's invariants describe.
 5. Same clock and reset names as the parents. Every new register gets a
-   reset and an initial value. Glue registers match the parents' widths.
+   reset and an initial value. Glue registers that carry data match the
+   parents' widths; counters are sized to their range. Do not add a glue
+   register that only copies a register a parent already has.
 6. No assume, no cover, no -> implication, no system tasks.
 
 WORK IT OUT BEFORE YOU WRITE THE WRAPPER
@@ -469,8 +493,12 @@ REQUIREMENTS
 1. The wrapper instantiates the parent exactly {n} times and owns a credit
    pool: a shared budget register of TOTAL credits. An
    instance can only gain a unit of its resource when the pool has a free
-   credit; releasing a unit returns the credit. The wrapper may rely only
-   on signals the parent exposes through its ports.
+   credit; a credit returns to the pool when the work it paid for
+   finishes. The wrapper may rely only on signals the parent exposes
+   through its ports. Every copy's results must be used: route each copy's
+   outputs to the wrapper's outputs or into the wrapper's logic (for
+   example a mux by grant), and never XOR copies' results together just to
+   keep them alive.
 2. Expose every per-instance signal your invariants mention as a named
    top-level wire with an instance-numbered name (t0..t{last}, h0..h{last}).
    NEVER write inst.signal — hierarchical references are rejected: the
@@ -487,7 +515,8 @@ REQUIREMENTS
    do not count as that aggregate.
 5. Same clock and reset names as the parent. Every new register gets a
    reset in the wrapper's if (rst) branch and an initial value. New
-   registers match the parent's widths. Watch summation width:
+   registers that carry data match the parent's widths; counters are
+   sized to their range. Watch summation width:
    zero-extend operands so the sum
    cannot wrap.
 6. No assume, no cover, no -> implication, no system tasks.
@@ -1013,6 +1042,8 @@ def build_prompt(parent, ext_type, move=None, n=6, k=1):
         disposition_block=DISPOSITION_BLOCK,
         diff_format=DIFF_FORMAT)
     if ext_type == "structural":
+        fields["effect_rule"] = (LEDGER_EFFECT_RULE if move == "LEDGER"
+                                 else EFFECT_RULE)
         fields["move"] = f"{move}   {MOVES[move]}"
         if move == "STAGE" and k > 1:
             fields["move"] += STAGE_K_TEXT.format(k=k)

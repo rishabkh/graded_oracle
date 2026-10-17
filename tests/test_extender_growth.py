@@ -13,7 +13,8 @@ and an accepted step added a median of 12 lines. The changes tested here:
   4. combining and copying are drawn more often, and lineages go 12 deep;
   5. bigger moves, sized so one step grows a design by half to three
      quarters;
-  6. a child that grew by half or more is kept without a new kind of fact.
+  6. a child that grew by half or more was kept without a new kind of fact
+     (dropped on 18 Oct: it only ever kept weak or wrong designs).
 Plus a run that chases lineages (the newest child is extended next) from
 named starting designs, which is what a trial of deep growth needs."""
 import random
@@ -211,8 +212,10 @@ def test_promotion_keeps_the_main_check_time_on_the_row():
 
 # --- 4. combining, copying and depth ------------------------------------
 
-def test_combining_and_copying_are_drawn_far_more_often():
-    assert batch.MULTIPLIER_RATE >= 0.4
+def test_combining_and_copying_are_drawn_more_often_than_before():
+    """0.15 until 17 Oct, 0.4 for the 17 Oct trial, 0.25 since 18 Oct: in
+    that trial they gave 1 good design in 15 (test_extender_steering)."""
+    assert batch.MULTIPLIER_RATE == 0.25
     rng = random.Random(5)
     pool = [fifo_row(id="c0_901"), fifo_row(id="c0_902")]
     pool[1] = dict(pool[1], top_module="fifo_b",
@@ -220,7 +223,7 @@ def test_combining_and_copying_are_drawn_far_more_often():
     draws = [batch.sample_task(rng, pool[0], pool) for _ in range(2000)]
     share = sum(t["ext_type"] in ("compose", "replicate")
                 for t in draws) / len(draws)
-    assert 0.33 < share < 0.47, share
+    assert 0.2 < share < 0.3, share
 
 
 def test_lineages_may_go_twelve_rounds():
@@ -273,7 +276,11 @@ def test_pipeline_stages_come_in_bigger_runs():
     assert ks == {1, 4, 8}
 
 
-# --- 6. the new-kind-of-fact rule lets big growth through ----------------
+# --- 6. growth alone no longer passes the new-kind-of-fact rule ----------
+# From 17 to 18 Oct a child that grew by half was kept without a new kind of
+# fact. The only children that rule kept were three meaningless
+# combinations and a contrived 64-bit drain window (hand review of the
+# 17 Oct trial), so it was dropped; the growth is still recorded.
 
 PARENT = {"id": "c0_000", "top_module": "m", "verilog": "\n" * 39 + "x",
           "invariants": ["cnt <= 4'd9"]}
@@ -288,11 +295,11 @@ def grown(lines, **kw):
     return r
 
 
-def test_a_child_that_grew_by_half_is_kept_without_a_new_kind_of_fact():
-    assert promote.GROWTH_EXEMPT == 0.5
+def test_a_child_that_grew_by_half_still_needs_a_new_kind_of_fact():
+    assert not hasattr(promote, "GROWTH_EXEMPT")
     r = promote.ratchet(grown(60), [PARENT])
-    assert r["verdict"] == "NECESSARY"
-    assert r["grew_by"] == 0.5
+    assert r["verdict"] == "NO_NEW_SHAPE"
+    assert r["grew_by"] == 0.5                 # still recorded for reports
 
 
 def test_a_child_that_grew_less_still_needs_a_new_kind_of_fact():
@@ -300,10 +307,10 @@ def test_a_child_that_grew_less_still_needs_a_new_kind_of_fact():
     assert r["verdict"] == "NO_NEW_SHAPE"
 
 
-def test_growth_in_flip_flops_counts_too():
+def test_growth_in_flip_flops_is_recorded_too():
     r = promote.ratchet(grown(41, parent_state_bits=100,
                               child_state_bits=160), [PARENT])
-    assert r["verdict"] == "NECESSARY" and r["grew_by"] == 0.6
+    assert r["verdict"] == "NO_NEW_SHAPE" and r["grew_by"] == 0.6
 
 
 # --- chasing lineages from named designs --------------------------------
