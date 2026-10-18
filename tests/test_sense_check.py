@@ -33,6 +33,8 @@ def answer(**kw):
          "value_used_against_its_meaning": False,
          "new_logic_only_copies_existing_state": False,
          "results_of_parts_used": True,
+         "new_part_has_its_own_job": True,
+         "breaks_what_it_did": False,
          "engineer_would_build_this": True,
          "why": "a sensible pipeline"}
     a.update(kw)
@@ -77,17 +79,20 @@ def test_parts_wired_without_sense_or_unbuildable_designs_are_rejected():
         assert rec["verdict"] == "NONSENSE", bad
 
 
-def test_only_a_proved_combination_or_copy_is_reviewed():
+def test_only_a_proved_design_is_reviewed():
+    """Every kind of proved step since 18 Oct 2026 (combinations and copies
+    before): test_extender_good_growth."""
     model = Model(answer(parts_connected_sensibly=False))
-    for rec in (wrapped(ext_type="structural"), wrapped(verdict="DECORATIVE"),
-                wrapped(ext_type="distractor")):
+    for rec in (wrapped(verdict="DECORATIVE"), wrapped(verdict="NOT_PROVEN")):
         assert S.review(rec, call=model)["verdict"] == rec["verdict"]
     assert model.prompts == []
 
 
-def test_a_failed_review_call_keeps_the_design_and_says_so():
+def test_a_failed_review_call_rejects_the_design_and_says_so():
+    """It kept the design until 18 Oct 2026: the one kept that way in the
+    18 Oct trial (its review was refused) was weak."""
     rec = S.review(wrapped(), call=Model(None))
-    assert rec["verdict"] == "NECESSARY"
+    assert rec["verdict"] == "UNREVIEWED"
     assert rec["sense_check"]["error"]
 
 

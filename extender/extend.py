@@ -10,10 +10,14 @@ New machinery beyond the distractor:
                  first property and grading the second alone.
   coupling       a structural extension must produce at least one clause
                  mentioning both new and existing state; its absence is
-                 reported (the human reads it), not auto-rejected.
+                 reported (the human reads it), not auto-rejected - except
+                 for a part with an assertion of its own, where it is the
+                 only link to the old design and is required (18 Oct 2026).
+  sideways       a big move may add a part beside the existing logic with
+                 ONE assertion of its own, held to the second-property
+                 rules (new state read, needs facts alone) (18 Oct 2026).
 
-Port list is FIXED for these types (unlike the distractor): new state
-must be observable through existing outputs.
+Inputs stay fixed; new state may get new OUTPUT ports (18 Oct 2026).
 
   venv/bin/python extender/extend.py --plan                      # the 5-seed plan
   venv/bin/python extender/extend.py --parent g0_014 --type structural --move GUARD --dry
@@ -118,6 +122,8 @@ MOVES = {
     # 17 Oct 2026: an accepted step added a median of 12 lines, so six
     # rounds took a 73-line design to about 200 against real blocks of
     # about 1,900. These two grow a design by half or more in one step.
+    # 18 Oct 2026: real blocks are about 5 modules and ours were 1, so the
+    # new unit is now a module of its own (Rishab: "do all 6 changes").
     "SUBUNIT": ("Add a complete new functional unit that works with the "
                 "existing logic, the way the next feature of a real block "
                 "is added: for example a request queue in front of an "
@@ -126,14 +132,26 @@ MOVES = {
                 "configures an existing behaviour, or a retry or backoff "
                 "controller around an existing operation. It holds real "
                 "state of its own (several registers and the logic that "
-                "drives them), and it writes or gates something the "
-                "property or the parent invariants read."),
-    "STORAGE": ("Add storage on the path the property depends on: a "
-                "register file, FIFO or lookup table (an array with a "
-                "write side and a read side) that holds values before they "
-                "reach existing state, sized with the module's own widths. "
-                "The invariant list must relate the stored entries, or how "
-                "many of them are in use, to the existing state."),
+                "drives them). Write it as its own module, with its own "
+                "ports, and instantiate it once inside the existing "
+                "module, the way real blocks are built from sub-modules; "
+                "a patch may begin with + lines, before any anchor, to put "
+                "the new module at the top of the file. Facts and "
+                "assertions can only name signals of the existing (top) "
+                "module: bring each register of the new module that a "
+                "fact needs out on an output port, connect that port to a "
+                "wire in the existing module, and name the wire. Never "
+                "write instance.signal."),
+    # 18 Oct 2026: "on the path the property depends on" piled every
+    # storage step onto one path (five buffers in a row in front of a
+    # fixed table in the 18 Oct trial, all weak)
+    "STORAGE": ("Add storage the design needs: a register file, FIFO or "
+                "lookup table (an array with a write side and a read "
+                "side), sized with the module's own widths, that holds "
+                "values on their way to existing state or serves a new "
+                "part with an assertion of its own. The invariant list "
+                "must relate the stored entries, or how many of them are "
+                "in use, to the state around them."),
 }
 
 # the moves that add a whole piece of design; their question says how big
@@ -141,17 +159,32 @@ BIG_MOVES = ("SUBUNIT", "STORAGE", "PEER")
 
 SIZE_TEXT = """
         Size: this is a substantial addition. The module now has {n} lines;
-        your patch should add roughly {lo} to {hi} new lines (half to three
-        quarters of its current size), written out as real logic, not
-        padding, comments or copies of existing lines."""
+        your patch should add roughly {lo} to {hi} new lines ({share}),
+        written out as real logic, not padding, comments or copies of
+        existing lines."""
+
+# 18 Oct 2026, hand review of two trials: every good step grew its design
+# 1.4 to 1.7 times, inside the +50-75% the question asked for, so the size
+# of a good design was set by the question. The two moves that stayed good
+# (a sub-unit 5 of 5, storage 5 of 7) now ask to double the design
+# (Rishab: "do all 6 changes").
+DOUBLING_MOVES = ("SUBUNIT", "STORAGE")
 
 
-def size_target(verilog):
-    """(lines now, fewest, most) new lines for a step that grows a design
-    by half to three quarters (Rishab, 17 Oct 2026: "we want to see rapid
-    growth")."""
+def size_target(verilog, move=None):
+    """(lines now, fewest, most) new lines: a sub-unit or storage step
+    roughly doubles a design, other big steps grow it by half to three
+    quarters (Rishab, 17 Oct 2026: "we want to see rapid growth")."""
     n = len(verilog.splitlines())
+    if move in DOUBLING_MOVES:
+        return n, n, round(n * 1.25)
     return n, round(n * 0.5), round(n * 0.75)
+
+
+def size_share(move):
+    return ("about as much again as it has now, so the design roughly "
+            "doubles" if move in DOUBLING_MOVES
+            else "half to three quarters of its current size")
 
 # Batch-runner sampling policy, from measured state-bit returns per call:
 # STAGE +9, SPLIT +9, PEER +7, BOUND +4, GUARD +1. GUARD is dead weight;
@@ -165,8 +198,13 @@ def size_target(verilog):
 # 18 Oct 2026, hand review of the 17 Oct trial: the big moves gave 5 real
 # designs out of 5, the small ones (STAGE k=1, SPLIT, BOUND, LEDGER's forced
 # gating) 4 contrived ones out of 4, so the big moves take 12 draws in 17.
-MOVE_WEIGHTS = {"STAGE": 1, "SPLIT": 1, "PEER": 3, "BOUND": 1, "GUARD": 0,
-                "LEDGER": 2, "SUBUNIT": 5, "STORAGE": 4}
+# 18 Oct 2026, both trials read by hand: SPLIT gave 0 good designs in 5,
+# LEDGER 0 in 4, BOUND 0 in 1, so they are no longer drawn and their turns
+# go to SUBUNIT and STORAGE; LEDGER's weight of 2 (Rishab, 6 Sep) is
+# dropped with his "do all 6 changes". STAGE stays, in runs of 4 or 8.
+# The moves remain for runs by hand (extend.py --move).
+MOVE_WEIGHTS = {"STAGE": 1, "SPLIT": 0, "PEER": 3, "BOUND": 0, "GUARD": 0,
+                "LEDGER": 0, "SUBUNIT": 7, "STORAGE": 6}
 SECOND_PROPERTY_RATE = 1 / 6
 
 STAGE_K_TEXT = """
@@ -221,6 +259,53 @@ The new counters observe an existing transition.
 They do not need to write or gate anything: their difference must equal
 existing state, and that relation goes in your invariant list."""
 
+# 18 Oct 2026: with only the rule above, every new part had to change what
+# the first property reads, so on a long chain they piled up on one path
+# (five buffers in a row in front of a fixed table, all weak). A big move
+# may now grow the design sideways instead, the way real blocks gain
+# features (Rishab: "do all 6 changes"). grade_step4 holds the new
+# assertion to the second-property rules and requires the coupling fact.
+SIDEWAYS_EFFECT_RULE = """\
+The new state must write, or gate the write of, something the property or
+the parent invariants read - OR it may sit beside the existing logic as a
+feature of its own, the way real blocks grow: it reads state the existing
+facts describe, and it comes with ONE new assertion about the new part.
+For that second way:
+- put the assertion in the existing (top) module, in its own always block
+  in the same style as the existing one;
+- it must not prove without facts;
+- it must read at least one register no existing assertion reads;
+- at least one fact must name both new state and state the existing facts
+  describe;
+- never change or remove an existing assertion;
+- in new_state below, say which existing state the part reads and what its
+  assertion says; the induction_gap may break that assertion instead of
+  the existing property.
+New logic that only reads existing state, with no assertion of its own and
+no effect on what the property reads, is a distractor, not a structural
+extension."""
+
+# 18 Oct 2026: on a long chain the model could not see what earlier steps
+# had added, and added the same kind of part again (a third, fourth and
+# fifth buffer in a row). batch.py passes the family's steps in.
+HISTORY_TEXT = """\
+Earlier steps on this design, oldest first:
+{lines}
+Give the design something it does not have yet. Do not add a part that
+does the job of one of these again: another buffer in a row in front of
+the same output, or a second count of something already counted, adds
+size and nothing else.
+
+"""
+
+
+def history_text(history):
+    if not history:
+        return ""
+    return HISTORY_TEXT.format(lines="\n".join(
+        f"  {i}. {h}" for i, h in enumerate(history, 1)))
+
+
 STRUCTURAL_TEMPLATE = """\
 Extension type: STRUCTURAL.
 
@@ -241,7 +326,7 @@ The property, which you must not touch:
 The parent's strengthening invariants:
 {invariants}
 
-REQUIREMENTS SPECIFIC TO THIS TYPE
+{history}REQUIREMENTS SPECIFIC TO THIS TYPE
 
 {effect_rule}
 
@@ -299,7 +384,7 @@ The existing property, which you must not touch:
 The parent's strengthening invariants:
 {invariants}
 
-REQUIREMENTS SPECIFIC TO THIS TYPE
+{history}REQUIREMENTS SPECIFIC TO THIS TYPE
 
 The second property must be true of the design and must NOT be provable by
 k-induction on its own without any invariants. If it proves unaided it
@@ -657,6 +742,27 @@ def split_second_property_asserts(parent_props, child_asserts):
     return child_asserts[-1], None
 
 
+def one_new_assert(parent_props, child_asserts):
+    """Like split_second_property_asserts, but the new assertion may sit
+    anywhere in the file (a part beside the old logic, 18 Oct 2026): every
+    parent assertion is still there, in its order, plus exactly one more.
+    Returns (new_assert, None) or (None, error)."""
+    p = [_norm(x) for x in parent_props]
+    rest = list(child_asserts)
+    for want in p:
+        i = next((j for j, a in enumerate(rest) if _norm(a) == want), None)
+        if i is None:
+            return None, f"parent assertion not preserved verbatim: {want!r}"
+        rest.pop(i)
+    kept = [_norm(a) for a in child_asserts if _norm(a) in p]
+    if kept != p:
+        return None, f"parent assertions reordered: {p} vs {kept}"
+    if len(rest) != 1:
+        return None, (f"expected exactly one new assertion: parent has "
+                      f"{len(p)}, child has {len(child_asserts)}")
+    return rest[0], None
+
+
 def remove_asserts(source, exprs):
     """Blank the assert(...) statements whose expression matches one of
     `exprs` (whitespace-normalized), leaving legal Verilog — used to
@@ -727,6 +833,41 @@ def p2_new_ids(parent_props, new_assert, child_verilog):
     and is rejected."""
     new = identifiers(new_assert) - identifiers("\n".join(parent_props))
     return new & wrapper_regs(child_verilog)
+
+
+def state_carriers(parent, child):
+    """The registers a step added and the wires that carry them: a wire on
+    an output port of a module the step added, or one assigned from new
+    state. 18 Oct 2026: a sub-unit is now a module of its own, so its
+    state reaches an assertion in the top module through a wire, and
+    counting registers only turned such a step away (found grading a
+    hand-made step with the real checker). A wire made from old state
+    alone is still not new state."""
+    import gates                      # gates imports this module
+    carried = wrapper_regs(child) - wrapper_regs(parent["verilog"])
+    new_modules = set(gates._modules(child)) - \
+        set(gates._modules(parent["verilog"]))
+    for mod, _, body in gates.instances(child, child, parent["top_module"]):
+        if mod in new_modules:
+            outputs = {p for p, d in gates.port_directions(child, mod).items()
+                       if d == "output"}
+            for port, expr in gates._CONNECTION.findall(body):
+                if port in outputs:
+                    carried |= identifiers(expr)
+    driven = gates._DRIVEN.findall(_mask_comments(child))
+    while True:
+        more = {lhs for lhs, rhs in driven
+                if lhs not in carried and identifiers(rhs) & carried}
+        if not more:
+            return carried
+        carried |= more
+
+
+def own_property_new_ids(parent, new_assert, child):
+    """p2_new_ids for a part's own assertion: wires that carry new state
+    count as well as registers (state_carriers)."""
+    new = identifiers(new_assert) - identifiers("\n".join(parent["property"]))
+    return new & (wrapper_regs(child) | state_carriers(parent, child))
 
 
 def property_copy(invariants, asserts):
@@ -1027,7 +1168,9 @@ def has_coupling_clause(new_invs, parent_ids, new_ids):
 
 # --- prompt / call / grade ---
 
-def build_prompt(parent, ext_type, move=None, n=6, k=1):
+def build_prompt(parent, ext_type, move=None, n=6, k=1, history=None):
+    """`history`: the family's earlier steps, oldest first, as
+    promote.history gives them (structural and second property only)."""
     if ext_type == "replicate":
         return REPLICATE_TEMPLATE.format(
             n=n, last=n - 1, verilog=parent["verilog"],
@@ -1040,16 +1183,19 @@ def build_prompt(parent, ext_type, move=None, n=6, k=1):
         invariants="\n".join(parent["invariants"]),
         invariant_rules=INVARIANT_RULES,
         disposition_block=DISPOSITION_BLOCK,
-        diff_format=DIFF_FORMAT)
+        diff_format=DIFF_FORMAT,
+        history=history_text(history))
     if ext_type == "structural":
         fields["effect_rule"] = (LEDGER_EFFECT_RULE if move == "LEDGER"
+                                 else SIDEWAYS_EFFECT_RULE if move in BIG_MOVES
                                  else EFFECT_RULE)
         fields["move"] = f"{move}   {MOVES[move]}"
         if move == "STAGE" and k > 1:
             fields["move"] += STAGE_K_TEXT.format(k=k)
         if move in BIG_MOVES:
-            n, lo, hi = size_target(parent["verilog"])
-            fields["move"] += SIZE_TEXT.format(n=n, lo=lo, hi=hi)
+            n, lo, hi = size_target(parent["verilog"], move)
+            fields["move"] += SIZE_TEXT.format(n=n, lo=lo, hi=hi,
+                                               share=size_share(move))
     return tmpl.format(**fields)
 
 
@@ -1250,6 +1396,18 @@ def grade_step4(parent, ext_type, out, record):
     record["invariants"] = out["invariants"]
     record["dispositions"] = out["dispositions"]
 
+    # a sub-unit is a module of its own since 18 Oct 2026, so a fact can
+    # now reach for its registers by instance.signal; say so before grading
+    bad = hierarchical_refs(out)
+    if bad:
+        record["verdict"] = "HIERARCHICAL_REF"
+        record["error"] = (
+            f"facts contain hierarchical references {bad} - the toolchain "
+            "silently turns inst.signal into a dangling wire. Bring the "
+            "register out on an output port of the new module, connect it "
+            "to a wire in the top module and name that wire.")
+        return record
+
     try:
         child = apply_patch(parent["verilog"], out["patch"])
     except PatchError as exc:
@@ -1259,29 +1417,41 @@ def grade_step4(parent, ext_type, out, record):
     record["child_verilog"] = child
 
     child_asserts = extract_asserts(child)
+    sideways = False
     if ext_type == "structural":
-        if [_norm(a) for a in child_asserts] != \
-                [_norm(a) for a in parent["property"]]:
+        same = [_norm(a) for a in child_asserts] == \
+            [_norm(a) for a in parent["property"]]
+        # a big move may add a part beside the old logic with ONE assertion
+        # of its own (18 Oct 2026); any other change of the asserts is not
+        # allowed for a structural step
+        sideways = (not same and record.get("move") in BIG_MOVES
+                    and len(child_asserts) == len(parent["property"]) + 1)
+        if not same and not sideways:
             record["verdict"] = "PROPERTY_CHANGED"
             record["error"] = (f"structural patches must not touch asserts: "
                                f"parent {parent['property']} vs child "
                                f"{child_asserts}")
             return record
         child_props = parent["property"]
-    else:
-        new_assert, err = split_second_property_asserts(
-            parent["property"], child_asserts)
+    if ext_type == "second" or sideways:
+        if sideways:
+            new_assert, err = one_new_assert(parent["property"],
+                                             child_asserts)
+        else:
+            new_assert, err = split_second_property_asserts(
+                parent["property"], child_asserts)
         if err:
             record["verdict"] = "PROPERTY_CHANGED"
             record["error"] = err
             return record
-        record["second_property"] = new_assert
-        record["p2_new_ids"] = sorted(p2_new_ids(parent["property"],
-                                                 new_assert, child))
+        record["own_property" if sideways else "second_property"] = new_assert
+        record["p2_new_ids"] = sorted(
+            own_property_new_ids(parent, new_assert, child) if sideways
+            else p2_new_ids(parent["property"], new_assert, child))
         if not record["p2_new_ids"]:
             record["verdict"] = "P2_SAME_SUPPORT"
-            record["error"] = ("second property reads no register the "
-                               "first property does not already read — it "
+            record["error"] = ("the new property reads no register the "
+                               "existing ones do not already read — it "
                                "rides on the existing invariants and "
                                "forces no new clause; rejected")
             return record
@@ -1318,14 +1488,21 @@ def grade_step4(parent, ext_type, out, record):
     record["new_identifiers"] = sorted(new_ids)
     record["has_coupling_clause"] = has_coupling_clause(
         out["invariants"], parent_ids, new_ids)
+    if sideways and not record["has_coupling_clause"]:
+        record["verdict"] = "NO_COUPLING"
+        record["error"] = ("a part with an assertion of its own needs at "
+                           "least one fact naming both its new state and "
+                           "existing state; without one it is a second "
+                           "design bolted on the side")
+        return record
 
-    if ext_type == "second":
+    if ext_type == "second" or sideways:
         # P2 alone, no invariants: PROVEN here means it teaches nothing.
         p2_only = remove_asserts(child, parent["property"])
         with tempfile.TemporaryDirectory() as td:
             f = Path(td) / f"{parent['top_module']}.sv"
             f.write_text(p2_only)
-            with Spinner("checking the second property does not prove unaided"):
+            with Spinner("checking the new property does not prove unaided"):
                 solo = grade(f, PropertyInfo(top_module=parent["top_module"],
                                              clock=parent["clock"]),
                              **grade_kwargs(record, leg="p2_alone"))
@@ -1333,7 +1510,7 @@ def grade_step4(parent, ext_type, out, record):
         record["p2_unaided_result"] = asdict(solo)   # keep everything
         if solo.tier.name == "PROVEN":
             record["verdict"] = "P2_PROVES_UNAIDED"
-            record["error"] = ("second property proves by k-induction with "
+            record["error"] = ("the new property proves by k-induction with "
                                "no invariants — teaches nothing")
             return record
 
@@ -1372,6 +1549,8 @@ def report(record, ext_type):
               f"(new ids: {', '.join(record['new_identifiers']) or 'none'})")
     if ext_type == "structural":
         print(f"coupling clause present: {record.get('has_coupling_clause')}")
+        if record.get("own_property"):
+            print(f"its own assertion: {record['own_property']}")
     if ext_type == "second":
         print(f"second property: {record.get('second_property')}")
         print(f"P2 unaided tier: {record.get('p2_unaided_tier')}")

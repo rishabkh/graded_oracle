@@ -443,8 +443,10 @@ def test_strip_diff_decoration_leaves_plain_verilog_alone():
 
 def test_ledger_move_exists_and_is_weighted():
     from extend import MOVES, MOVE_WEIGHTS
-    assert "LEDGER" in MOVES
-    assert MOVE_WEIGHTS["LEDGER"] >= 2          # the family our plumbing wins at
+    assert "LEDGER" in MOVES                    # still there for runs by hand
+    # weight 2 from 6 Sep; 0 since 18 Oct, after 0 good designs in 4
+    # (Rishab: "do all 6 changes")
+    assert MOVE_WEIGHTS["LEDGER"] == 0
     text = MOVES["LEDGER"].lower()
     # the three ingredients of the thermo_farm miss
     assert "difference" in text

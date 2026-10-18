@@ -61,6 +61,9 @@ _ACTIONS = {
     # judged meaningless as hardware by the second-model review
     # (sense_check.py, run only with batch.py --sense-check)
     "NONSENSE": "reject",
+    # the review could not be made, twice: not known to be good, so not
+    # kept or grown (18 Oct 2026; a refused review had kept a design)
+    "UNREVIEWED": "reject",
 }
 
 
@@ -144,6 +147,58 @@ def ratchet(record, parents):
     return record
 
 
+# --- what a family already has (18 Oct 2026) ---
+# On a long chain the model could not see what earlier steps had added and
+# added the same kind of part again (a third, fourth and fifth buffer in a
+# row). Each row now says what its step added; batch.py lists a family's
+# steps in the next question and limits how often one kind is drawn.
+
+# the builder's own account of each kind of step
+_ADDED_FIELD = {"structural": "new_state", "second": "claim",
+                "distractor": "reasoning", "compose": "glue_scheme",
+                "replicate": "pool_scheme"}
+
+
+def what_was_added(rec, limit=240):
+    """The first sentence of the builder's account of the step."""
+    text = " ".join(str(rec.get(_ADDED_FIELD.get(rec.get("ext_type")), "")
+                        or "").split())
+    m = re.search(r"\.\s", text)
+    first = text[:m.start() + 1] if m else text
+    return first if len(first) <= limit else first[:limit].rstrip() + "..."
+
+
+def step_kind(row):
+    """The move for a structural step, the type for the others; None for
+    a starting design."""
+    if not row.get("ext_type"):
+        return None
+    return row.get("move") or row["ext_type"]
+
+
+def lineage(row, by_id, _seen=None):
+    """The steps that made `row`, oldest first, through both parents of a
+    combination; `row` itself last when it is a step."""
+    seen = _seen if _seen is not None else set()
+    if row is None or row["id"] in seen:
+        return []
+    seen.add(row["id"])
+    out = []
+    for pid in (row.get("parent"), row.get("parent2")):
+        if pid:
+            out += lineage(by_id.get(pid), by_id, seen)
+    if step_kind(row):
+        out.append(row)
+    return out
+
+
+def history(row, by_id):
+    """`kind: what it added` for each step that made `row`, oldest first
+    (rows from before 18 Oct 2026 say only their kind)."""
+    return [f"{step_kind(r)}: {r['added']}" if r.get("added")
+            else step_kind(r) for r in lineage(row, by_id)]
+
+
 _MODULES = re.compile(r"\bmodule\s+([A-Za-z_]\w*)")
 
 
@@ -211,6 +266,7 @@ def promote(corpus_rows, ext_records, compute_metrics=True):
             "source_extension_id": rec.get("extension_id"),
             "ext_type": rec.get("ext_type"),
             "move": rec.get("move"),
+            "added": what_was_added(rec),
             "content_hash": h,
             "top_module": top,
             "clock": parent.get("clock", "clk"),

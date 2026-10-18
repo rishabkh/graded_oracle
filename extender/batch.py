@@ -43,7 +43,8 @@ from build_corpus import without_main_s                           # noqa: E402
 from distractor import (Spinner, dump, OUT_LOG, MODEL, EFFORT,    # noqa: E402
                         GRADE_KWARGS, build_prompt as distractor_prompt,
                         call_model as distractor_call, grade_extension)
-from promote import FIXER_QUEUE, promote, ratchet, route         # noqa: E402
+from promote import (FIXER_QUEUE, history, lineage, promote,      # noqa: E402
+                     ratchet, route, step_kind)
 import distractor                                                # noqa: E402
 import gates                                                     # noqa: E402
 import sense_check                                               # noqa: E402
@@ -55,8 +56,10 @@ import contextlib
 # same time would push checks past their time limit and change verdicts.
 GRADE_SLOTS = None
 
-# The second-model review of combinations and copies (sense_check.py), off
-# until it has been tried on the hand-labelled 17 Oct trial; --sense-check.
+# The second-model review (sense_check.py) of every proved step; a step it
+# rejects is not kept, so only designs it keeps are grown further (every
+# step since 18 Oct 2026, combinations and copies before). Off until it has
+# been tried on the hand-labelled trials; --sense-check.
 SENSE_CHECK = False
 
 
@@ -88,6 +91,8 @@ DISTRACTOR_RATE = 1 / 6   # the control: irrelevant logic, invariants verbatim.
                           # The only move that lowers coi_ratio — without it
                           # every extension lands inside the cone and the
                           # metric drifts the wrong way with depth.
+MAX_SAME_KIND = 2         # steps of one kind per family (18 Oct 2026: one
+                          # family got five buffers in a row, all weak)
 
 
 def without_wall(record):
@@ -184,22 +189,34 @@ def copies_that_fit(n_facts):
     return [n for n in (4, 6) if n * n_facts + 1 <= gates.MAX_FACTS]
 
 
+def kinds_used(row, by_id):
+    """How many steps of each kind made this design (promote.step_kind)."""
+    return Counter(step_kind(r) for r in lineage(row, by_id))
+
+
 def sample_task(rng, parent, corpus_rows):
-    """One weighted task for a parent. GUARD is weight 0; distractor and
-    second-property each run at ~1-in-6; multipliers only between
-    parents a wrapper can reach, after the port step (extend.wrappable),
-    with partners that fit (fits) and while the facts stay within
-    gates.MAX_FACTS."""
+    """One weighted task for a parent, or None when its family has used
+    every kind of step MAX_SAME_KIND times. GUARD, SPLIT, BOUND and LEDGER
+    are weight 0; distractor and second-property each run at ~1-in-6;
+    multipliers only between parents a wrapper can reach, after the port
+    step (extend.wrappable), with partners that fit (fits) and while the
+    facts stay within gates.MAX_FACTS."""
     eligible_self = wrappable(parent)
     n_facts = len(parent["invariants"])
     by_id = {r["id"]: r for r in corpus_rows}
+    used = kinds_used(parent, by_id)
+
+    def allowed(kind):
+        return used[kind] < MAX_SAME_KIND
+
     partners = [r for r in corpus_rows
                 if r["id"] != parent["id"]
                 and r["top_module"] != parent["top_module"]
                 and n_facts + len(r["invariants"]) + 1 <= gates.MAX_FACTS
                 and wrappable(r) and fits(parent, r, by_id)] \
-        if eligible_self else []
-    copies = copies_that_fit(n_facts) if eligible_self else []
+        if eligible_self and allowed("compose") else []
+    copies = copies_that_fit(n_facts) \
+        if eligible_self and allowed("replicate") else []
     can_multiply = bool(partners or copies) and \
         rng.random() < MULTIPLIER_RATE
     if can_multiply and partners and (not copies or rng.random() < 0.5):
@@ -210,18 +227,51 @@ def sample_task(rng, parent, corpus_rows):
         return {"ext_type": "replicate", "parent_id": parent["id"],
                 "parent2_id": None, "move": None,
                 "instances": rng.choice(copies)}
-    if rng.random() < DISTRACTOR_RATE:
+    if rng.random() < DISTRACTOR_RATE and allowed("distractor"):
         return {"ext_type": "distractor", "parent_id": parent["id"],
                 "parent2_id": None, "move": None}
-    if rng.random() < SECOND_PROPERTY_RATE:
+    if rng.random() < SECOND_PROPERTY_RATE and allowed("second"):
         return {"ext_type": "second", "parent_id": parent["id"],
                 "parent2_id": None, "move": None}
-    moves = [m for m, w in MOVE_WEIGHTS.items() for _ in range(w)]
-    k = rng.choice([1, 4, 4, 8])      # pipeline runs, mostly several stages
+    moves = [m for m, w in MOVE_WEIGHTS.items() if allowed(m)
+             for _ in range(w)]
+    # pipeline runs of several stages; a single stage was a small tweak
+    # (18 Oct 2026)
+    k = rng.choice([4, 4, 8])
+    if not moves:
+        rest = [t for t in ("distractor", "second") if allowed(t)]
+        if not rest:
+            return None
+        return {"ext_type": rng.choice(rest), "parent_id": parent["id"],
+                "parent2_id": None, "move": None}
     move = rng.choice(moves)
     return {"ext_type": "structural", "parent_id": parent["id"],
             "parent2_id": None, "move": move,
             "k": k if move == "STAGE" else 1}
+
+
+def largest_starts(corpus_rows, n, max_gen=MAX_GEN):
+    """The n biggest starting designs that can still be extended, no two
+    from the same hardware group, so a trial grows several kinds of
+    hardware. 18 Oct 2026: good designs stayed close to their starting
+    size, and the trials had started from designs of 62 to 84 lines.
+    A design with no property the extender can read is skipped: 29 of the
+    252 write `assert property (...)`, which extract_asserts does not
+    read, and two of the five biggest are among them."""
+    by_id = {r["id"]: r for r in corpus_rows}
+    rows = sorted((r for r in corpus_rows if r.get("generation", 0) == 0
+                   and r.get("property") and extendable(r, None, max_gen)),
+                  key=lambda r: (-len(r["verilog"].splitlines()), r["id"]))
+    out, taken = [], set()
+    for r in rows:
+        groups = design_groups(r, by_id)
+        if groups & taken:
+            continue
+        taken |= groups
+        out.append(r["id"])
+        if len(out) == n:
+            break
+    return out
 
 
 def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
@@ -276,6 +326,8 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
             if parent["id"] in dead_branches:
                 continue
             task = sample_task(rng, parent, corpus_rows)
+            if task is None:          # its family has used every kind
+                continue
             state["task_seq"] += 1
             task["task_id"] = state["task_seq"]
             task["attempt"] = 1
@@ -436,7 +488,8 @@ def _real_executor(task, corpus_rows):
                 parent, = _ready_for_wrapper(record, [parent])
             prompt = build_prompt(parent, task["ext_type"], task.get("move"),
                                   n=task.get("instances", 6),
-                                  k=task.get("k", 1))
+                                  k=task.get("k", 1),
+                                  history=history(parent, by_id))
             schema = {"structural": STRUCTURAL_SCHEMA,
                       "second": SECOND_SCHEMA,
                       "replicate": REPLICATE_SCHEMA}[task["ext_type"]]
@@ -466,7 +519,8 @@ def _real_executor(task, corpus_rows):
     ratchet(record, [by_id.get(task["parent_id"]),
                      by_id.get(task.get("parent2_id"))])
     if SENSE_CHECK:
-        sense_check.review(record)
+        sense_check.review(record, history=history(
+            by_id.get(task["parent_id"]), by_id))
     dump(record)
     with _progress_lock:
         PROGRESS["done"] += 1
@@ -502,6 +556,10 @@ def main(argv=None):
                    help="comma-separated row ids to start from (the only "
                         "lineages the run grows; every row can still be a "
                         "partner for a composition)")
+    p.add_argument("--start-largest", type=int, default=None, metavar="N",
+                   help="start from the N biggest starting designs, one "
+                        "per hardware group (largest_starts); instead of "
+                        "--start")
     p.add_argument("--per-family", type=int, default=3,
                    help="frontier entries one lineage may contribute, with "
                         "--order depth. Raise it to drive a single lineage "
@@ -528,10 +586,12 @@ def main(argv=None):
     p.add_argument("--dry", action="store_true",
                    help="print the planned first tasks, call nothing")
     p.add_argument("--sense-check", action="store_true",
-                   help="have a second model review every proved "
-                        "combination or copy (sense_check.py); paid, one "
-                        "call per such design")
+                   help="have a second model review every proved step "
+                        "(sense_check.py) and keep only what it keeps; "
+                        "paid, one call per proved step")
     args = p.parse_args(argv)
+    if args.start and args.start_largest:
+        p.error("--start and --start-largest cannot be used together")
     # 8 Oct 2026: --corpus used to change only the corpus. The logs stayed
     # v2's, so a later promote or fix run could copy another corpus's
     # designs into v2's corpus under clashing names.
@@ -550,6 +610,14 @@ def main(argv=None):
     corpus_rows = [json.loads(l)
                    for l in args.corpus.read_text().splitlines() if l.strip()]
     rng = random.Random(args.seed)
+    if args.start_largest:
+        args.start = ",".join(largest_starts(corpus_rows, args.start_largest,
+                                             args.max_gen))
+        print("starting from the biggest designs, one per hardware group: "
+              + ", ".join(
+                  f"{i} ({len(r['verilog'].splitlines())} lines)"
+                  for i in args.start.split(",") for r in corpus_rows
+                  if r["id"] == i))
 
     if args.dry:
         frontier = [r for r in corpus_rows

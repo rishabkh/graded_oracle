@@ -250,13 +250,16 @@ def test_the_big_moves_exist_and_are_drawn_most():
     w = extend.MOVE_WEIGHTS
     big = w["SUBUNIT"] + w["STORAGE"] + w["PEER"]
     assert big * 2 >= sum(w.values())
-    assert w["LEDGER"] >= 2                 # Rishab, 6 Sep: keep it on
+    # kept on from 6 Sep; dropped 18 Oct after 0 good designs in 4
+    # (Rishab: "do all 6 changes")
+    assert w["LEDGER"] == 0
 
 
 def test_a_big_move_asks_for_half_to_three_quarters_more_lines():
-    for move in extend.BIG_MOVES:
-        text = extend.build_prompt(lines_row(80), "structural", move)
-        assert "80 lines" in text and "40 to 60 new lines" in text, move
+    """A second unit still does; a sub-unit and storage ask to double the
+    design since 18 Oct (test_extender_good_growth)."""
+    text = extend.build_prompt(lines_row(80), "structural", "PEER")
+    assert "80 lines" in text and "40 to 60 new lines" in text
     small = extend.build_prompt(lines_row(80), "structural", "SPLIT")
     assert "new lines" not in small
 
@@ -268,12 +271,13 @@ def test_the_irrelevant_logic_step_asks_for_a_real_block():
 
 
 def test_pipeline_stages_come_in_bigger_runs():
+    """Never a single stage since 18 Oct (a small tweak)."""
     rng = random.Random(2)
     ks = {t["k"] for t in (batch.sample_task(rng, lines_row(40),
                                              [lines_row(40)])
                            for _ in range(3000))
           if t.get("move") == "STAGE"}
-    assert ks == {1, 4, 8}
+    assert ks == {4, 8}
 
 
 # --- 6. growth alone no longer passes the new-kind-of-fact rule ----------

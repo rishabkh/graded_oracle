@@ -113,7 +113,9 @@ def test_big_moves_take_most_of_the_draws_and_small_tweaks_little():
     assert big * 3 >= 2 * sum(w.values())
     for small in ("STAGE", "SPLIT", "BOUND", "GUARD"):
         assert w[small] <= 1
-    assert w["LEDGER"] >= 2                 # Rishab, 6 Sep: keep it on
+    # kept on from 6 Sep; dropped 18 Oct after 0 good designs in 4
+    # (Rishab: "do all 6 changes")
+    assert w["LEDGER"] == 0
 
 
 # --- the questions state the rules the checks enforce -------------------------
