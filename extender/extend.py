@@ -39,8 +39,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
-from build_corpus import (_mask_comments, extract_asserts,   # noqa: E402
-                          state_bits)
+from build_corpus import (_mask_comments, assert_spans,      # noqa: E402
+                          extract_asserts, honest_lines, state_bits)
 from distractor import (DIFF_FORMAT, MODEL, EFFORT,   # noqa: E402
                         Spinner, dump, grade_kwargs, load_parent)
 from patch import PatchError, apply_patch                 # noqa: E402
@@ -88,7 +88,11 @@ HARD RULES
    range, add an invariant clause bounding it.
 9. Do not add a register that only copies one the module already has: a
    fact saying `new == old` means the new register adds nothing, and the
-   extension is rejected."""
+   extension is rejected.
+10. Write repeated slots, lanes or stages as an array with a for loop
+   (reg [7:0] len [0:7]), never as the same block written once per slot
+   (q0_len, q1_len, ... q7_len). Copied text is not growth: a patch whose
+   new lines are mostly copies of each other is rejected."""
 
 MOVES = {
     "SPLIT": ("Take a quantity that is currently held in one register and "
@@ -141,7 +145,9 @@ MOVES = {
                 "module: bring each register of the new module that a "
                 "fact needs out on an output port, connect that port to a "
                 "wire in the existing module, and name the wire. Never "
-                "write instance.signal."),
+                "write instance.signal. If the design already has "
+                "sub-modules, the new one may work with them directly "
+                "(see the list below)."),
     # 18 Oct 2026: "on the path the property depends on" piled every
     # storage step onto one path (five buffers in a row in front of a
     # fixed table in the 18 Oct trial, all weak)
@@ -160,8 +166,9 @@ BIG_MOVES = ("SUBUNIT", "STORAGE", "PEER")
 SIZE_TEXT = """
         Size: this is a substantial addition. The module now has {n} lines;
         your patch should add roughly {lo} to {hi} new lines ({share}),
-        written out as real logic, not padding, comments or copies of
-        existing lines."""
+        written out as real logic, not padding, comments, copies of
+        existing lines or one block repeated per slot. Lines are counted
+        with copies counted once."""
 
 # 18 Oct 2026, hand review of two trials: every good step grew its design
 # 1.4 to 1.7 times, inside the +50-75% the question asked for, so the size
@@ -174,8 +181,10 @@ DOUBLING_MOVES = ("SUBUNIT", "STORAGE")
 def size_target(verilog, move=None):
     """(lines now, fewest, most) new lines: a sub-unit or storage step
     roughly doubles a design, other big steps grow it by half to three
-    quarters (Rishab, 17 Oct 2026: "we want to see rapid growth")."""
-    n = len(verilog.splitlines())
+    quarters (Rishab, 17 Oct 2026: "we want to see rapid growth"). Lines
+    are counted with copies counted once (honest_lines, 19 Oct 2026), so a
+    design swollen by copied slots is not asked for still more."""
+    n = honest_lines(verilog)
     if move in DOUBLING_MOVES:
         return n, n, round(n * 1.25)
     return n, round(n * 0.5), round(n * 0.75)
@@ -205,14 +214,19 @@ def size_share(move):
 # The moves remain for runs by hand (extend.py --move).
 MOVE_WEIGHTS = {"STAGE": 1, "SPLIT": 0, "PEER": 3, "BOUND": 0, "GUARD": 0,
                 "LEDGER": 0, "SUBUNIT": 7, "STORAGE": 6}
-SECOND_PROPERTY_RATE = 1 / 6
+# 19 Oct 2026: kept 0 times in 8 in the 18 Oct good-growth trial, and a big
+# step can now carry an assertion of its own; the type stays for runs by
+# hand (extend.py --type second)
+SECOND_PROPERTY_RATE = 0
 
+# 19 Oct 2026: it asked for each stage written out, which is copied text
+# (rule 10 of SYSTEM_PROMPT); now an array shifted by a loop
 STAGE_K_TEXT = """
-        Magnitude K={k}: insert a pipeline of {k} registers, written out as
-        {k} explicit stages (no generate loops — each stage spelled out, so
-        the lines are real). The update that completed in one cycle now
-        takes {k}+1, with {k} in-flight values each held in its own new
-        register, and the invariant list must pin every stage."""
+        Magnitude K={k}: insert a pipeline of {k} registers, held in an
+        array of {k} stages that a for loop shifts along. The update that
+        completed in one cycle now takes {k}+1, with {k} in-flight values
+        each held in its own stage, and the invariant list must pin every
+        stage."""
 
 INVARIANT_RULES = """\
 - Emit the COMPLETE new invariant list, not just what changed.
@@ -288,9 +302,23 @@ extension."""
 # 18 Oct 2026: on a long chain the model could not see what earlier steps
 # had added, and added the same kind of part again (a third, fourth and
 # fifth buffer in a row). batch.py passes the family's steps in.
+# 19 Oct 2026: also what other designs grown from this one added (two
+# siblings added the same length guard) and what was tried on this design
+# and rejected (the reviewer turned down the same credit pool three times).
 HISTORY_TEXT = """\
 Earlier steps on this design, oldest first:
 {lines}
+"""
+SIBLINGS_TEXT = """\
+Other designs already grown from this one added (do not add the same
+feature again):
+{lines}
+"""
+REJECTED_TEXT = """\
+Tried on this design before and rejected (do not try these again):
+{lines}
+"""
+NO_REPEAT_TEXT = """\
 Give the design something it does not have yet. Do not add a part that
 does the job of one of these again: another buffer in a row in front of
 the same output, or a second count of something already counted, adds
@@ -299,11 +327,52 @@ size and nothing else.
 """
 
 
-def history_text(history):
-    if not history:
+def history_text(history, siblings=None, rejected=None):
+    if not (history or siblings or rejected):
         return ""
-    return HISTORY_TEXT.format(lines="\n".join(
-        f"  {i}. {h}" for i, h in enumerate(history, 1)))
+    out = ""
+    if history:
+        out += HISTORY_TEXT.format(lines="\n".join(
+            f"  {i}. {h}" for i, h in enumerate(history, 1)))
+    if siblings:
+        out += SIBLINGS_TEXT.format(lines="\n".join(f"  - {s}"
+                                                    for s in siblings))
+    if rejected:
+        out += REJECTED_TEXT.format(lines="\n".join(f"  - {r}"
+                                                    for r in rejected))
+    return out + NO_REPEAT_TEXT
+
+
+# 19 Oct 2026: a new sub-module talked only to the top module, so a design
+# collected parts that never worked with each other. The question now lists
+# the sub-modules already there, so a new one can connect to them.
+MODULES_TEXT = """\
+Sub-modules already in this design:
+{lines}
+A new unit may take inputs from these modules' outputs or drive their
+inputs (through wires in the top module, by changing their port
+connections), so the parts work together as one system rather than each
+talking only to the top module.
+
+"""
+
+
+def module_map(verilog, top):
+    """`instance (module): inputs ...; outputs ...` for every sub-module a
+    design instantiates."""
+    import gates                      # gates imports this module
+    out = []
+    for mod, inst, _ in gates.instances(verilog, verilog, top):
+        dirs = gates.port_directions(verilog, mod)
+        ins = ", ".join(p for p, d in dirs.items() if d == "input")
+        outs = ", ".join(p for p, d in dirs.items() if d == "output")
+        out.append(f"  {inst} ({mod}): inputs {ins}; outputs {outs}")
+    return out
+
+
+def modules_text(verilog, top):
+    lines = module_map(verilog, top)
+    return MODULES_TEXT.format(lines="\n".join(lines)) if lines else ""
 
 
 STRUCTURAL_TEMPLATE = """\
@@ -326,7 +395,7 @@ The property, which you must not touch:
 The parent's strengthening invariants:
 {invariants}
 
-{history}REQUIREMENTS SPECIFIC TO THIS TYPE
+{modules}{history}REQUIREMENTS SPECIFIC TO THIS TYPE
 
 {effect_rule}
 
@@ -487,7 +556,7 @@ Module B:
 B's property: {property_b}
 B's invariants: {invariants_b}
 
-REQUIREMENTS
+{plan}REQUIREMENTS
 
 1. The wrapper instantiates A once and B once, and connects a value A
    produces to an input B consumes — NEVER through a plain wire. Connect
@@ -540,6 +609,113 @@ VERILOG BOOLEAN EXPRESSIONS over top-level signals, never descriptions:
 Reply with JSON: {{"glue_scheme": "...", "induction_gap": "...",
  "why_parents_insufficient": "...", "top_module": "...", "wrapper": "...",
  "antecedents": [...], "sanity_covers": [...], "invariants": ["..."]}}"""
+
+
+PLAN_TEXT = """\
+You picked B to work with A. The combined system: {system}
+Planned connection: {connection}
+Build the wrapper the way you planned.
+
+"""
+
+
+def compose_prompt(pa, pb, plan=None):
+    """The COMPOSE question for A and B; `plan` is the model's own partner
+    choice ({"system", "connection"}), when it chose B (19 Oct 2026)."""
+    return COMPOSE_TEMPLATE.format(
+        verilog_a=pa["verilog"], verilog_b=pb["verilog"],
+        property_a="; ".join(pa["property"]),
+        property_b="; ".join(pb["property"]),
+        invariants_a="; ".join(pa["invariants"]) or "(none)",
+        invariants_b="; ".join(pb["invariants"]) or "(none)",
+        plan=PLAN_TEXT.format(system=plan.get("system", ""),
+                              connection=plan.get("connection", ""))
+        if plan else "")
+
+
+# --- the partner for a combination (19 Oct 2026) ---
+# Partners drawn at random from a fitting hardware group gave 1 borderline
+# design in about 20 tries: font pixels fed to an audio filter, power steps
+# fed to an image transform. The model now sees a short list of small
+# starting designs, with what each is for and its ports, and picks the one
+# a real chip would wire to A, or says none fits.
+
+PARTNER_TEMPLATE = """\
+Design A, a formally verified SystemVerilog module:
+
+{card_a}
+
+Candidate partners, each a verified module of its own:
+
+{cards}
+
+Pick the ONE candidate that a real chip would wire to design A, so that
+together they form one system that does something neither does alone.
+What one sends must mean something to the other: data into a data input,
+an event into a trigger or enable, a request into a request input. Never
+force a value into an input that expects something else: pixels are not
+audio samples, and a status word is not random-number seed material. If no
+candidate would really be wired to A, answer "none"; that is a good answer
+when nothing fits.
+
+Reply with JSON:
+- choice: the candidate's id, or "none";
+- system: one sentence on what the combined design does (or why none fits);
+- connection: which output drives which input, in which direction, and what
+  the value means at that input."""
+
+PARTNER_SCHEMA = {"type": "object",
+                  "properties": {"choice": {"type": "string"},
+                                 "system": {"type": "string"},
+                                 "connection": {"type": "string"}},
+                  "required": ["choice", "system", "connection"],
+                  "additionalProperties": False}
+
+_DECL_WORDS = {"input", "output", "inout", "wire", "reg", "logic", "signed",
+               "unsigned"}
+
+
+def port_summary(verilog, top):
+    """(inputs, outputs) of a module as name[width] lists."""
+    masked = _mask_comments(verilog)
+    span = _port_list_span(masked, top)
+    ins, outs = [], []
+    if not span:
+        return ins, outs
+    direction, width = None, ""
+    for item in _split_outside_brackets(masked[span[0]:span[1]]):
+        d = re.match(r"\s*(input|output|inout)\b", item)
+        if d:
+            direction = d.group(1)
+            w = re.search(r"\[[^\]]*\]", item)
+            width = w.group(0).replace(" ", "") if w else ""
+        names = [x for x in _ID.findall(re.sub(r"\[[^\]]*\]", " ", item))
+                 if x not in _DECL_WORDS]
+        if names and direction:
+            (ins if direction == "input" else outs).append(names[-1] + width)
+    return ins, outs
+
+
+def design_card(row, by_id=None, grown=None):
+    """id, module, size, purpose and ports of one design."""
+    root, by_id = row, by_id or {}
+    while root.get("parent") and root["parent"] in by_id:
+        root = by_id[root["parent"]]
+    purpose = " ".join((root.get("construct") or "(not recorded)").split())
+    ins, outs = port_summary(row["verilog"], row["top_module"])
+    lines = [f"[{row['id']}] module {row['top_module']} "
+             f"({honest_lines(row['verilog'])} lines)",
+             f"  purpose: {purpose}"]
+    if grown:
+        lines.append("  grown since: " + "; ".join(grown))
+    lines += [f"  inputs: {', '.join(ins)}", f"  outputs: {', '.join(outs)}"]
+    return "\n".join(lines)
+
+
+def partner_prompt(parent, candidates, by_id=None, history=None):
+    return PARTNER_TEMPLATE.format(
+        card_a=design_card(parent, by_id, history),
+        cards="\n\n".join(design_card(c, by_id) for c in candidates))
 
 
 def _compose_schema():
@@ -769,23 +945,19 @@ def remove_asserts(source, exprs):
     isolate the second property for the proves-unaided check."""
     targets = {_norm(e) for e in exprs}
     out = source
-    for m in reversed(list(re.finditer(r"\bassert\b", source))):
-        i = m.end()
-        while i < len(source) and source[i].isspace():
-            i += 1
-        if i >= len(source) or source[i] != "(":
-            continue
-        depth, j = 0, i
-        while j < len(source):
-            if source[j] == "(":
-                depth += 1
-            elif source[j] == ")":
-                depth -= 1
-                if depth == 0:
-                    break
-            j += 1
+    for start, i, j, concurrent in reversed(assert_spans(
+            _mask_comments(source))):
         if _norm(source[i + 1:j]) in targets:
-            out = out[:m.start()] + out[j + 1:]
+            end = j + 1
+            if concurrent:
+                # `assert property (e);` stands alone in the module: take
+                # its semicolon too (19 Oct 2026)
+                k = end
+                while k < len(out) and out[k] in " \t":
+                    k += 1
+                if out.startswith(";", k):
+                    end = k + 1
+            out = out[:start] + out[end:]
     return out
 
 
@@ -1168,9 +1340,12 @@ def has_coupling_clause(new_invs, parent_ids, new_ids):
 
 # --- prompt / call / grade ---
 
-def build_prompt(parent, ext_type, move=None, n=6, k=1, history=None):
+def build_prompt(parent, ext_type, move=None, n=6, k=1, history=None,
+                 siblings=None, rejected=None):
     """`history`: the family's earlier steps, oldest first, as
-    promote.history gives them (structural and second property only)."""
+    promote.history gives them; `siblings`: what other designs grown from
+    this one added (promote.children); `rejected`: what was tried on this
+    design and rejected (structural and second property only)."""
     if ext_type == "replicate":
         return REPLICATE_TEMPLATE.format(
             n=n, last=n - 1, verilog=parent["verilog"],
@@ -1184,8 +1359,10 @@ def build_prompt(parent, ext_type, move=None, n=6, k=1, history=None):
         invariant_rules=INVARIANT_RULES,
         disposition_block=DISPOSITION_BLOCK,
         diff_format=DIFF_FORMAT,
-        history=history_text(history))
+        history=history_text(history, siblings, rejected))
     if ext_type == "structural":
+        fields["modules"] = modules_text(parent["verilog"],
+                                         parent.get("top_module", ""))
         fields["effect_rule"] = (LEDGER_EFFECT_RULE if move == "LEDGER"
                                  else SIDEWAYS_EFFECT_RULE if move in BIG_MOVES
                                  else EFFECT_RULE)
@@ -1640,12 +1817,7 @@ def main():
         parent, parent2 = ready
         print(f"parent2 {parent2['id']} {parent2['top_module']} "
               f"invariants={parent2['invariants']}")
-        prompt = COMPOSE_TEMPLATE.format(
-            verilog_a=parent["verilog"], verilog_b=parent2["verilog"],
-            property_a="; ".join(parent["property"]),
-            property_b="; ".join(parent2["property"]),
-            invariants_a="; ".join(parent["invariants"]) or "(none)",
-            invariants_b="; ".join(parent2["invariants"]) or "(none)")
+        prompt = compose_prompt(parent, parent2)
     else:
         prompt = build_prompt(parent, args.type, args.move,
                               n=args.instances, k=args.k)

@@ -32,7 +32,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
-from build_corpus import extract_asserts, state_bits   # noqa: E402
+from build_corpus import extract_asserts, honest_lines, state_bits   # noqa: E402
 from patch import PatchError, apply_patch              # noqa: E402
 
 import llm_client                            # noqa: E402
@@ -235,7 +235,7 @@ def load_parent(parent_id):
 def build_prompt(parent):
     # the same half-to-three-quarters growth the big moves ask for; the
     # arithmetic is repeated here because extend.py imports this module
-    n = len(parent["verilog"].splitlines())
+    n = honest_lines(parent["verilog"])     # copies counted once (19 Oct)
     return DISTRACTOR_PROMPT.format(
         verilog=parent["verilog"],
         property="\n".join(parent["property"]),

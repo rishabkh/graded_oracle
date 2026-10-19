@@ -26,7 +26,7 @@ import random
 import sys
 import threading
 import time
-from collections import Counter, deque
+from collections import Counter, defaultdict, deque
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -35,16 +35,19 @@ sys.path.insert(0, str(HERE))
 
 from extend import (MOVE_WEIGHTS, SECOND_PROPERTY_RATE,          # noqa: E402
                     REPLICATE_SCHEMA, SECOND_SCHEMA, STRUCTURAL_SCHEMA,
-                    COMPOSE_SCHEMA, COMPOSE_TEMPLATE, build_prompt,
-                    call_model, expose_for_wrapper, grade_compose,
-                    grade_replicate, grade_step4, keep_reasoning, wrappable)
+                    COMPOSE_SCHEMA, PARTNER_SCHEMA, build_prompt,
+                    call_model, compose_prompt, expose_for_wrapper,
+                    grade_compose, grade_replicate, grade_step4,
+                    keep_reasoning, partner_prompt, wrappable)
 import llm_client                                                 # noqa: E402
-from build_corpus import without_main_s                           # noqa: E402
+from build_corpus import (extract_asserts, honest_lines,          # noqa: E402
+                          without_main_s)
 from distractor import (Spinner, dump, OUT_LOG, MODEL, EFFORT,    # noqa: E402
                         GRADE_KWARGS, build_prompt as distractor_prompt,
                         call_model as distractor_call, grade_extension)
-from promote import (FIXER_QUEUE, history, lineage, promote,      # noqa: E402
-                     ratchet, route, step_kind)
+from promote import (FIXER_QUEUE, children, history, lineage,     # noqa: E402
+                     promote, ratchet, route, step_kind,
+                     what_was_added)
 import distractor                                                # noqa: E402
 import gates                                                     # noqa: E402
 import sense_check                                               # noqa: E402
@@ -93,6 +96,33 @@ DISTRACTOR_RATE = 1 / 6   # the control: irrelevant logic, invariants verbatim.
                           # metric drifts the wrong way with depth.
 MAX_SAME_KIND = 2         # steps of one kind per family (18 Oct 2026: one
                           # family got five buffers in a row, all weak)
+# 19 Oct 2026: the limit counted the step's label, not the job it does, so
+# it also stopped a third sub-unit with a different job; real blocks have
+# about 5 modules. The history in the question and the reviewer's own-job
+# question guard against repeats for these two.
+NO_LIMIT_KINDS = ("SUBUNIT", "STORAGE")
+COPIES = False            # replicate: 2 good designs in 13, then 0 kept in 3
+                          # in the 18 Oct good-growth trial (19 Oct 2026)
+# combine: the model picks its partner from a short list of small starting
+# designs, or says none fits (extend.partner_prompt, 19 Oct 2026)
+PARTNER_CHOICES = 8
+PARTNER_MAX_LINES = 200
+
+# What the reviewer and the design checks turned down on each design in
+# this run, for the next question about it (19 Oct 2026: the reviewer
+# rejected the same credit pool three times on one design).
+REJECTED = defaultdict(list)
+_rejected_lock = threading.Lock()
+# turned down for what the step does, not for how the answer was written
+REMEMBERED = ("NONSENSE",) + gates.VERDICTS
+
+
+def rejection_note(record):
+    """`kind: what it added. Rejected: why` for a turned-down step."""
+    kind = record.get("move") or record.get("ext_type")
+    why = str(record.get("reason") or "").replace("sense check: ", "")
+    return " ".join(f"{kind}: {what_was_added(record)} Rejected: "
+                    f"{why[:300]}".split())
 
 
 def without_wall(record):
@@ -189,6 +219,18 @@ def copies_that_fit(n_facts):
     return [n for n in (4, 6) if n * n_facts + 1 <= gates.MAX_FACTS]
 
 
+_HONEST = {}
+
+
+def _honest(row):
+    """honest_lines of a row, remembered: the sampler asks it of every
+    possible partner, every task."""
+    key = (row.get("id"), hash(row["verilog"]))
+    if key not in _HONEST:
+        _HONEST[key] = honest_lines(row["verilog"])
+    return _HONEST[key]
+
+
 def kinds_used(row, by_id):
     """How many steps of each kind made this design (promote.step_kind)."""
     return Counter(step_kind(r) for r in lineage(row, by_id))
@@ -196,33 +238,37 @@ def kinds_used(row, by_id):
 
 def sample_task(rng, parent, corpus_rows):
     """One weighted task for a parent, or None when its family has used
-    every kind of step MAX_SAME_KIND times. GUARD, SPLIT, BOUND and LEDGER
-    are weight 0; distractor and second-property each run at ~1-in-6;
-    multipliers only between parents a wrapper can reach, after the port
-    step (extend.wrappable), with partners that fit (fits) and while the
-    facts stay within gates.MAX_FACTS."""
+    every limited kind of step MAX_SAME_KIND times and the unlimited ones
+    cannot be drawn. GUARD, SPLIT, BOUND and LEDGER are weight 0; the
+    distractor runs at ~1-in-6; a combination only for a parent a wrapper
+    can reach, after the port step (extend.wrappable), offering the model
+    up to PARTNER_CHOICES small starting designs that fit (fits) while the
+    facts stay within gates.MAX_FACTS; copies only with COPIES."""
     eligible_self = wrappable(parent)
     n_facts = len(parent["invariants"])
     by_id = {r["id"]: r for r in corpus_rows}
     used = kinds_used(parent, by_id)
 
     def allowed(kind):
-        return used[kind] < MAX_SAME_KIND
+        return kind in NO_LIMIT_KINDS or used[kind] < MAX_SAME_KIND
 
     partners = [r for r in corpus_rows
                 if r["id"] != parent["id"]
+                and r.get("generation", 0) == 0
+                and _honest(r) <= PARTNER_MAX_LINES
                 and r["top_module"] != parent["top_module"]
                 and n_facts + len(r["invariants"]) + 1 <= gates.MAX_FACTS
                 and wrappable(r) and fits(parent, r, by_id)] \
         if eligible_self and allowed("compose") else []
     copies = copies_that_fit(n_facts) \
-        if eligible_self and allowed("replicate") else []
+        if COPIES and eligible_self and allowed("replicate") else []
     can_multiply = bool(partners or copies) and \
         rng.random() < MULTIPLIER_RATE
     if can_multiply and partners and (not copies or rng.random() < 0.5):
-        partner = rng.choice(partners)
+        shortlist = rng.sample(partners, min(PARTNER_CHOICES, len(partners)))
         return {"ext_type": "compose", "parent_id": parent["id"],
-                "parent2_id": partner["id"], "move": None}
+                "parent2_id": None, "move": None,
+                "candidates": [r["id"] for r in shortlist]}
     if can_multiply:
         return {"ext_type": "replicate", "parent_id": parent["id"],
                 "parent2_id": None, "move": None,
@@ -239,7 +285,9 @@ def sample_task(rng, parent, corpus_rows):
     # (18 Oct 2026)
     k = rng.choice([4, 4, 8])
     if not moves:
-        rest = [t for t in ("distractor", "second") if allowed(t)]
+        rest = [t for t, on in (("distractor", DISTRACTOR_RATE),
+                                ("second", SECOND_PROPERTY_RATE))
+                if on and allowed(t)]
         if not rest:
             return None
         return {"ext_type": rng.choice(rest), "parent_id": parent["id"],
@@ -362,6 +410,9 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
                         frontier.append(child)
             frontier.append(parent)      # a healthy parent stays live
             return False
+        if action == "pass":             # nothing fit (NO_PARTNER): not a
+            frontier.append(parent)      # failure of the design
+            return False
         if action == "fixer" and on_fixer:
             on_fixer(record)      # the branch still counts the failure
         if action == "reformat" and task["attempt"] < MAX_ATTEMPTS \
@@ -430,6 +481,34 @@ def _ready_for_wrapper(record, rows):
     return ready
 
 
+def _choose_partner(task, record, parent, by_id):
+    """Ask the model which candidate (if any) a real chip would wire to
+    the parent (19 Oct 2026). Sets task["parent2_id"] and task["plan"], or
+    the record's verdict: NO_PARTNER when none fits, a format verdict when
+    the call fails."""
+    cands = [by_id[i] for i in task.get("candidates", []) if i in by_id]
+    label = (f"task {task['task_id']}.{task['attempt']} compose "
+             f"{task['parent_id']}: choosing a partner")
+    with Spinner(label):
+        out, usage, stop = call_model(
+            partner_prompt(parent, cands, by_id, history(parent, by_id)),
+            PARTNER_SCHEMA)
+    record["partner_usage"] = usage
+    if out is None:
+        record["verdict"] = ("REFUSED" if stop == "refusal"
+                             else "TRUNCATED" if stop == "length"
+                             else "UNPARSEABLE")
+        return
+    record["partner_choice"] = out
+    if out.get("choice") not in {c["id"] for c in cands}:
+        record["verdict"] = "NO_PARTNER"
+        record["reason"] = out.get("system") or "no candidate fits"
+        return
+    task["parent2_id"] = out["choice"]
+    task["plan"] = {"system": out.get("system", ""),
+                    "connection": out.get("connection", "")}
+
+
 def _real_executor(task, corpus_rows):
     by_id = {r["id"]: r for r in corpus_rows}
     parent = by_id[task["parent_id"]]
@@ -462,34 +541,37 @@ def _real_executor(task, corpus_rows):
                     finalize_distractor(grade_extension(parent, out["patch"],
                                                         record))
         elif task["ext_type"] == "compose":
-            parent, p2 = _ready_for_wrapper(
-                record, [parent, by_id[task["parent2_id"]]])
-            prompt = COMPOSE_TEMPLATE.format(
-                verilog_a=parent["verilog"], verilog_b=p2["verilog"],
-                property_a="; ".join(parent["property"]),
-                property_b="; ".join(p2["property"]),
-                invariants_a="; ".join(parent["invariants"]) or "(none)",
-                invariants_b="; ".join(p2["invariants"]) or "(none)")
-            label = (f"task {task['task_id']}.{task['attempt']} compose "
-                     f"{task['parent_id']}+{task['parent2_id']}")
-            with Spinner(f"{label}: model writing"):
-                out, usage, stop = call_model(prompt, COMPOSE_SCHEMA)
-            record["usage"] = usage
-            if out is None:
-                record["verdict"] = ("REFUSED" if stop == "refusal"
-                                     else "TRUNCATED" if stop == "length"
-                                     else "UNPARSEABLE")
-            else:
-                keep_reasoning(out, record)
-                with _grading():
-                    grade_compose(parent, p2, out, record)
+            if not task.get("parent2_id"):
+                _choose_partner(task, record, parent, by_id)
+            if "verdict" not in record:
+                record["parent2_id"] = task["parent2_id"]
+                parent, p2 = _ready_for_wrapper(
+                    record, [parent, by_id[task["parent2_id"]]])
+                prompt = compose_prompt(parent, p2, task.get("plan"))
+                label = (f"task {task['task_id']}.{task['attempt']} compose "
+                         f"{task['parent_id']}+{task['parent2_id']}")
+                with Spinner(f"{label}: model writing"):
+                    out, usage, stop = call_model(prompt, COMPOSE_SCHEMA)
+                record["usage"] = usage
+                if out is None:
+                    record["verdict"] = ("REFUSED" if stop == "refusal"
+                                         else "TRUNCATED" if stop == "length"
+                                         else "UNPARSEABLE")
+                else:
+                    keep_reasoning(out, record)
+                    with _grading():
+                        grade_compose(parent, p2, out, record)
         else:
             if task["ext_type"] == "replicate":
                 parent, = _ready_for_wrapper(record, [parent])
+            with _rejected_lock:
+                rejected = list(REJECTED.get(parent["id"], []))
             prompt = build_prompt(parent, task["ext_type"], task.get("move"),
                                   n=task.get("instances", 6),
                                   k=task.get("k", 1),
-                                  history=history(parent, by_id))
+                                  history=history(parent, by_id),
+                                  siblings=children(parent, by_id),
+                                  rejected=rejected)
             schema = {"structural": STRUCTURAL_SCHEMA,
                       "second": SECOND_SCHEMA,
                       "replicate": REPLICATE_SCHEMA}[task["ext_type"]]
@@ -516,11 +598,17 @@ def _real_executor(task, corpus_rows):
         record["error"] = f"{type(exc).__name__}: {exc}"
     # before the log line, so the log and the terminal show the real verdict
     by_id = {r["id"]: r for r in corpus_rows}
+    # a big step with no new kind of fact may pass only if the reviewer
+    # reads it, so the pass is offered only when the reviewer is on
     ratchet(record, [by_id.get(task["parent_id"]),
-                     by_id.get(task.get("parent2_id"))])
+                     by_id.get(task.get("parent2_id"))],
+            review_waiver=SENSE_CHECK)
     if SENSE_CHECK:
         sense_check.review(record, history=history(
             by_id.get(task["parent_id"]), by_id))
+    if record.get("verdict") in REMEMBERED:
+        with _rejected_lock:
+            REJECTED[task["parent_id"]].append(rejection_note(record))
     dump(record)
     with _progress_lock:
         PROGRESS["done"] += 1
@@ -609,6 +697,12 @@ def main(argv=None):
 
     corpus_rows = [json.loads(l)
                    for l in args.corpus.read_text().splitlines() if l.strip()]
+    # 29 of the 252 starting designs write `assert property (...)`, which
+    # was not read when the corpus was built, so they carry no property;
+    # read it now (19 Oct 2026)
+    for row in corpus_rows:
+        if not row.get("property") and row.get("verilog"):
+            row["property"] = extract_asserts(row["verilog"])
     rng = random.Random(args.seed)
     if args.start_largest:
         args.start = ",".join(largest_starts(corpus_rows, args.start_largest,

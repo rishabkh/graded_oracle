@@ -82,15 +82,22 @@ def _mask_comments(source):
     return re.sub(r"//[^\n]*", lambda m: " " * len(m.group(0)), source)
 
 
-def extract_asserts(source):
-    """Return the expression of every immediate assertion, in order.
-    Balanced-paren scan; comments masked first."""
-    clean = _mask_comments(source)
-    exprs = []
+def assert_spans(clean):
+    """(start, open paren, close paren, concurrent) for every assertion in
+    comment-masked source, in order. Reads `assert (e)` and, since 19 Oct
+    2026, `assert property (e)`: 29 of the 252 starting designs write the
+    second, and the extender saw no property for them at all."""
+    out = []
     for m in re.finditer(r"\bassert\b", clean):
         i = m.end()
         while i < len(clean) and clean[i].isspace():
             i += 1
+        concurrent = clean.startswith("property", i) and \
+            not re.match(r"\w", clean[i + 8:i + 9])
+        if concurrent:
+            i += len("property")
+            while i < len(clean) and clean[i].isspace():
+                i += 1
         if i >= len(clean) or clean[i] != "(":
             continue
         depth, j = 0, i
@@ -102,8 +109,62 @@ def extract_asserts(source):
                 if depth == 0:
                     break
             j += 1
-        exprs.append(clean[i + 1:j].strip())
-    return exprs
+        out.append((m.start(), i, j, concurrent))
+    return out
+
+
+def extract_asserts(source):
+    """Return the expression of every assertion, in order.
+    Balanced-paren scan; comments masked first."""
+    clean = _mask_comments(source)
+    return [clean[i + 1:j].strip() for _, i, j, _ in assert_spans(clean)]
+
+
+# --- copied text (19 Oct 2026) ---
+# Two designs of the 18 Oct trial grew mostly by writing one block once per
+# slot (q0_len, q1_len, ... q7_len): 61% and 83% of their new lines. A line
+# that differs from another only in the digits of its names, or in a
+# constant index, is a copy. Values (8'd0, 6'b100111) still tell lines
+# apart, so the rows of a lookup table are not copies.
+
+_BASED = re.compile(r"\d*'[sS]?[bodhBODH][0-9a-fA-FxXzZ_?]+")
+_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_KEYWORDS_ONLY = {"begin", "end", "else", "endcase", "endmodule",
+                  "endfunction", "endgenerate", "default", "initial"}
+
+
+def line_shape(line):
+    """The line with the digits in its names and its constant indexes
+    blanked; sized values are kept."""
+    values = []
+
+    def keep(m):
+        values.append(m.group(0))
+        return f"\x00{len(values) - 1}\x00"
+    s = _BASED.sub(keep, line.strip())
+    s = _NAME.sub(lambda m: re.sub(r"\d+", "#", m.group(0)), s)
+    s = re.sub(r"\[\s*\d+\s*\]", "[#]", s)
+    return re.sub(r"\x00(\d+)\x00", lambda m: values[int(m.group(1))], s)
+
+
+def _counts(line):
+    """A line of real content: not blank, and not only keywords."""
+    s = line.strip()
+    names = _NAME.findall(_BASED.sub(" ", s))
+    return bool(s) and not (set(names) <= _KEYWORDS_ONLY and "=" not in s)
+
+
+def copied_lines(lines):
+    """How many of `lines` are copies: in each group of three or more
+    lines of the same shape, all but the first."""
+    shapes = Counter(line_shape(l) for l in lines if _counts(l))
+    return sum(n - 1 for n in shapes.values() if n >= 3)
+
+
+def honest_lines(verilog):
+    """Lines of real content, each copy counted once (copied_lines)."""
+    lines = [l for l in _mask_comments(verilog).splitlines() if _counts(l)]
+    return len(lines) - copied_lines(lines)
 
 
 # --- metrics from the log evidence ---

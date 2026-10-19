@@ -16,6 +16,9 @@ good ones (notes_2026-10-18/strict_checks):
                    output once assertions are ignored: their results go nowhere
   TOO_MANY_FACTS   more than 64 facts, nearly always one fact list restated
                    per copy (one child reached 202)
+  COPIED_TEXT      more than half of a step's new lines are copies of each
+                   other: one block written once per slot (19 Oct 2026: two
+                   designs of the 18 Oct trial, 61% and 83%)
 
 Checks run on a NECESSARY child only, once (the result is kept on the
 record), cheapest first; only UNUSED_COPIES needs yosys."""
@@ -25,13 +28,16 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from build_corpus import _mask_comments, count_dff_bits
+from build_corpus import (_counts, _mask_comments, copied_lines,
+                          count_dff_bits)
 from extend import _port_list_span, _split_outside_brackets, identifiers
 
 VERDICTS = ("SHADOW_REGISTER", "IDLE_GLUE", "XOR_OUTPUTS", "UNUSED_COPIES",
-            "TOO_MANY_FACTS")
+            "TOO_MANY_FACTS", "COPIED_TEXT")
 MAX_FACTS = 64
 MIN_STATE_USED = 0.7
+MAX_COPIED = 0.5
+MIN_LINES_FOR_COPIES = 20     # a short patch says too little to judge
 WRAPPERS = ("compose", "replicate")
 
 _KEYWORDS = {"input", "output", "inout", "wire", "reg", "logic", "signed",
@@ -230,6 +236,27 @@ def copied_state_used(child, top, wrapper):
     return round(actual / expected, 3)
 
 
+def new_lines(record):
+    """The lines a step wrote: a patch's + lines, or a wrapper."""
+    if record.get("ext_type") in WRAPPERS:
+        return (record.get("wrapper") or "").splitlines()
+    return [line[1:] for line in (record.get("patch") or "").splitlines()
+            if line.startswith("+")]
+
+
+def copied_share(record):
+    """Share of a step's new lines that are copies of each other, or None
+    when it wrote too little to judge. Copies (replicate) instantiate one
+    design several times on purpose and are not judged."""
+    if record.get("ext_type") == "replicate":
+        return None
+    lines = [line for line in _mask_comments(
+        "\n".join(new_lines(record))).splitlines() if _counts(line)]
+    if len(lines) < MIN_LINES_FOR_COPIES:
+        return None
+    return round(copied_lines(lines) / len(lines), 3)
+
+
 def _fail(record, name, detail):
     record["gates"] = {"failed": name, "detail": detail}
     record["verdict"] = name
@@ -253,7 +280,12 @@ def apply(record, parents, use_yosys=True):
         return _fail(record, "SHADOW_REGISTER",
                      "a new register only copies existing state: "
                      + "; ".join(shadows))
-    result = {"failed": None}
+    copied = copied_share(record)
+    if copied is not None and copied > MAX_COPIED:
+        return _fail(record, "COPIED_TEXT",
+                     f"{copied:.0%} of the new lines are copies of each "
+                     "other (one block written once per slot)")
+    result = {"failed": None, "copied_share": copied}
     if record.get("ext_type") in WRAPPERS and record.get("wrapper"):
         child, wrapper = record["child_verilog"], record["wrapper"]
         top = _modules(child)[-1]

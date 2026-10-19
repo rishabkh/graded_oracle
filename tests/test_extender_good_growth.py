@@ -55,8 +55,11 @@ def kind_in(group):
 
 
 def lines_row(n, id="c0_1", top="m"):
+    # lines of real content, no two alike: sizes are counted with comments
+    # left out and copies counted once since 19 Oct 2026
     body = [f"module {top} (input wire clk, output reg [3:0] a);"] + \
-        ["    // line"] * (n - 2) + ["endmodule"]
+        [f"    localparam [15:0] P{i} = 16'd{i};" for i in range(n - 2)] + \
+        ["endmodule"]
     return {"id": id, "generation": 0, "top_module": top, "clock": "clk",
             "antecedents": [], "sanity_covers": [],
             "verilog": "\n".join(body), "property": ["a <= 4'd9"],
@@ -66,10 +69,11 @@ def lines_row(n, id="c0_1", top="m"):
 # --- 1. a good step doubles the design ---------------------------------------
 
 def test_sub_unit_and_storage_steps_ask_to_double_the_design():
+    # 81 lines: 80 of content (endmodule is not counted)
     for move in ("SUBUNIT", "STORAGE"):
-        text = extend.build_prompt(lines_row(80), "structural", move)
+        text = extend.build_prompt(lines_row(81), "structural", move)
         assert "80 lines" in text and "80 to 100 new lines" in text, move
-    peer = extend.build_prompt(lines_row(80), "structural", "PEER")
+    peer = extend.build_prompt(lines_row(81), "structural", "PEER")
     assert "40 to 60 new lines" in peer
 
 
@@ -292,10 +296,12 @@ def kinds_drawn(rows, n=3000, seed=3):
 
 
 def test_a_family_gets_no_more_than_two_steps_of_one_kind():
+    """Sub-units and storage are not limited since 19 Oct
+    (test_extender_real_systems); the other kinds still are."""
     assert batch.MAX_SAME_KIND == 2
-    drawn = kinds_drawn(chain("STORAGE", "SUBUNIT", "STORAGE"))
-    assert "STORAGE" not in drawn
-    assert "SUBUNIT" in drawn                    # one so far: still allowed
+    drawn = kinds_drawn(chain("PEER", "SUBUNIT", "PEER"))
+    assert "PEER" not in drawn
+    assert "SUBUNIT" in drawn
 
 
 def test_the_limit_counts_every_kind_of_step():
@@ -305,7 +311,11 @@ def test_the_limit_counts_every_kind_of_step():
     assert "SUBUNIT" in drawn
 
 
-def test_a_family_that_has_used_every_kind_is_finished():
+def test_a_family_that_has_used_every_kind_is_finished(monkeypatch):
+    # sub-units and storage have no limit since 19 Oct: with them drawn,
+    # a family is never finished, so take them out to test the rest
+    for unlimited in batch.NO_LIMIT_KINDS:
+        monkeypatch.setitem(extend.MOVE_WEIGHTS, unlimited, 0)
     used = [k for k, w in extend.MOVE_WEIGHTS.items() if w] + \
         ["distractor", "second", "replicate", "compose"]
     rows = chain(*[k for k in used for _ in range(2)])

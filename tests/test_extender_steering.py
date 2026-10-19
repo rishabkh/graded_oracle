@@ -78,9 +78,10 @@ def test_only_fitting_partners_are_offered():
     rng = random.Random(4)
     parent = row("c0_1", "clocking/reset/power")
     pool = [parent, row("c0_2", "DSP"), row("c0_3", "control")]
-    partners = {t["parent2_id"] for t in
+    # since 19 Oct the model picks from a short list (candidates)
+    partners = {c for t in
                 (batch.sample_task(rng, parent, pool) for _ in range(3000))
-                if t["ext_type"] == "compose"}
+                if t["ext_type"] == "compose" for c in t["candidates"]}
     assert partners == {"c0_3"}
 
 

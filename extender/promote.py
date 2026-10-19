@@ -34,10 +34,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
-from build_corpus import (extract_asserts, pdr_wall_s, state_bits,   # noqa: E402
-                          template, without_main_s)
+from build_corpus import (extract_asserts, honest_lines,             # noqa: E402
+                          pdr_wall_s, state_bits, template,
+                          without_main_s)
 from coi import coi_ratio                                            # noqa: E402
 import gates                                                         # noqa: E402
+from extend import BIG_MOVES                                         # noqa: E402
 
 CORPUS = HERE / "corpus.jsonl"
 EXT_LOG = HERE / "logs" / "extensions.jsonl"
@@ -64,6 +66,10 @@ _ACTIONS = {
     # the review could not be made, twice: not known to be good, so not
     # kept or grown (18 Oct 2026; a refused review had kept a design)
     "UNREVIEWED": "reject",
+    # no candidate partner fits the design (19 Oct 2026): not a failure of
+    # the design, so it goes back to the frontier and its branch is not
+    # charged
+    "NO_PARTNER": "pass",
 }
 
 
@@ -108,8 +114,11 @@ def growth(record, parents):
     child_v = record.get("child_verilog")
     out = []
     if rows and child_v:
-        before = max(len(p["verilog"].splitlines()) for p in rows)
-        out.append(len(child_v.splitlines()) / before - 1)
+        # copies counted once (19 Oct 2026): a block written once per slot
+        # is not growth
+        before = max(honest_lines(p["verilog"]) for p in rows)
+        if before:
+            out.append(honest_lines(child_v) / before - 1)
     pb, cb = record.get("parent_state_bits"), record.get("child_state_bits")
     if isinstance(pb, list):
         pb = max([b for b in pb if b] or [0])
@@ -118,9 +127,21 @@ def growth(record, parents):
     return round(max(out), 3) if out else None
 
 
-def ratchet(record, parents):
+# 19 Oct 2026: three sub-units of the 18 Oct trial that doubled their
+# designs with real features (a result retire queue, frame pause and
+# resume, a playback controller) were turned away only because their facts
+# had familiar shapes. A big step that grew its design by half or more may
+# skip the rule when the second reviewer reads it (review_waiver); the
+# reviewer then decides. From 17 to 18 Oct a similar pass, with no
+# reviewer, let only weak and wrong designs in.
+WAIVER_GROWTH = 0.5
+
+
+def ratchet(record, parents, review_waiver=False):
     """Keep a proved child only if it needs a kind of claim its
     parent(s) did not, and it passes the design checks in gates.py.
+    With `review_waiver` (the run's reviewer is on), a big structural step
+    that grew by WAIVER_GROWTH or more is passed to the reviewer instead.
 
     Measured 26 Sep 2026 over 142 parent-to-child pairs: with NECESSARY
     as the only rule, 56% of children left the signals-per-clause count
@@ -137,11 +158,17 @@ def ratchet(record, parents):
         fresh = new_shapes(record.get("invariants", []), old)
         record["new_shapes"] = fresh
         record["grew_by"] = growth(record, parents)
-        if not fresh:
-            record["verdict"] = "NO_NEW_SHAPE"
-            record["reason"] = ("proved, but needs no kind of claim its "
-                                "parent did not already have")
-            return record
+        if not fresh and not record.get("shape_waiver"):
+            if (review_waiver and record.get("ext_type") == "structural"
+                    and record.get("move") in BIG_MOVES
+                    and (record["grew_by"] or 0) >= WAIVER_GROWTH):
+                record["shape_waiver"] = ("no new kind of claim; kept only "
+                                          "if the reviewer keeps it")
+            else:
+                record["verdict"] = "NO_NEW_SHAPE"
+                record["reason"] = ("proved, but needs no kind of claim its "
+                                    "parent did not already have")
+                return record
     # once per record: the result is kept on it (gates.apply)
     gates.apply(record, parents)
     return record
@@ -159,13 +186,20 @@ _ADDED_FIELD = {"structural": "new_state", "second": "claim",
                 "replicate": "pool_scheme"}
 
 
-def what_was_added(rec, limit=240):
-    """The first sentence of the builder's account of the step."""
+def what_was_added(rec, limit=300):
+    """The first two sentences of the builder's account of the step, or
+    the first alone when two run long (19 Oct 2026: a first sentence such
+    as "A new sub-module fm_pkt_guard is added." says nothing of its
+    job)."""
     text = " ".join(str(rec.get(_ADDED_FIELD.get(rec.get("ext_type")), "")
                         or "").split())
-    m = re.search(r"\.\s", text)
-    first = text[:m.start() + 1] if m else text
-    return first if len(first) <= limit else first[:limit].rstrip() + "..."
+    ends = [m.start() + 1 for m in re.finditer(r"\.(\s|$)", text)]
+    first = text[:ends[0]] if ends else text
+    two = text[:ends[1]] if len(ends) > 1 else text
+    for cut in (two, first):
+        if len(cut) <= limit:
+            return cut
+    return first[:limit].rstrip() + "..."
 
 
 def step_kind(row):
@@ -192,11 +226,24 @@ def lineage(row, by_id, _seen=None):
     return out
 
 
+def _said(r):
+    return f"{step_kind(r)}: {r['added']}" if r.get("added") \
+        else step_kind(r)
+
+
 def history(row, by_id):
     """`kind: what it added` for each step that made `row`, oldest first
     (rows from before 18 Oct 2026 say only their kind)."""
-    return [f"{step_kind(r)}: {r['added']}" if r.get("added")
-            else step_kind(r) for r in lineage(row, by_id)]
+    return [_said(r) for r in lineage(row, by_id)]
+
+
+def children(row, by_id):
+    """`kind: what it added` for each design already grown from `row`
+    (19 Oct 2026: two siblings added the same length guard)."""
+    if row is None:
+        return []
+    return [_said(r) for r in by_id.values()
+            if r.get("parent") == row["id"] and step_kind(r)]
 
 
 _MODULES = re.compile(r"\bmodule\s+([A-Za-z_]\w*)")
@@ -234,7 +281,8 @@ def promote(corpus_rows, ext_records, compute_metrics=True):
             next_seq[key] = max(next_seq[key], int(m.group(3)) + 1)
 
     buckets = {a: [] for a in
-               ("accept", "reject", "fixer", "drop", "retire", "reformat")}
+               ("accept", "reject", "fixer", "drop", "retire", "reformat",
+                "pass")}
     new_rows = []
     for rec in ext_records:
         ratchet(rec, [by_id.get(rec.get("parent_id")),

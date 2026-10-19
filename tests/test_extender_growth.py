@@ -214,16 +214,18 @@ def test_promotion_keeps_the_main_check_time_on_the_row():
 
 def test_combining_and_copying_are_drawn_more_often_than_before():
     """0.15 until 17 Oct, 0.4 for the 17 Oct trial, 0.25 since 18 Oct: in
-    that trial they gave 1 good design in 15 (test_extender_steering)."""
+    that trial they gave 1 good design in 15 (test_extender_steering).
+    Copies are off since 19 Oct (2 good designs in 13, then 0 kept in 3);
+    a combination now needs a fitting partner the model picks
+    (test_extender_real_systems)."""
     assert batch.MULTIPLIER_RATE == 0.25
+    assert batch.COPIES is False
     rng = random.Random(5)
     pool = [fifo_row(id="c0_901"), fifo_row(id="c0_902")]
     pool[1] = dict(pool[1], top_module="fifo_b",
                    verilog=FIFO.replace("fifo_ctl", "fifo_b"))
     draws = [batch.sample_task(rng, pool[0], pool) for _ in range(2000)]
-    share = sum(t["ext_type"] in ("compose", "replicate")
-                for t in draws) / len(draws)
-    assert 0.2 < share < 0.3, share
+    assert not any(t["ext_type"] in ("compose", "replicate") for t in draws)
 
 
 def test_lineages_may_go_twelve_rounds():
@@ -238,8 +240,12 @@ def test_lineages_may_go_twelve_rounds():
 # --- 5. bigger moves ----------------------------------------------------
 
 def lines_row(n):
+    # lines of real content, no two alike: sizes are counted with comments
+    # left out and copies counted once since 19 Oct 2026; n + 1 lines are
+    # n of content (endmodule is not counted)
     body = ["module m (input wire clk, output reg [3:0] a);"] + \
-        ["    // line"] * (n - 2) + ["endmodule"]
+        [f"    localparam [15:0] P{i} = 16'd{i};" for i in range(n - 1)] + \
+        ["endmodule"]
     return {"id": "c0_1", "top_module": "m", "verilog": "\n".join(body),
             "property": ["a <= 4'd9"], "invariants": ["a <= 4'd9"]}
 
@@ -259,7 +265,7 @@ def test_a_big_move_asks_for_half_to_three_quarters_more_lines():
     """A second unit still does; a sub-unit and storage ask to double the
     design since 18 Oct (test_extender_good_growth)."""
     text = extend.build_prompt(lines_row(80), "structural", "PEER")
-    assert "80 lines" in text and "40 to 60 new lines" in text
+    assert "80 lines" in text and "40 to 60 new lines" in text, text[:200]
     small = extend.build_prompt(lines_row(80), "structural", "SPLIT")
     assert "new lines" not in small
 
@@ -286,14 +292,18 @@ def test_pipeline_stages_come_in_bigger_runs():
 # combinations and a contrived 64-bit drain window (hand review of the
 # 17 Oct trial), so it was dropped; the growth is still recorded.
 
-PARENT = {"id": "c0_000", "top_module": "m", "verilog": "\n" * 39 + "x",
+def _content(n):
+    return "\n".join(f"wire [15:0] p{i} = 16'd{i};" for i in range(n))
+
+
+PARENT = {"id": "c0_000", "top_module": "m", "verilog": _content(40),
           "invariants": ["cnt <= 4'd9"]}
 
 
 def grown(lines, **kw):
     r = {"extension_id": "e9", "ext_type": "structural", "move": "SUBUNIT",
          "parent_id": "c0_000", "verdict": "NECESSARY",
-         "child_verilog": "\n" * (lines - 1) + "x",
+         "child_verilog": _content(lines),
          "invariants": ["cnt <= 4'd7"]}         # the same kind of fact
     r.update(kw)
     return r
