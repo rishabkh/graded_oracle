@@ -79,8 +79,9 @@ Answer as an experienced hardware engineer:
    second bank that shares the same single input and output, or a second
    count of something already counted does not.
 6. breaks_what_it_did: does the change stop the design doing what it did
-   before? For example data that used to get through is now dropped, or a
-   channel can now get stuck.
+   before, or does a new part drop data silently instead of making the
+   sender wait? For example data that used to get through is now dropped,
+   or a channel can now get stuck.
 7. engineer_would_build_this: would an engineer build this design, as a
    whole, for a real purpose?
 8. why: one or two sentences naming the main reason for your answers.

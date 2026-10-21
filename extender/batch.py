@@ -245,7 +245,8 @@ def sample_task(rng, parent, corpus_rows):
     up to PARTNER_CHOICES small starting designs that fit (fits) while the
     facts stay within gates.MAX_FACTS; copies only with COPIES."""
     eligible_self = wrappable(parent)
-    n_facts = len(parent["invariants"])
+    # compact facts count once (21 Oct 2026)
+    n_facts = len(parent.get("invariants_compact") or parent["invariants"])
     by_id = {r["id"]: r for r in corpus_rows}
     used = kinds_used(parent, by_id)
 
@@ -526,6 +527,8 @@ def _real_executor(task, corpus_rows):
     try:
         if task["ext_type"] == "distractor":
             record["invariants"] = parent["invariants"]     # verbatim
+            if parent.get("invariants_compact"):            # as written
+                record["invariants_compact"] = parent["invariants_compact"]
             label = (f"task {task['task_id']}.{task['attempt']} distractor "
                      f"on {task['parent_id']}")
             with Spinner(f"{label}: model writing"):

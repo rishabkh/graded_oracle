@@ -337,6 +337,10 @@ def promote(corpus_rows, ext_records, compute_metrics=True):
                 "invariant_templates": [template(x) for x in invariants],
             },
         }
+        if rec.get("invariants_compact"):
+            # the facts as written, one compact fact for every entry
+            # (21 Oct 2026); "invariants" holds them expanded
+            row["invariants_compact"] = rec["invariants_compact"]
         new_rows.append(row)
     return buckets, new_rows
 

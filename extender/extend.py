@@ -26,6 +26,7 @@ Inputs stay fixed; new state may get new OUTPUT ports (18 Oct 2026).
 """
 import argparse
 from collections import Counter
+import itertools
 import json
 import re
 import sys
@@ -147,17 +148,34 @@ MOVES = {
                 "wire in the existing module, and name the wire. Never "
                 "write instance.signal. If the design already has "
                 "sub-modules, the new one may work with them directly "
-                "(see the list below)."),
+                "(see the list below). If the unit can refuse work (full, "
+                "busy, out of credits), it must tell the sender to wait "
+                "through a ready or busy output, never drop work "
+                "silently."),
     # 18 Oct 2026: "on the path the property depends on" piled every
     # storage step onto one path (five buffers in a row in front of a
     # fixed table in the 18 Oct trial, all weak)
+    # 21 Oct 2026, Gary's suggestion taken as general rules: storage built
+    # the way real storage is built, and facts about what it holds (6% of
+    # the 1,277 facts of the three growth trials were about stored entries)
     "STORAGE": ("Add storage the design needs: a register file, FIFO or "
                 "lookup table (an array with a write side and a read "
                 "side), sized with the module's own widths, that holds "
                 "values on their way to existing state or serves a new "
-                "part with an assertion of its own. The invariant list "
+                "part with an assertion of its own. Build it the way real "
+                "storage is built. A queue keeps read and write pointers "
+                "that wrap around, with full and empty worked out from the "
+                "pointers (one extra wrap bit), not only from a separate "
+                "count. When it is full or busy it tells the sender to wait "
+                "through a ready output, and it never drops data silently. "
+                "An output register stage is welcome. The invariant list "
                 "must relate the stored entries, or how many of them are "
-                "in use, to the state around them."),
+                "in use, to the state around them, and at least one fact "
+                "(or the new part's own assertion) must be about the "
+                "stored values themselves, not only counts and pointers: "
+                "for example an entry does not change while it waits, "
+                "every valid entry holds what was written into it, or the "
+                "read pointer points at the oldest valid entry."),
 }
 
 # the moves that add a whole piece of design; their question says how big
@@ -239,7 +257,19 @@ INVARIANT_RULES = """\
 - Add no clause you cannot justify. A clause that could be deleted without
   breaking the proof is noise in the corpus.
 - Never copy a property into the invariant list. An invariant clause
-  syntactically identical to any assertion is rejected outright."""
+  syntactically identical to any assertion is rejected outright.
+- Good facts relate whole words to each other (a pointer equals a count
+  plus the entries in flight; the credits held add up to the budget) and
+  relate values the design moves from one cycle to the next (a stage holds
+  what the stage before it held; an entry holds what was written into it).
+  These are what provers find hard bit by bit; prefer them to long case
+  lists over single bits.
+- A fact about every entry or stage of an array can be written once with
+  an index, `forall k in 0..7: !v[k] || (tag[k] != 4'd15)`, and a fact
+  about pairs of entries with two indexes,
+  `forall k in 0..7, m in 0..7 where k != m: !(v[k] && v[m]) || (age[k] != age[m])`.
+  Use index names that are not signals of the module. Each such fact is
+  checked once for every index value."""
 
 DISPOSITION_BLOCK = """\
 For every invariant clause in the parent list, record what happened to it:
@@ -626,8 +656,8 @@ def compose_prompt(pa, pb, plan=None):
         verilog_a=pa["verilog"], verilog_b=pb["verilog"],
         property_a="; ".join(pa["property"]),
         property_b="; ".join(pb["property"]),
-        invariants_a="; ".join(pa["invariants"]) or "(none)",
-        invariants_b="; ".join(pb["invariants"]) or "(none)",
+        invariants_a="; ".join(shown_facts(pa)) or "(none)",
+        invariants_b="; ".join(shown_facts(pb)) or "(none)",
         plan=PLAN_TEXT.format(system=plan.get("system", ""),
                               connection=plan.get("connection", ""))
         if plan else "")
@@ -916,6 +946,92 @@ def split_second_property_asserts(parent_props, child_asserts):
         return None, (f"parent assertion(s) not preserved verbatim: "
                       f"{p} vs {c[:len(p)]}")
     return child_asserts[-1], None
+
+
+# --- compact facts (21 Oct 2026) ---
+# One fact for every entry of an array written once with an index
+# ("forall k in 0..7: !v[k] || ..."), pairs of entries included, expanded
+# into one fact per index value before anything is checked (Gary's
+# suggestion). With storage now written as arrays (SYSTEM_PROMPT rule 10),
+# per-entry facts written out one by one would soon pass the 64-fact limit.
+# Rows keep both: "invariants" (expanded, what the checker proves) and
+# "invariants_compact" (as written, shown in the next question).
+
+_FORALL = re.compile(r"^\s*forall\s+(.+?)\s*:(.*)$", re.S)
+_BINDER = re.compile(r"^\s*([A-Za-z_]\w*)\s+in\s+(\d+)\s*\.\.\s*(\d+)\s*$")
+MAX_INDEX_VALUES = 64
+MAX_EXPANDED = 256
+
+
+def _index_condition(cond, names):
+    """The `where` condition as Python, or None when it uses anything but
+    its indexes, numbers and comparisons."""
+    for tok in re.findall(r"[A-Za-z_]\w*|\d+|&&|\|\||[<>!=]=|\S", cond):
+        if re.match(r"[A-Za-z_]", tok) and tok not in names:
+            return None
+        if not re.match(r"[A-Za-z_]|\d|&&|\|\||[<>!=]=|[<>()+\-*%!]$", tok):
+            return None
+    py = cond.replace("&&", " and ").replace("||", " or ")
+    return re.sub(r"!(?!=)", " not ", py)
+
+
+def expand_facts(facts):
+    """(facts with every compact fact expanded, None), or (None, error)
+    when a compact fact is malformed or expands too far."""
+    out = []
+    for fact in facts:
+        m = _FORALL.match(fact)
+        if not m:
+            out.append(fact)
+            continue
+        binders, body = m.group(1), m.group(2).strip()
+        if not body:
+            return None, f"compact fact has no fact after the colon: {fact!r}"
+        cond = None
+        parts = re.split(r"\s+where\s+", binders, maxsplit=1)
+        if len(parts) == 2:
+            binders, cond = parts
+        names, ranges = [], []
+        for part in binders.split(","):
+            b = _BINDER.match(part)
+            if not b:
+                return None, ("a compact fact's index must read "
+                              f"'k in LO..HI': {fact!r}")
+            lo, hi = int(b.group(2)), int(b.group(3))
+            if hi < lo or hi - lo + 1 > MAX_INDEX_VALUES:
+                return None, (f"index range {lo}..{hi} is empty or longer "
+                              f"than {MAX_INDEX_VALUES}: {fact!r}")
+            names.append(b.group(1))
+            ranges.append(range(lo, hi + 1))
+        test = None
+        if cond is not None:
+            test = _index_condition(cond, names)
+            if test is None:
+                return None, ("a compact fact's condition may compare only "
+                              f"its indexes: {cond!r}")
+        for values in itertools.product(*ranges):
+            env = dict(zip(names, values))
+            try:
+                if test is not None and not eval(test, {"__builtins__": {}},
+                                                 env):
+                    continue
+            except Exception as exc:
+                return None, f"condition {cond!r} cannot be read: {exc}"
+            text = body
+            for name, value in env.items():
+                text = re.sub(rf"(?<![\w'$]){re.escape(name)}(?!\w)",
+                              str(value), text)
+            out.append(text)
+            if len(out) > MAX_EXPANDED:
+                return None, (f"compact facts expand to more than "
+                              f"{MAX_EXPANDED} facts")
+    return out, None
+
+
+def shown_facts(row):
+    """The facts a question shows: as written when there is a compact
+    form, else the plain list."""
+    return row.get("invariants_compact") or row["invariants"]
 
 
 def one_new_assert(parent_props, child_asserts):
@@ -1350,12 +1466,12 @@ def build_prompt(parent, ext_type, move=None, n=6, k=1, history=None,
         return REPLICATE_TEMPLATE.format(
             n=n, last=n - 1, verilog=parent["verilog"],
             property="\n".join(parent["property"]),
-            invariants="\n".join(parent["invariants"]))
+            invariants="\n".join(shown_facts(parent)))
     tmpl = STRUCTURAL_TEMPLATE if ext_type == "structural" else SECOND_TEMPLATE
     fields = dict(
         verilog=parent["verilog"],
         property="\n".join(parent["property"]),
-        invariants="\n".join(parent["invariants"]),
+        invariants="\n".join(shown_facts(parent)),
         invariant_rules=INVARIANT_RULES,
         disposition_block=DISPOSITION_BLOCK,
         diff_format=DIFF_FORMAT,
@@ -1390,7 +1506,9 @@ def grade_compose(pa, pb, out, record):
     wrapper = strip_diff_decoration(out["wrapper"])
     top = out["top_module"]
     record["wrapper"] = wrapper
-    record["invariants"] = out["invariants"]
+    out = _expanded(out, record)          # compact facts (21 Oct 2026)
+    if out is None:
+        return record
     record["antecedents"] = out.get("antecedents", [])
     record["sanity_covers"] = out.get("sanity_covers", [])
     if top in (pa["top_module"], pb["top_module"]) or not re.search(
@@ -1486,7 +1604,9 @@ def grade_replicate(parent, out, record, n):
     wrapper = strip_diff_decoration(out["wrapper"])
     top = out["top_module"]
     record["wrapper"] = wrapper
-    record["invariants"] = out["invariants"]
+    out = _expanded(out, record)          # compact facts (21 Oct 2026)
+    if out is None:
+        return record
     record["antecedents"] = out.get("antecedents", [])
     record["sanity_covers"] = out.get("sanity_covers", [])
     if top == parent["top_module"] or not re.search(
@@ -1566,12 +1686,32 @@ def grade_replicate(parent, out, record, n):
     return record
 
 
+def _expanded(out, record):
+    """`out` with its compact facts expanded, the record holding both
+    forms; None, with the record marked FACT_FORMAT, when one is
+    malformed."""
+    compact = list(out.get("invariants", []))
+    expanded, err = expand_facts(compact)
+    if err:
+        record["invariants"] = compact
+        record["verdict"] = "FACT_FORMAT"
+        record["error"] = err
+        return None
+    record["invariants"] = expanded
+    if expanded != compact:
+        record["invariants_compact"] = compact
+    return dict(out, invariants=expanded)
+
+
 def grade_step4(parent, ext_type, out, record):
     """apply -> property discipline -> dispositions -> yosys -> oracle
     (-> P2-unaided for second property). Fills record in place."""
     record["patch"] = out["patch"]
-    record["invariants"] = out["invariants"]
     record["dispositions"] = out["dispositions"]
+    compact = list(out["invariants"])
+    out = _expanded(out, record)
+    if out is None:
+        return record
 
     # a sub-unit is a module of its own since 18 Oct 2026, so a fact can
     # now reach for its registers by instance.signal; say so before grading
@@ -1634,7 +1774,9 @@ def grade_step4(parent, ext_type, out, record):
             return record
         child_props = child_asserts
 
-    err = check_dispositions(parent["invariants"], out["invariants"],
+    # what was kept or replaced is read in the facts as written: the
+    # parent's compact facts against this answer's (21 Oct 2026)
+    err = check_dispositions(shown_facts(parent), compact,
                              out["dispositions"])
     if err:
         record["verdict"] = "DISPOSITION_ERROR"

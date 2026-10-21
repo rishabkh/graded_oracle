@@ -272,9 +272,11 @@ def apply(record, parents, use_yosys=True):
     if "gates" in record:
         return record
     facts = record.get("invariants") or []
-    if len(facts) > MAX_FACTS:
+    # one compact fact for every entry counts once (21 Oct 2026)
+    written = record.get("invariants_compact") or facts
+    if len(written) > MAX_FACTS:
         return _fail(record, "TOO_MANY_FACTS",
-                     f"{len(facts)} facts, more than {MAX_FACTS}")
+                     f"{len(written)} facts, more than {MAX_FACTS}")
     shadows = shadow_facts(facts, new_registers(record, parents))
     if shadows:
         return _fail(record, "SHADOW_REGISTER",

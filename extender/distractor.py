@@ -239,7 +239,9 @@ def build_prompt(parent):
     return DISTRACTOR_PROMPT.format(
         verilog=parent["verilog"],
         property="\n".join(parent["property"]),
-        invariants="\n".join(parent["invariants"]),
+        # as written, when compact facts were used (21 Oct 2026)
+        invariants="\n".join(parent.get("invariants_compact")
+                              or parent["invariants"]),
         diff_format=DIFF_FORMAT, n=n, lo=round(n * 0.5), hi=round(n * 0.75))
 
 
