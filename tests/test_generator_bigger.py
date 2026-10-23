@@ -27,7 +27,9 @@ def test_the_prompts_no_longer_ask_for_small_designs():
 
 def test_the_line_cap_is_gone_and_rows_say_so():
     assert "under 200 lines" not in P.SYSTEM_PROMPT
-    assert P.prompt_version() == "nocap"
+    # the cap part of the stamp; the rules after it are named since 22 Oct
+    # 2026 (tests/test_prompt_version.py)
+    assert P.prompt_version().split("+")[0] == "nocap"
 
 
 def test_the_design_step_of_two_step_sees_the_size(monkeypatch, tmp_path):

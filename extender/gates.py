@@ -12,8 +12,10 @@ good ones (notes_2026-10-18/strict_checks):
                    wraps, so its logic only watches them
   XOR_OUTPUTS      results of separate copies XOR-ed into one output, which
                    keeps them alive for the tools and means nothing
-  UNUSED_COPIES    under 70% of the copied designs' flip-flops still drive an
-                   output once assertions are ignored: their results go nowhere
+  UNUSED_COPIES    under 70% of the copied designs' flip-flops still do any
+                   work once assertions are ignored: their results go
+                   nowhere, or they never change (21 Oct 2026: the zeros of
+                   a word padded into a wider input)
   TOO_MANY_FACTS   more than 64 facts, nearly always one fact list restated
                    per copy (one child reached 202)
   COPIED_TEXT      more than half of a step's new lines are copies of each
@@ -35,6 +37,15 @@ from extend import _port_list_span, _split_outside_brackets, identifiers
 VERDICTS = ("SHADOW_REGISTER", "IDLE_GLUE", "XOR_OUTPUTS", "UNUSED_COPIES",
             "TOO_MANY_FACTS", "COPIED_TEXT")
 MAX_FACTS = 64
+# 21 Oct 2026, kept at 0.7 after reading the two combinations of the 21 Oct
+# trial turned away at 69%, one point under it (Rishab: "make all 1-8
+# changes", item 6). Both padded a 64-bit word with 64 zeros into the
+# 128-bit payload input of the same SPI chip-select sequencer, so its
+# 24-entry queue held 1,536 flip-flops of zeros for ever; fed from a real
+# source instead, both measure 101% (yosys, same steps as below). The check
+# saw real waste, not a counting slip, and one of the two also lost data
+# whenever its buffer was full (it only counted the loss). Neither was a
+# good design wrongly turned away, so the line stays where it is.
 MIN_STATE_USED = 0.7
 MAX_COPIED = 0.5
 MIN_LINES_FOR_COPIES = 20     # a short patch says too little to judge
@@ -304,8 +315,14 @@ def apply(record, parents, use_yosys=True):
             used = copied_state_used(child, top, wrapper)
             result["copied_state_used"] = used
             if used is not None and used < MIN_STATE_USED:
+                # what yosys leaves out: flip-flops that drive nothing,
+                # never change or repeat another (21 Oct 2026)
                 return _fail(record, "UNUSED_COPIES",
                              f"only {used:.0%} of the copied designs' "
-                             "flip-flops drive an output")
+                             "flip-flops still do any work once they are "
+                             "wired together: the others drive no output, "
+                             "never change (such as the zeros of a word "
+                             "padded into a wider input) or repeat another "
+                             "flip-flop")
     record["gates"] = result
     return record

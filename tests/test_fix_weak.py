@@ -28,8 +28,11 @@ def row(i, verilog=DESIGN, facts=("a <= 3'd7",)):
             "invariants": list(facts)}
 
 
-def one_step_record(i, dropped, tier, trace=None):
-    return {"id": i, "dropped": dropped, "tier": tier, "trace": trace}
+def one_step_record(i, dropped, tier, trace=None, fixed=True):
+    """A 1-step log line; `fixed` lines carry the mark one_step.py puts on
+    every line of its fixed check (21 Oct 2026)."""
+    line = {"id": i, "dropped": dropped, "tier": tier, "trace": trace}
+    return dict(line, clock_edge_fix=True) if fixed else line
 
 
 # --- which rows ----------------------------------------------------------
@@ -236,3 +239,112 @@ def test_its_proofs_are_kept_next_to_its_log(tmp_path, monkeypatch):
     assert seen["work"] == tmp_path / "logs" / "fix_weak_proofs"
     assert seen["name"] == "g0_007"
     assert r["proof_dir"] == "fix_weak_proofs/g0_007_abc"
+
+
+# --- only the fixed 1-step check picks rows (22 Oct 2026, review F6) -----
+# The 6 Oct log (extender/logs/one_step.jsonl) came from the check that
+# read clocked assertions one step late; all 207 answers it called too weak
+# pass with the fix, so a run on it would pay to "fix" 103 good answers.
+
+OLD_LOG = ROOT / "extender" / "logs" / "one_step.jsonl"
+
+
+def _weak_log(fixed=True):
+    return [one_step_record("weak", -1, "INDUCTIVE", fixed=fixed),
+            one_step_record("weak", -2, "NOT_INDUCTIVE", CEX, fixed=fixed)]
+
+
+def test_the_fixer_reads_the_fixed_checks_log():
+    import one_step
+    assert fw.ONE_STEP == one_step.OUT
+    assert fw.ONE_STEP.name == "one_step_clock_edge_fix_2026-10-21.jsonl"
+
+
+def test_lines_made_before_the_fix_pick_no_row():
+    with pytest.raises(ValueError,
+                       match="2 of 2 .* before the clock-edge fix"):
+        fw.targets([row("weak")], _weak_log(fixed=False))
+    # one old line among fixed ones is refused too
+    mixed = _weak_log() + [one_step_record("other", -1, "INDUCTIVE",
+                                           fixed=False)]
+    with pytest.raises(ValueError, match="1 of 3"):
+        fw.targets([row("weak")], mixed)
+    assert [r["id"] for r, _ in fw.targets([row("weak")], _weak_log())] \
+        == ["weak"]
+
+
+def test_a_line_written_by_the_fixed_check_is_accepted(tmp_path,
+                                                       monkeypatch):
+    """The mark is the one one_step.run really writes: its proof faked,
+    the full answer too weak at one step."""
+    import one_step
+
+    def fake_prove(r, facts, work, depth=1, name=None):
+        weak = depth == 1 and len(facts) == len(r["invariants"])
+        return {"tier": "NOT_INDUCTIVE" if weak else "INDUCTIVE",
+                "trace": CEX if weak else None, "broke": None, "secs": 0}
+    monkeypatch.setattr(one_step, "prove", fake_prove)
+    corpus = tmp_path / "corpus.jsonl"
+    corpus.write_text(json.dumps(row("weak")) + "\n")
+    out = tmp_path / "logs" / "one_step_fixed.jsonl"
+    one_step.run(corpus, out, workers=1)
+    lines = fw.read_log(out)
+    assert lines and all(l["clock_edge_fix"] is True for l in lines)
+    assert [(r["id"], c) for r, c in fw.targets([row("weak")], lines)] == \
+        [("weak", CEX)]
+
+
+def _main_setup(monkeypatch, tmp_path, log_lines=None):
+    corpus = tmp_path / "corpus.jsonl"
+    corpus.write_text(json.dumps(row("weak")) + "\n")
+    steps = tmp_path / "one_step_fixed.jsonl"
+    if log_lines is not None:
+        steps.write_text("".join(json.dumps(r) + "\n" for r in log_lines))
+    monkeypatch.setattr(fw, "CORPUS", corpus)
+    monkeypatch.setattr(fw, "ONE_STEP", steps)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.setattr(fw, "preflight", lambda: None)
+    return Fakes(monkeypatch, tmp_path, [answer("a == b")] * 3,
+                 {("a == b",): {"tier": "PROVEN"}})
+
+
+@pytest.mark.parametrize("flags", [[], ["--dry"], ["--report"]])
+def test_a_log_from_before_the_fix_stops_every_mode_before_any_call(
+        monkeypatch, tmp_path, flags):
+    f = _main_setup(monkeypatch, tmp_path, _weak_log(fixed=False))
+    with pytest.raises(SystemExit) as e:
+        fw.main(["--workers", "1", *flags])
+    said = str(e.value.code)
+    assert "before the clock-edge fix" in said
+    assert "nothing was called" in said and str(fw.ONE_STEP) in said
+    assert f.prompts == [] and not fw.LOG.exists()
+
+
+@pytest.mark.parametrize("flags", [[], ["--dry"], ["--report"]])
+def test_no_fixed_check_log_stops_every_mode_before_any_call(
+        monkeypatch, tmp_path, flags):
+    """A missing log must not read as "nothing to fix"."""
+    f = _main_setup(monkeypatch, tmp_path, log_lines=None)
+    with pytest.raises(SystemExit) as e:
+        fw.main(["--workers", "1", *flags])
+    said = str(e.value.code)
+    assert "run training/one_step.py first" in said
+    assert "nothing was called" in said
+    assert f.prompts == [] and not fw.LOG.exists()
+
+
+def test_a_fixed_log_still_runs(monkeypatch, tmp_path):
+    f = _main_setup(monkeypatch, tmp_path, _weak_log())
+    fw.main(["--workers", "1", "--max-attempts", "1"])
+    assert len(f.prompts) == 1
+    assert [r["accepted"] for r in fw.read_log(fw.LOG)] == [True]
+
+
+@pytest.mark.skipif(not (OLD_LOG.exists() and fw.CORPUS.exists()),
+                    reason="no 6 Oct 1-step log here")
+def test_the_real_6_oct_log_picks_no_row():
+    """It picked 103 rows before (22 Oct 2026, read only)."""
+    rows = [json.loads(l) for l in fw.CORPUS.read_text().splitlines()
+            if l.strip()]
+    with pytest.raises(ValueError, match="before the clock-edge fix"):
+        fw.targets(rows, fw.read_log(OLD_LOG))

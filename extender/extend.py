@@ -16,6 +16,11 @@ New machinery beyond the distractor:
   sideways       a big move may add a part beside the existing logic with
                  ONE assertion of its own, held to the second-property
                  rules (new state read, needs facts alone) (18 Oct 2026).
+  small storage  an array the step adds may hold at most 16 entries, all
+                 its dimensions counted together, or as many as the
+                 parent's own biggest array (not one built by a generate
+                 loop, 23 Oct 2026); a deeper one is sent back before
+                 grading (21 Oct 2026; 22 Oct 2026).
 
 Inputs stay fixed; new state may get new OUTPUT ports (18 Oct 2026).
 
@@ -25,13 +30,15 @@ Inputs stay fixed; new state may get new OUTPUT ports (18 Oct 2026).
   venv/bin/python extender/extend.py --parent g0_014 --type second
 """
 import argparse
+import ast
 from collections import Counter
 import itertools
 import json
+import math
+import operator
 import re
 import sys
 import tempfile
-import time
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -43,9 +50,12 @@ sys.path.insert(0, str(HERE))
 from build_corpus import (_mask_comments, assert_spans,      # noqa: E402
                           extract_asserts, honest_lines, state_bits)
 from distractor import (DIFF_FORMAT, MODEL, EFFORT,   # noqa: E402
-                        Spinner, dump, grade_kwargs, load_parent)
+                        Spinner, dump, grade_kwargs, load_parent,
+                        necessity_check)
 from patch import PatchError, apply_patch                 # noqa: E402
 
+from fact_format import SYSTEM_FUNCTION                         # noqa: E402
+from reset_reads import step_reset_error                        # noqa: E402
 import llm_client                                               # noqa: E402
 from oracle import PropertyInfo, grade, grade_triple_generated  # noqa: E402
 
@@ -74,11 +84,13 @@ HARD RULES
 3. Keep every existing port as it is: do not remove, rename or retype one,
    and add no inputs. You may add OUTPUT ports for new state. New state must
    be observable through an output, directly or through existing logic.
-4. Every new register gets a reset in the existing if (rst) branch and an
-   initial value, matching the style already in the module.
-5. Same Verilog subset as the module: synthesizable always @(posedge clk)
-   or always @(*) logic, immediate assertions only, no concurrent SVA, no
-   system tasks.
+4. Match the module's own reset: every new register resets the same way,
+   in the same kind of block, as the module's existing registers, and
+   gets an initial value, matching the style already in the module.
+5. Same Verilog subset as the module: synthesizable clocked blocks
+   written like the module's own (the same clock edge and the same
+   reset) and always @(*) logic, immediate assertions only, no concurrent
+   SVA, no system tasks.
 6. Do not use the -> implication operator. Yosys rejects it. Write !a || b.
 7. Match the widths already in the module for data: a new register that
    holds the module's data takes the module's data width. Counters, indexes
@@ -93,19 +105,87 @@ HARD RULES
 10. Write repeated slots, lanes or stages as an array with a for loop
    (reg [7:0] len [0:7]), never as the same block written once per slot
    (q0_len, q1_len, ... q7_len). Copied text is not growth: a patch whose
-   new lines are mostly copies of each other is rejected."""
+   new lines are mostly copies of each other is rejected.
+11. Declare sizes as parameters, the way real designs do: how many entries
+   a storage array holds, and how many channels, lanes or stages there
+   are, as #(parameter DEPTH = 4) in the module header or as a localparam,
+   with arrays, loops and pointer widths sized from them. The design is
+   proved with these values, and engineers prove a design at small sizes,
+   so keep them small: 4 to 8 entries, never more than 16. All the
+   entries of one array count together: an array with two dimensions
+   holds both sizes multiplied (4 channels of 8 entries are 32 entries),
+   and a packed array of words (reg [3:0][7:0] w) holds one entry per
+   word. A step that adds an array of more than 16 entries is rejected
+   before it is checked, unless the module already has a bigger array,
+   not counting registers built by a generate loop: a new array that
+   holds one entry for each of the same things (one per slave or channel
+   the module already has) may then hold as many entries as the module's
+   biggest array. An existing array may not be made deeper than that
+   either, or than it already is when it is bigger, and a register
+   declared inside a generate loop counts once for each pass of the loop.
+   Only counts are kept small: every entry keeps the module's own data
+   width (rule 7).
+12. Never read the reset in a new assertion, its guard or a fact, directly
+   or through a wire that copies it: they describe the design in normal
+   operation, not what holds while reset is held. Checkers disagree about
+   what an asynchronous reset does within a cycle, so a step whose new
+   assertion, guard or facts read one is rejected before it is checked.
+   An assertion that must skip the cycles of a reset can be guarded by a
+   register the reset clears."""
 
+# 23 Oct 2026, review finding F4: rule 12. The generator's prompt has said
+# the same since 22 Oct (initiator/prompts.py); a step on a design with an
+# asynchronous reset could read it, and step_reads_reset now turns such a
+# step away.
+
+# 22 Oct 2026, review finding F12: rules 4 and 5 said "a reset in the
+# existing if (rst) branch" and "always @(posedge clk) or always @(*)
+# logic", but since 21 Oct one new design in five resets at once
+# (always @(posedge clk or negedge rst_n), if (!rst_n)); a question about
+# such a design asked for a reset style it does not use. They now ask for
+# the module's own reset, whichever it is (so do REPLICATE, COMPOSE and the
+# distractor's question).
+# 22 Oct 2026, review finding F8: rule 11 now says that all the entries of
+# one array count together; a step with 4 channels of 8 entries was sent
+# back as too deep while its depth was already 8. And, review finding F1,
+# that an array may match the module's own biggest one (new_array_limit).
+# 23 Oct 2026, review finding: rule 11 also says that an existing array may
+# not be made deeper and that a register in a generate loop counts once per
+# pass, as too_deep now judges them. And, Rishab chose the same day, that
+# registers built by a generate loop do not raise the limit for a new
+# array (new_array_limit).
+
+# 21 Oct 2026: STAGE, PEER, SUBUNIT and STORAGE each say that their sizes
+# are parameters with small values for the proof (SYSTEM_PROMPT rule 11;
+# Rishab: "make all 1-8 changes"). Real designs declare sizes as
+# parameters and are proved at small sizes (ZipCPU proves his FIFOs at
+# small depths); in the 21 Oct trial 5 of 10 storage steps ran out of the
+# checker's 300 s.
 MOVES = {
     "SPLIT": ("Take a quantity that is currently held in one register and "
               "divide it, so part of it lives in a new register some of "
               "the time."),
     "STAGE": ("Insert a pipeline register between a producer and a "
               "consumer. An update that currently completes in one cycle "
-              "now takes two, with the in-flight value held in new state."),
+              "now takes two, with the in-flight value held in new state. "
+              "When there are several stages, declare how many as a "
+              "parameter or localparam (localparam STAGES = 4) and size "
+              "the stage array from it, never more than 16."),
     "GUARD": ("Add an enable register that gates an existing update. The "
               "existing transition fires only when the new enable is set."),
+    # 22 Oct 2026, review finding F8: an array per channel counts every
+    # channel's entries together, which this text did not say
     "PEER": ("Add a second instance of similar logic that shares a "
-             "resource with the existing logic."),
+             "resource with the existing logic. Declare how many channels "
+             "there are as a parameter or localparam (localparam "
+             "CHANNELS = 2), and give any storage it adds a parameter "
+             "depth with a small value for the proof: 4 to 8 entries, "
+             "never more than 16. All the entries of one array count "
+             "together: an array with one row per channel "
+             "(reg [7:0] buf_q [0:CHANNELS-1][0:DEPTH-1]) holds CHANNELS "
+             "times DEPTH entries, and that product is what may not pass "
+             "16 (or the size of the module's own biggest array, when "
+             "the new one holds an entry for each of the same things)."),
     "BOUND": ("Replace a constant limit with a register that can change, "
               "so the existing comparison is against state rather than a "
               "literal."),
@@ -137,7 +217,10 @@ MOVES = {
                 "configures an existing behaviour, or a retry or backoff "
                 "controller around an existing operation. It holds real "
                 "state of its own (several registers and the logic that "
-                "drives them). Write it as its own module, with its own "
+                "drives them). Its sizes (how many entries, requests or "
+                "channels it holds) are parameters of the new module with "
+                "small values for the proof: 4 to 8 entries, never more "
+                "than 16. Write it as its own module, with its own "
                 "ports, and instantiate it once inside the existing "
                 "module, the way real blocks are built from sub-modules; "
                 "a patch may begin with + lines, before any anchor, to put "
@@ -163,7 +246,11 @@ MOVES = {
                 "side), sized with the module's own widths, that holds "
                 "values on their way to existing state or serves a new "
                 "part with an assertion of its own. Build it the way real "
-                "storage is built. A queue keeps read and write pointers "
+                "storage is built. Its depth is a parameter "
+                "(#(parameter DEPTH = 4) or localparam DEPTH = 8) with a "
+                "small value for the proof, 4 to 8 entries and never more "
+                "than 16, and its pointers are sized from it. A queue "
+                "keeps read and write pointers "
                 "that wrap around, with full and empty worked out from the "
                 "pointers (one extra wrap bit), not only from a separate "
                 "count. When it is full or busy it tells the sender to wait "
@@ -188,6 +275,18 @@ SIZE_TEXT = """
         existing lines or one block repeated per slot. Lines are counted
         with copies counted once."""
 
+# 22 Oct 2026, review finding F1: a structural question on a design that
+# already has an array of more than MAX_NEW_DEPTH entries says how big a
+# new one may be (new_array_limit), so a table with one entry per existing
+# slave is not cut to 16 for a design with 24 slaves.
+ARRAY_ALLOWANCE_TEXT = """
+        This design already has an array of {n} entries ({array} in
+        module {module}). An array the step adds may hold up to {n}
+        entries, all its dimensions counted together, when it holds one
+        entry for each of the same things (one per slave, channel or slot
+        the design already has); any other new array keeps 4 to 8
+        entries, never more than {cap}."""
+
 # 18 Oct 2026, hand review of two trials: every good step grew its design
 # 1.4 to 1.7 times, inside the +50-75% the question asked for, so the size
 # of a good design was set by the question. The two moves that stayed good
@@ -195,20 +294,59 @@ SIZE_TEXT = """
 # (Rishab: "do all 6 changes").
 DOUBLING_MOVES = ("SUBUNIT", "STORAGE")
 
+# 21 Oct 2026: answers were cut off. In the 21 Oct trial 2 storage answers
+# stopped at the 64,000-token limit (TRUNCATED) after the question asked
+# designs of 381 and 397 lines for about as many new lines again, and
+# other big answers there used up to 62,500 tokens. Once a design is over
+# BIG_STEP_CAP lines, every step asks for BIG_STEP_FEWEST to BIG_STEP_CAP
+# new lines, whatever the move (Rishab: "make all 1-8 changes").
+# 22 Oct 2026, review finding F7: a sub-unit or storage step on a design of
+# 241 to 300 lines was still asked for up to 375 new lines, more than a
+# design over 300 lines is asked for. The cap now also holds whenever the
+# usual ask goes over BIG_STEP_CAP (size_capped).
+BIG_STEP_CAP = 300
+BIG_STEP_FEWEST = 200
+
+
+def _usual_ask(move, n):
+    """(fewest, most) new lines for a design of `n` lines before the cap:
+    about as much again for a sub-unit or storage step, half to three
+    quarters for any other."""
+    if move in DOUBLING_MOVES:
+        return n, round(n * 1.25)
+    return round(n * 0.5), round(n * 0.75)
+
+
+def size_capped(move, n):
+    """Is the ask for a design of `n` lines held at BIG_STEP_FEWEST to
+    BIG_STEP_CAP? Yes for a design over BIG_STEP_CAP lines, and whenever
+    the usual ask would go over BIG_STEP_CAP (22 Oct 2026)."""
+    return n > BIG_STEP_CAP or _usual_ask(move, n)[1] > BIG_STEP_CAP
+
 
 def size_target(verilog, move=None):
     """(lines now, fewest, most) new lines: a sub-unit or storage step
     roughly doubles a design, other big steps grow it by half to three
-    quarters (Rishab, 17 Oct 2026: "we want to see rapid growth"). Lines
-    are counted with copies counted once (honest_lines, 19 Oct 2026), so a
-    design swollen by copied slots is not asked for still more."""
+    quarters (Rishab, 17 Oct 2026: "we want to see rapid growth"); a
+    design over BIG_STEP_CAP lines (21 Oct 2026), or one whose usual ask
+    would go over BIG_STEP_CAP (22 Oct 2026), is asked for BIG_STEP_FEWEST
+    to BIG_STEP_CAP. Lines are counted with copies counted once
+    (honest_lines, 19 Oct 2026), so a design swollen by copied slots is
+    not asked for still more."""
     n = honest_lines(verilog)
-    if move in DOUBLING_MOVES:
-        return n, n, round(n * 1.25)
-    return n, round(n * 0.5), round(n * 0.75)
+    if size_capped(move, n):
+        return n, BIG_STEP_FEWEST, BIG_STEP_CAP
+    return (n,) + _usual_ask(move, n)
 
 
-def size_share(move):
+def size_share(move, n=0):
+    """size_target's request in words, for a design of `n` lines."""
+    if n > BIG_STEP_CAP:
+        return (f"at most {BIG_STEP_CAP} for a design over {BIG_STEP_CAP} "
+                "lines, so that the whole answer fits in one reply")
+    if size_capped(move, n):
+        return (f"at most {BIG_STEP_CAP} in one step, so that the whole "
+                "answer fits in one reply")
     return ("about as much again as it has now, so the design roughly "
             "doubles" if move in DOUBLING_MOVES
             else "half to three quarters of its current size")
@@ -246,6 +384,10 @@ STAGE_K_TEXT = """
         each held in its own stage, and the invariant list must pin every
         stage."""
 
+# 21 Oct 2026: facts are same-cycle expressions with no system functions,
+# which the benchmark's checker cannot read (system_function_facts below);
+# and with sizes now parameters (SYSTEM_PROMPT rule 11), a compact fact's
+# range is still written in numbers, the only form expand_facts reads
 INVARIANT_RULES = """\
 - Emit the COMPLETE new invariant list, not just what changed.
   Inductiveness is a property of the whole conjunction, so satisfy
@@ -264,12 +406,24 @@ INVARIANT_RULES = """\
   what the stage before it held; an entry holds what was written into it).
   These are what provers find hard bit by bit; prefer them to long case
   lists over single bits.
+- Every fact is a same-cycle boolean expression over the design's
+  signals: it reads them as they are in one cycle. A relation across
+  cycles is written between the registers that carry a value from one
+  cycle to the next (a pipeline stage and the stage before it, a delay
+  line, a stored entry, a captured copy), never with a system function:
+  no $past, $stable, $rose, $fell, $changed, $countones, $onehot,
+  $onehot0, $isunknown or $clog2 in a fact. The checker that scores the
+  facts cannot read them, so a fact that uses one is rejected. Write a
+  count of set bits as a sum (v[0] + v[1] + v[2]), and supersede a parent
+  fact that uses one with the same relation written without it. The
+  design's own assertions are not facts and may still use $past.
 - A fact about every entry or stage of an array can be written once with
   an index, `forall k in 0..7: !v[k] || (tag[k] != 4'd15)`, and a fact
   about pairs of entries with two indexes,
   `forall k in 0..7, m in 0..7 where k != m: !(v[k] && v[m]) || (age[k] != age[m])`.
-  Use index names that are not signals of the module. Each such fact is
-  checked once for every index value."""
+  Use index names that are not signals of the module. Write the range in
+  numbers, the value a size parameter has (0..3 when DEPTH = 4), never
+  its name. Each such fact is checked once for every index value."""
 
 DISPOSITION_BLOCK = """\
 For every invariant clause in the parent list, record what happened to it:
@@ -467,6 +621,10 @@ Reply with JSON:
   "why_parent_insufficient": "...", "patch": "...",
   "invariants": ["..."], "dispositions": [...]}}"""
 
+# 21 Oct 2026: this said new state is observed "through existing outputs",
+# left from when the port list was fixed; SYSTEM_PROMPT rule 3 has allowed
+# new OUTPUT ports since 18 Oct 2026, and every move text agrees with it
+# (Rishab: "make all 1-8 changes", item 8c)
 SECOND_TEMPLATE = """\
 Extension type: SECOND PROPERTY.
 
@@ -500,8 +658,9 @@ A second property whose signals are a subset of the first's is rejected:
 it rides on the existing invariants and teaches nothing.
 
 You may add new state if the second property needs it, but you do not have
-to. If you do, the rules above about resets, initial values, and observing
-through existing outputs still apply.
+to. If you do, the rules above about resets, initial values, and making new
+state observable through an output (an existing one or a new OUTPUT port)
+still apply.
 
 Add the assertion as its own block, in the same style as the existing one:
 
@@ -564,6 +723,17 @@ def _schema(reasoning_fields):
             "required": list(props), "additionalProperties": False}
 
 
+# 21 Oct 2026: in the 21 Oct trial 2 of 10 combinations were kept. The
+# reviewer turned down a font bitmap row (8 one-bit pixels) fed in as a
+# 32-bit brightness sample, and a source with no way to wait feeding a
+# queue that can refuse; the two that failed UNUSED_COPIES at 69% padded a
+# 64-bit word with zeros into a 128-bit input, which leaves 1,536 of the
+# receiver's flip-flops holding zero for ever (measured with yosys: fed
+# from a real source instead, the share is 101%). So requirement 1 and the
+# partner question (PARTNER_TEMPLATE) now ask that the parts fit at the
+# wires: widths that match or a conversion that keeps the meaning, and a
+# sender that waits instead of losing data (Rishab: "make all 1-8
+# changes", item 6).
 COMPOSE_TEMPLATE = """\
 Extension type: COMPOSE.
 
@@ -597,7 +767,20 @@ B's invariants: {invariants_b}
    them, and the glue must HOLD its contents while its enable is low. A
    plain wire makes B's proof trivial and the extension worthless; glue
    that refills itself every cycle unconditionally is a plain wire with
-   extra steps.
+   extra steps. The two must also fit at the wires:
+   - Widths: connect signals of the same width, or convert the value in a
+     way that keeps its meaning and say how in glue_scheme. A number (a
+     count, an address, a sample) may be zero- or sign-extended into a
+     wider input, since it is still the same number, and a wider value
+     may be cut down to the field the input expects. Eight 1-bit font
+     pixels packed in a byte are not a 32-bit brightness sample. Do not
+     pad a data word with zeros to fill a wider data input: the part of B
+     that stores the padding never changes and does no work.
+   - Waiting: if B can refuse or stall (it is full or busy, or its ready
+     is low), the glue holds the data and tells A to wait, through A's
+     ready or busy input or by holding A's enable low until B can take
+     more. Never drop data: counting dropped data does not make dropping
+     it acceptable.
 2. Expose any per-parent signal your invariants mention as a named
    top-level wire. NEVER write inst.signal — hierarchical references are
    rejected (the toolchain silently turns them into dangling wires).
@@ -610,11 +793,15 @@ B's invariants: {invariants_b}
    wrapper's wires (one copy each), PLUS at least one clause about the
    glue state itself. The glue clause is the point — it is the state
    neither parent's invariants describe.
-5. Same clock and reset names as the parents. Every new register gets a
-   reset and an initial value. Glue registers that carry data match the
+5. Same clock and reset names as the parents. Every new register resets
+   the way the parents' registers do, in the same kind of block, and gets
+   an initial value. Glue registers that carry data match the
    parents' widths; counters are sized to their range. Do not add a glue
    register that only copies a register a parent already has.
-6. No assume, no cover, no -> implication, no system tasks.
+6. No assume, no cover, no -> implication, no system tasks. Each fact is
+   a same-cycle expression with no system function ($past, $stable,
+   $countones, $onehot, ...): the checker that scores the facts cannot
+   read them.
 
 WORK IT OUT BEFORE YOU WRITE THE WRAPPER
 
@@ -668,7 +855,8 @@ def compose_prompt(pa, pb, plan=None):
 # design in about 20 tries: font pixels fed to an audio filter, power steps
 # fed to an image transform. The model now sees a short list of small
 # starting designs, with what each is for and its ports, and picks the one
-# a real chip would wire to A, or says none fits.
+# a real chip would wire to A, or says none fits. 21 Oct 2026: the pick must
+# also fit at the wires, widths and waiting (see COMPOSE_TEMPLATE).
 
 PARTNER_TEMPLATE = """\
 Design A, a formally verified SystemVerilog module:
@@ -684,15 +872,33 @@ together they form one system that does something neither does alone.
 What one sends must mean something to the other: data into a data input,
 an event into a trigger or enable, a request into a request input. Never
 force a value into an input that expects something else: pixels are not
-audio samples, and a status word is not random-number seed material. If no
-candidate would really be wired to A, answer "none"; that is a good answer
-when nothing fits.
+audio samples, and a status word is not random-number seed material.
+
+The connection must also fit at the wires:
+- Widths: an output drives an input of the same width, or the value is
+  converted in a way that keeps its meaning, and you say how. A number (a
+  count, an address, a sample) may be zero- or sign-extended into a wider
+  input, since it is still the same number, and a wider value may be cut
+  down to the field the input expects. Eight 1-bit font pixels packed in
+  a byte are not a 32-bit brightness sample. A data word padded with
+  zeros to fill a wider data input does not fit: the part of the receiver
+  that stores the padding never changes and does no work.
+- Waiting: if the receiving design can refuse or stall (it has a full,
+  busy or ready signal), the sending design must be able to wait, through
+  a ready or busy input of its own or an enable that holds it, so that no
+  data is ever dropped. A sender that cannot be made to wait cannot feed
+  a receiver that can refuse.
+
+If no candidate would really be wired to A this way, answer "none"; that
+is a good answer when nothing fits.
 
 Reply with JSON:
 - choice: the candidate's id, or "none";
 - system: one sentence on what the combined design does (or why none fits);
-- connection: which output drives which input, in which direction, and what
-  the value means at that input."""
+- connection: which output drives which input, in which direction, the
+  width on each side and how a difference is converted, what the value
+  means at that input, and how the sender waits when the receiver cannot
+  take more (or why the receiver never refuses)."""
 
 PARTNER_SCHEMA = {"type": "object",
                   "properties": {"choice": {"type": "string"},
@@ -804,13 +1010,17 @@ REQUIREMENTS
    genuine sum or reduction across all {n} instances (for example
    pool + t0 + ... + t{last} == TOTAL). Per-instance and pairwise clauses
    do not count as that aggregate.
-5. Same clock and reset names as the parent. Every new register gets a
-   reset in the wrapper's if (rst) branch and an initial value. New
+5. Same clock and reset names as the parent, and the parent's own kind
+   of reset: every new register resets the same way, in the same kind of
+   block, as the parent's registers, and gets an initial value. New
    registers that carry data match the parent's widths; counters are
    sized to their range. Watch summation width:
    zero-extend operands so the sum
    cannot wrap.
-6. No assume, no cover, no -> implication, no system tasks.
+6. No assume, no cover, no -> implication, no system tasks. Each fact is
+   a same-cycle expression with no system function ($past, $stable,
+   $countones, $onehot, ...): the checker that scores the facts cannot
+   read them.
 
 WORK IT OUT BEFORE YOU WRITE THE WRAPPER
 
@@ -1032,6 +1242,46 @@ def shown_facts(row):
     """The facts a question shows: as written when there is a compact
     form, else the plain list."""
     return row.get("invariants_compact") or row["invariants"]
+
+
+# --- facts the benchmark's checker can read (21 Oct 2026) ---
+# EBMC 6.0, the checker that scores the trained model's facts, cannot read
+# a system function in a fact: a fact with $past gives "unknown identifier
+# $past" (ERROR), and so do $countones, $onehot, $onehot0, $stable, $rose,
+# $changed, $signed and $clog2 (each tried on EBMC 6.0 on 21 Oct 2026).
+# The benchmark's question also forbids them in facts. So a fact with one
+# is a format failure; a relation across cycles is written between the
+# registers that carry values (INVARIANT_RULES). The design's own
+# assertions are not facts and may still use them (Rishab: "make all 1-8
+# changes"). A `$` inside a name (a$b) is part of the name.
+# 22 Oct 2026: the pattern is fact_format's, so the extender, the fixer and
+# the training builder share one definition of a system function.
+_SYSTEM_FUNCTION = SYSTEM_FUNCTION
+
+
+def system_function_facts(facts):
+    """The facts that use a system function ($past, $countones, ...)."""
+    return [f for f in facts if _SYSTEM_FUNCTION.search(f)]
+
+
+def system_function_error(facts):
+    """Why facts with a system function are turned away and how to write
+    them instead, or None when there are none."""
+    bad = system_function_facts(facts)
+    if not bad:
+        return None
+    names = sorted({m.group(0) for f in bad
+                    for m in _SYSTEM_FUNCTION.finditer(f)})
+    shown = "; ".join(bad[:3]) + (f" (and {len(bad) - 3} more)"
+                                  if len(bad) > 3 else "")
+    return (f"facts may not use system functions ({', '.join(names)}): the "
+            "checker that scores the facts cannot read them. Write each "
+            "fact about one cycle of the design. For a relation across "
+            "cycles, relate the registers that hold the earlier value "
+            "instead: a pipeline stage and the stage before it, a delay "
+            "line, a stored entry or a captured copy. Write a count of set "
+            "bits as a sum (v[0] + v[1] + v[2]). Facts turned away: "
+            + shown)
 
 
 def one_new_assert(parent_props, child_asserts):
@@ -1454,6 +1704,657 @@ def has_coupling_clause(new_invs, parent_ids, new_ids):
     return False
 
 
+# --- storage small enough to prove (21 Oct 2026) ---
+# Real designs declare sizes as parameters, and engineers prove them at
+# small sizes (ZipCPU proves his FIFOs at small depths). In the 21 Oct
+# trial 5 of 10 storage steps ran out of the checker's 300 s, and 6 steps
+# added an array of 24 or 32 entries: 3 of them ran out of time. The
+# question now asks for sizes as parameters with small values
+# (SYSTEM_PROMPT rule 11), and a step that still adds a deeper array is
+# sent back before anything is checked, as a format failure the run
+# retries (Rishab: "make all 1-8 changes"). Only arrays the step adds are
+# judged; a depth that cannot be worked out is let through.
+# 22 Oct 2026, review finding F1: of the 6 steps of that trial the rule
+# sends back, 5 held one entry for each of the 24 slaves of a design that
+# already had a 24-entry queue (t008, t014, t026, t029, t035; t008 and
+# t026 were kept as good designs); only t028's 32-byte replay memory was a
+# free choice. A new array may now hold as many entries as the parent's
+# own biggest array when that is more than MAX_NEW_DEPTH
+# (new_array_limit). The parent's flat vectors (reg [23:0] mask, one bit
+# per slave) are not counted: by its declaration such a vector cannot be
+# told from a data word, and counting words would let any design with a
+# 32-bit word add 32-entry arrays.
+# 22 Oct 2026, review finding F5: a packed array of words
+# (reg [255:0][7:0] dly) escaped the rule; its outer dimensions now count
+# as entries. A flat vector (reg [24*8-1:0] dly) still cannot be told from
+# a wide word and is left alone.
+# 23 Oct 2026, review finding: storage written in other ways still escaped
+# the rule, each at 256 or 1024 entries: an array of int, byte, shortint or
+# longint; an array whose entries are a type the design declares (typedef,
+# struct, enum), or a typedef that is itself an array; a depth set by a
+# `define; registers declared inside a generate loop (c0_102 of 9 Oct
+# builds 256 slots that way), each one counting once for each pass of the
+# loop; and an old module given a deeper size by a new or changed instance,
+# never judged because its array was "old". All of these now count, and
+# an array the parent already has is judged too, by the size the step
+# builds it at: it may not grow past the limit (which is never below the
+# parent's own size for it). No trial step made an old array deeper.
+MAX_NEW_DEPTH = 16      # most entries a new array may hold: 4 to 8 asked for
+
+_MODULE_TEXT = re.compile(r"\bmodule\s+([A-Za-z_]\w*)(.*?)\bendmodule\b",
+                          re.S)
+_PARAM_WORD = re.compile(r"\b(parameter|localparam)\b")
+# the type between `parameter` and its name: integer, logic [3:0], ...
+_PARAM_TYPE = re.compile(r"\s*(?:(?:integer|int|logic|reg|bit|signed|"
+                         r"unsigned)\b\s*|\[[^\]]*\]\s*)*")
+# the words that declare state; int to longint since 23 Oct 2026
+_STORAGE_WORDS = ("reg", "logic", "bit", "integer", "int", "byte",
+                  "shortint", "longint")
+_CONST_TOKEN = re.compile(
+    r"\s*(?:(\d*\s*'[sS]?[bodhBODH]\s*[0-9a-fA-F_xXzZ?]+)|(\d[\d_]*)"
+    r"|(\$clog2\b)|([A-Za-z_]\w*)|(\*\*|<<|>>|[-+*/%()]))")
+_BASES = {"b": 2, "o": 8, "d": 10, "h": 16}
+_CONST_OPS = {ast.Add: operator.add, ast.Sub: operator.sub,
+              ast.Mult: operator.mul, ast.FloorDiv: operator.floordiv,
+              ast.Mod: operator.mod, ast.LShift: operator.lshift,
+              ast.RShift: operator.rshift, ast.Pow: operator.pow}
+_CONST_LIMIT = 1 << 64  # no size is bigger; stops 2**2**99 from running on
+
+
+def _const_node(node):
+    """The value of a parsed constant expression; ValueError for
+    anything that is not one."""
+    if isinstance(node, ast.Constant) and type(node.value) is int:
+        return node.value
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op,
+                                                    (ast.UAdd, ast.USub)):
+        value = _const_node(node.operand)
+        return -value if isinstance(node.op, ast.USub) else value
+    if isinstance(node, ast.BinOp) and type(node.op) in _CONST_OPS:
+        a, b = _const_node(node.left), _const_node(node.right)
+        if isinstance(node.op, (ast.Pow, ast.LShift)) and not 0 <= b <= 64:
+            raise ValueError("power or shift out of range")
+        value = _CONST_OPS[type(node.op)](a, b)
+        if abs(value) > _CONST_LIMIT:
+            raise ValueError("too big to be a size")
+        return value
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == "clog2" and len(node.args) == 1
+            and not node.keywords):
+        value = _const_node(node.args[0])
+        return (value - 1).bit_length() if value > 1 else 0
+    raise ValueError("not a constant")
+
+
+def const_value(expr, env):
+    """The value of a constant expression made of numbers (16, 6'd48,
+    'h10), parameters whose values are known (`env`), $clog2, + - * / %
+    << >> ** and brackets; None when it uses anything else or a parameter
+    whose value is not known."""
+    text, i, py = expr.strip(), 0, []
+    while i < len(text):
+        m = _CONST_TOKEN.match(text, i)
+        if not m:
+            return None
+        based, number, clog2, name, op = m.groups()
+        if based:
+            b = re.fullmatch(r"\d*\s*'[sS]?([bodhBODH])\s*([0-9a-fA-F_]+)",
+                             based)
+            try:
+                py.append(str(int(b.group(2).replace("_", ""),
+                                  _BASES[b.group(1).lower()])))
+            except (AttributeError, ValueError):
+                return None           # x, z or ? digits, or a bad digit
+        elif number:
+            py.append(number.replace("_", ""))
+        elif clog2:
+            py.append("clog2")
+        elif name:
+            if name not in env:
+                return None
+            py.append(f"({env[name]})")
+        else:
+            py.append("//" if op == "/" else op)
+        i = m.end()
+    try:
+        return _const_node(ast.parse(" ".join(py), mode="eval").body)
+    except (SyntaxError, ValueError, ZeroDivisionError, RecursionError,
+            OverflowError, TypeError):
+        return None
+
+
+def module_parameters(text):
+    """[(name, value text, settable)] for the parameters and localparams
+    of one module's text, in the order written; settable is True for a
+    `parameter`, which an instance may set."""
+    import gates                      # gates imports this module
+    out = []
+    for m in _PARAM_WORD.finditer(text):
+        for item in _split_outside_brackets(
+                gates._declaration_text(text, m.end())):
+            if _PARAM_WORD.match(item.strip()):
+                break                 # read under its own keyword
+            rest = item[_PARAM_TYPE.match(item).end():]
+            d = re.fullmatch(r"\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*", rest, re.S)
+            if d:
+                out.append((d.group(1), d.group(2),
+                            m.group(1) == "parameter"))
+    return out
+
+
+# Declarations that hold no state: a constant table, a type, an input
+# port, or what a function returns. The last three matter since a packed
+# array counts (22 Oct 2026): `input logic [3:0][7:0] din` is four words
+# arriving each cycle, not four entries the checker must follow. Nor does
+# a declaration right after a bracket (23 Oct 2026): a function's argument,
+# or the variable of a loop (`for (int i = 0; ...)`), which since int
+# counts would otherwise be read as a register.
+_NOT_STORAGE_BEFORE = re.compile(
+    r"(?:\b(?:parameter|localparam|typedef|input|inout|"
+    r"function(?:\s+(?:automatic|static))?)|\()\s*$")
+_DIMS = re.compile(r"\[([^\]]*)\]")
+
+
+def _typedefs(text):
+    """[(start, end, type name, dimension texts)] for every typedef in
+    comment-masked `text`. The dimensions are what one value of the type
+    holds as entries, as for a variable: its unpacked dimensions and its
+    outer packed ones (every packed one but the last, the word); a struct
+    or an enum has none of its own (23 Oct 2026, review finding)."""
+    out = []
+    for m in re.finditer(r"\btypedef\b", text):
+        depth, j = 0, m.end()
+        while j < len(text):
+            if text[j] in "([{":
+                depth += 1
+            elif text[j] in ")]}":
+                depth -= 1
+            elif text[j] == ";" and depth == 0:
+                break
+            j += 1
+        body = text[m.end():j]
+        d = re.search(r"([A-Za-z_]\w*)\s*((?:\[[^\]]*\]\s*)*)$", body)
+        if not d:
+            continue
+        dims = _DIMS.findall(d.group(2))
+        head = body[:d.start()]
+        packed = re.search(r"((?:\[[^\]]*\]\s*)+)$", head)
+        if packed and "{" not in head:     # not a struct or an enum
+            dims = _DIMS.findall(packed.group(1))[:-1] + dims
+        out.append((m.start(), j, d.group(1), dims))
+    return out
+
+
+def declared_types(text):
+    """{type name: its dimension texts} for every typedef in comment-masked
+    `text` (_typedefs)."""
+    return {name: dims for _, _, name, dims in _typedefs(text)}
+
+
+def _declarations(text, types=None, scalars=False):
+    """[(name, [dimension text, ...])] for the state one text declares: a
+    reg, logic, bit, integer, int, byte, shortint or longint, or a variable
+    of a type in `types` (declared_types), the type's own dimensions first.
+    Only arrays, unless `scalars`. Declarations that hold no state, and the
+    members inside a typedef, are left out."""
+    import gates                      # gates imports this module
+    types = types or {}
+    words = re.compile(r"\b(?:%s)\b" % "|".join(
+        list(_STORAGE_WORDS) + [re.escape(t) for t in types]))
+    inside = [(a, b) for a, b, _, _ in _typedefs(text)]
+    out = []
+    for m in words.finditer(text):
+        if any(a <= m.start() < b for a, b in inside) or \
+                _NOT_STORAGE_BEFORE.search(text, max(0, m.start() - 64),
+                                           m.start()):
+            continue
+        rest = re.sub(r"^\s*(?:signed|unsigned)\b", "",
+                      gates._declaration_text(text, m.end()))
+        packed = re.match(r"\s*(?:\[[^\]]*\]\s*)*", rest).end()
+        outer = types.get(m.group(0), []) + \
+            _DIMS.findall(rest[:packed])[:-1]
+        for item in _split_outside_brackets(rest[packed:]):
+            s = item.strip()
+            if re.match(r"(input|output|inout)\b", s):
+                break
+            d = re.match(r"([A-Za-z_]\w*)\s*((?:\[[^\]]*\]\s*)*)", s)
+            if d and (scalars or outer or d.group(2)):
+                out.append((d.group(1), outer + _DIMS.findall(d.group(2))))
+    return out
+
+
+def module_arrays(text, types=None):
+    """[(name, [dimension text, ...])] for every array one module's text
+    declares: a reg, logic, bit, integer, int, byte, shortint or longint
+    with an entry index, or a variable of a type the design declares
+    (`types`, declared_types) with one, the type's own dimensions first
+    (int to longint and types since 23 Oct 2026, review finding). A
+    constant table (localparam logic [7:0] T [0:31] = ...) holds no state
+    and is not one. A packed array of words counts its outer dimensions,
+    every packed one but the last (the word): reg [3:0][7:0] w [0:7] gives
+    ["3:0", "0:7"] (22 Oct 2026, review finding F5)."""
+    return _declarations(text, types)
+
+
+# --- registers made by a generate loop (23 Oct 2026, review finding) -------
+_GENVAR = re.compile(r"\bgenvar\s+([^;]+);")
+_FOR = re.compile(r"\bfor\s*\(")
+_BEGIN_END = re.compile(r"\b(begin|end)\b")
+
+
+def _loop_count(header, genvars):
+    """How many passes a generate loop makes, as a constant expression over
+    the module's parameters, read from its header (`g = A; g < B; g = g +
+    S`, `g++`, counting down too); None for a loop not over a genvar (a
+    loop inside an always block) or not of that shape."""
+    parts = []
+    depth, start = 0, 0
+    for k, ch in enumerate(header + ";"):
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == ";" and depth == 0:
+            parts.append(header[start:k].strip())
+            start = k + 1
+    if len(parts) != 3:
+        return None
+    init = re.fullmatch(r"(genvar\s+)?([A-Za-z_]\w*)\s*=\s*(.+)", parts[0],
+                        re.S)
+    if not init or not (init.group(1) or init.group(2) in genvars):
+        return None
+    v = re.escape(init.group(2))
+    cond = re.fullmatch(rf"{v}\s*(<=|<|>=|>|!=)\s*(.+)", parts[1], re.S)
+    step = (re.fullmatch(rf"{v}\s*=\s*{v}\s*([+-])\s*(.+)", parts[2], re.S)
+            or re.fullmatch(rf"{v}\s*([+-])=\s*(.+)", parts[2], re.S))
+    if step:
+        sign, size = step.group(1), step.group(2)
+    elif re.fullmatch(rf"{v}\s*\+\+|\+\+\s*{v}", parts[2]):
+        sign, size = "+", "1"
+    elif re.fullmatch(rf"{v}\s*--|--\s*{v}", parts[2]):
+        sign, size = "-", "1"
+    else:
+        return None
+    if not cond:
+        return None
+    op, a, b, s = cond.group(1), f"({init.group(3)})", f"({cond.group(2)})", \
+        f"({size})"
+    return {("+", "<"): f"({b}-{a}+{s}-1)/{s}",
+            ("+", "!="): f"({b}-{a}+{s}-1)/{s}",
+            ("+", "<="): f"({b}-{a}+{s})/{s}",
+            ("-", ">"): f"({a}-{b}+{s}-1)/{s}",
+            ("-", "!="): f"({a}-{b}+{s}-1)/{s}",
+            ("-", ">="): f"({a}-{b}+{s})/{s}"}.get((sign, op))
+
+
+def _generate_loops(text, genvars):
+    """[(pass count expression, body start, body end)] for the generate
+    loops written directly in `text`, not inside another one, with a
+    begin ... end body."""
+    out, i = [], 0
+    while True:
+        m = _FOR.search(text, i)
+        if not m:
+            return out
+        close = _matching(text, m.end() - 1)
+        if close is None:
+            return out
+        count = _loop_count(text[m.end():close], genvars)
+        opened = re.match(r"\s*begin\b(?:\s*:\s*[A-Za-z_]\w*)?",
+                          text[close + 1:])
+        if count is None or not opened:
+            i = m.end()               # look inside: it may hold a loop
+            continue
+        start, depth = close + 1 + opened.end(), 1
+        for word in _BEGIN_END.finditer(text, start):
+            depth += 1 if word.group(1) == "begin" else -1
+            if depth == 0:
+                out.append((count, start, word.start()))
+                i = word.end()
+                break
+        else:
+            return out
+
+
+def generate_arrays(text, types=None, genvars=None):
+    """[(name, dimensions)] for every register declared inside a generate
+    loop of one module's text, a single register included: it is built
+    once for each pass of each loop it sits in, so each loop adds a
+    ("loop", pass count) dimension in front of its own."""
+    if genvars is None:
+        genvars = {g.strip() for m in _GENVAR.finditer(text)
+                   for g in m.group(1).split(",")}
+    out = []
+    for count, start, end in _generate_loops(text, genvars):
+        body = text[start:end]
+        own = body
+        for _, s, e in reversed(_generate_loops(body, genvars)):
+            own = own[:s] + " " * (e - s) + own[e:]      # inner loops apart
+        here = [("loop", count)]
+        out += [(name, here + dims) for name, dims in
+                _declarations(own, types, scalars=True)]
+        out += [(name, here + dims) for name, dims in
+                generate_arrays(body, types, genvars)]
+    return out
+
+
+# --- a size set by a `define (23 Oct 2026, review finding) -----------------
+_MACRO = re.compile(r"`define[ \t]+([A-Za-z_]\w*)[ \t]+([^\n]*)")
+
+
+def _expand_macros(text):
+    """`text` with each use of a `define that takes no arguments replaced
+    by its value in brackets, a few rounds deep, so a size set by one can
+    be worked out."""
+    macros = {m.group(1): m.group(2).strip() for m in _MACRO.finditer(text)}
+    if not macros:
+        return text
+    use = re.compile(r"`(%s)\b" % "|".join(map(re.escape, macros)))
+    for _ in range(5):
+        expanded = use.sub(lambda m: f"({macros[m.group(1)]})", text)
+        if expanded == text:
+            break
+        text = expanded
+    return text
+
+
+def _dimension_sizes(dims, env):
+    """How many entries each dimension holds ([0:15], [15:0] and [16] hold
+    16 each; a ("loop", count) dimension, its loop's passes), or None when
+    a bound cannot be worked out."""
+    sizes = []
+    for dim in dims:
+        if isinstance(dim, tuple):              # a generate loop's passes
+            n = const_value(dim[1], env)
+            if n is None:
+                return None
+            sizes.append(max(n, 0))
+            continue
+        ends = [const_value(e, env) for e in dim.split(":")]
+        if None in ends or len(ends) > 2:
+            return None
+        if len(ends) == 2:
+            sizes.append(abs(ends[0] - ends[1]) + 1)
+        elif ends[0] > 0:
+            sizes.append(ends[0])
+        else:
+            return None
+    return sizes
+
+
+def _entries(dims, env):
+    """How many entries the dimensions hold together, or None when a bound
+    cannot be worked out."""
+    sizes = _dimension_sizes(dims, env)
+    return None if sizes is None else math.prod(sizes)
+
+
+_PARAMS_OPEN = re.compile(r"\s*#\s*\(")
+_INSTANCE_NAME = re.compile(r"\s*[A-Za-z_]\w*\s*(?:\[[^\]]*\]\s*)?\(")
+
+
+def _instances_with_parameters(text, names):
+    """(module, text inside its #( ), or None) for every instance, in one
+    module's text, of a module named in `names`."""
+    out = []
+    for mod in names:
+        for m in re.finditer(r"\b%s\b" % re.escape(mod), text):
+            i, params = m.end(), None
+            opened = _PARAMS_OPEN.match(text, i)
+            if opened:
+                close = _matching(text, opened.end() - 1)
+                if close is None:
+                    continue
+                params, i = text[opened.end():close], close + 1
+            if _INSTANCE_NAME.match(text, i):
+                out.append((mod, params))
+    return out
+
+
+def instance_parameters(params, module_text, env):
+    """{parameter: value} an instance sets, by name (#(.DEPTH(8))) or in
+    order (#(8)), worked out with the instantiating module's parameters
+    (`env`); a value that cannot be worked out is None."""
+    if not params:
+        return {}
+    order = [p for p, _, settable in module_parameters(module_text)
+             if settable]
+    items = [x for x in _split_outside_brackets(params) if x.strip()]
+    out = {}
+    for pos, item in enumerate(items):
+        named = re.fullmatch(r"\s*\.\s*([A-Za-z_]\w*)\s*\((.*)\)\s*", item,
+                             re.S)
+        if named:
+            out[named.group(1)] = const_value(named.group(2), env)
+        elif pos < len(order):
+            out[order[pos]] = const_value(item, env)
+    return out
+
+
+def array_shapes(verilog, top):
+    """{(module, array): (entries, [entries of each dimension])} for the
+    arrays of the design the checker builds from `top`: a parameter takes
+    its default, or the value an instance gives it. An array with several
+    dimensions counts every entry; the most any instance gives is kept. An
+    array whose size cannot be worked out, or in a module `top` never
+    uses, is left out. Since 23 Oct 2026 (review finding) the arrays
+    include those of int, byte, shortint and longint and of the types the
+    design declares, a register built by a generate loop counts once for
+    each pass (its first sizes are the loops' passes), and a `define is
+    read for its value."""
+    masked = _expand_macros(_mask_comments(verilog))
+    types = declared_types(masked)
+    texts = {}
+    for m in _MODULE_TEXT.finditer(masked):
+        texts.setdefault(m.group(1), m.group(2))
+    out, seen = {}, set()
+
+    def visit(name, given, depth):
+        key = (name, tuple(sorted(given.items())))
+        if name not in texts or key in seen or depth > 16:
+            return
+        seen.add(key)
+        text, env = texts[name], {}
+        for pname, expr, settable in module_parameters(text):
+            value = given[pname] if settable and pname in given \
+                else const_value(expr, env)
+            if value is None:
+                env.pop(pname, None)
+            else:
+                env[pname] = value
+        for array, dims in (module_arrays(text, types)
+                            + generate_arrays(text, types)):
+            sizes = _dimension_sizes(dims, env)
+            if sizes is not None and math.prod(sizes) > \
+                    out.get((name, array), (0, []))[0]:
+                out[(name, array)] = (math.prod(sizes), sizes)
+        for mod, params in _instances_with_parameters(text,
+                                                      set(texts) - {name}):
+            visit(mod, instance_parameters(params, texts[mod], env),
+                  depth + 1)
+
+    visit(top, {}, 0)
+    return out
+
+
+def storage_depths(verilog, top):
+    """{(module, array): entries} for the arrays of the design the checker
+    builds from `top` (array_shapes)."""
+    return {key: n for key, (n, _) in array_shapes(verilog, top).items()}
+
+
+def declared_arrays(verilog):
+    """{(module, array)} for every array declared anywhere in `verilog`,
+    whatever its size (module_arrays; registers built by a generate loop
+    are not arrays here)."""
+    masked = _mask_comments(verilog)
+    types = declared_types(masked)
+    return {(m.group(1), name)
+            for m in _MODULE_TEXT.finditer(masked)
+            for name, _ in module_arrays(m.group(2), types)}
+
+
+def generated_registers(verilog):
+    """{(module, register)} for every register declared inside a generate
+    loop in `verilog` (generate_arrays)."""
+    masked = _expand_macros(_mask_comments(verilog))
+    types = declared_types(masked)
+    return {(m.group(1), name)
+            for m in _MODULE_TEXT.finditer(masked)
+            for name, _ in generate_arrays(m.group(2), types)}
+
+
+def new_array_limit(parent_verilog, parent_tops):
+    """(most entries an array a step adds may hold, the parent's biggest
+    array as (module, array, entries) or None when it has none): the
+    parent's biggest array when it holds more than MAX_NEW_DEPTH entries,
+    else MAX_NEW_DEPTH (22 Oct 2026, review finding F1). Sizes are the
+    parent design's own, each part built from its own top
+    (`parent_tops`: two for a combination), so a step cannot raise its
+    limit by making an old array deeper. Registers built by a generate
+    loop do not raise it (23 Oct 2026, Rishab chose): c0_102's 256 slots,
+    the only such storage among the stored designs, would have let any
+    new array hold 256 entries."""
+    biggest = None
+    generated = generated_registers(parent_verilog)
+    for top in parent_tops:
+        for (mod, name), n in storage_depths(parent_verilog, top).items():
+            if (mod, name) in generated:
+                continue
+            if biggest is None or n > biggest[2]:
+                biggest = (mod, name, n)
+    limit = max(MAX_NEW_DEPTH, biggest[2]) if biggest else MAX_NEW_DEPTH
+    return limit, biggest
+
+
+def parent_sizes(parent_verilog, parent_tops):
+    """{(module, array): entries} for the parent design's arrays, each
+    part built from its own top, the most any part gives kept."""
+    sizes = {}
+    for top in parent_tops:
+        for key, n in storage_depths(parent_verilog, top).items():
+            sizes[key] = max(n, sizes.get(key, 0))
+    return sizes
+
+
+def too_deep(parent_verilog, child_verilog, top, parent_tops=None):
+    """[(module, array, entries)] for every array of the design built from
+    `top` that holds more entries than new_array_limit allows, or than the
+    parent already had in it when that is more. `parent_tops` are the
+    tops the parent is built from (`top` itself when not given: a patch
+    keeps its parent's top). Until 23 Oct 2026 an array the parent
+    declares was never judged, so a new copy of an old module with a
+    deeper size, or an old instance given one, escaped (review finding).
+    Now every array is judged by the size the step builds it at, and what
+    the parent already had is never blamed: its own size of an array is
+    allowed, which matters since registers built by a generate loop no
+    longer raise the limit (23 Oct 2026)."""
+    tops = parent_tops or [top]
+    limit, _ = new_array_limit(parent_verilog, tops)
+    before = parent_sizes(parent_verilog, tops)
+    return sorted((mod, name, n) for (mod, name), n in
+                  storage_depths(child_verilog, top).items()
+                  if n > max(limit, before.get((mod, name), 0)))
+
+
+def _array_named(mod, name, n, sizes, before=None):
+    """`buf_q in module m (32 entries: 4 x 8, every dimension counted)`,
+    the dimensions shown when there are several (22 Oct 2026, review
+    finding F8); for an array the parent already had, how big it was
+    there (`before`, 23 Oct 2026)."""
+    if sizes and len(sizes) > 1:
+        text = (f"{name} in module {mod} ({n} entries: "
+                + " x ".join(str(s) for s in sizes)
+                + ", every dimension counted)")
+    else:
+        text = f"{name} in module {mod} ({n} entries)"
+    if before:
+        text += f", which held {before} entries before this step"
+    return text
+
+
+def storage_too_deep(record, parent_verilog, child_verilog, top,
+                     parent_tops=None):
+    """Mark the record STORAGE_TOO_DEEP, with the fix, when the step added
+    an array of more entries than new_array_limit allows; True when it
+    did. The error names each array's entries and dimensions, and the
+    parent's array whose size a new one may match (22 Oct 2026)."""
+    deep = too_deep(parent_verilog, child_verilog, top, parent_tops)
+    if not deep:
+        return False
+    limit, biggest = new_array_limit(parent_verilog, parent_tops or [top])
+    shapes = array_shapes(child_verilog, top)
+    sizes = {(mod, name): shapes.get((mod, name), (0, []))[1]
+             for mod, name, _ in deep}
+    before = parent_sizes(parent_verilog, parent_tops or [top])
+    record["verdict"] = "STORAGE_TOO_DEEP"
+    record["too_deep"] = [{"module": mod, "array": name, "entries": n}
+                          for mod, name, n in deep]
+    error = (f"the step adds storage of more than {limit} entries: "
+             + ", ".join(_array_named(mod, name, n, sizes[(mod, name)],
+                                      before.get((mod, name)))
+                         for mod, name, n in deep)
+             + ". The checker has to follow every entry, and storage this "
+             "deep can make the proof run out of time.")
+    if any((mod, name) in before for mod, name, _ in deep):
+        error += (" An array the design already has may not be made deeper "
+                  "than that either, or than it already was when it was "
+                  "bigger, by a new instance of its module or a changed "
+                  "one.")
+    if {(mod, name) for mod, name, _ in deep} & \
+            generated_registers(child_verilog):
+        error += (" A register declared inside a generate loop is built "
+                  "once for each pass of the loop, so each pass counts as "
+                  "one entry.")
+    if any(len(s) > 1 for s in sizes.values()):
+        error += (" All the entries of one array count together, so the "
+                  "sizes of its dimensions multiply: 4 channels of 8 "
+                  "entries are 32. Use fewer channels or a smaller depth.")
+    if limit > MAX_NEW_DEPTH:
+        bmod, bname, bn = biggest
+        error += (" A new array may hold as many entries as the design's "
+                  f"own biggest array ({bname} in module {bmod}, {bn} "
+                  "entries) only when it holds one entry for each of the "
+                  "same things; any other new array keeps 4 to 8 entries.")
+    error += (" Declare the depth as a parameter with a small value for the "
+              "proof (#(parameter DEPTH = 4) or localparam DEPTH = 8), 4 to "
+              f"8 entries and never more than {limit} in the whole array, "
+              "and size the pointers and loops from it; the design works "
+              "the same way at any depth.")
+    record["error"] = error
+    return True
+
+
+# 23 Oct 2026, review finding F4, the extender's side: the generator turns
+# away a design whose property, guard or facts read the reset (run.py
+# reset_gate), but a step was never asked. With an asynchronous reset in
+# 1 design in 5 since 21 Oct, a STORAGE step that added `assert ((rst_n ||
+# a == 3'd0) && d <= 4'd8)` to such a design was NECESSARY for our checker
+# and REFUTED by EBMC, in the 30-step search and in the 1-step check with
+# the facts. Each grader now asks reset_reads.py about what the step adds
+# (a new or changed assertion and its guard, the facts, new antecedents),
+# before any check runs, as a format failure the run retries with the
+# reason. Only asynchronous resets count: the 30 older designs whose
+# property's guard reads a synchronous reset (`if (pv && !rst)`) are not
+# touched, and their checkers agree. Measured 23 Oct 2026: of the 167
+# steps of the five trials that grew a design, it turns away none (one
+# stored design has an asynchronous reset, and nothing reads it).
+def step_reads_reset(record, child, clock, facts, antecedents, parents):
+    """Mark the record READS_RESET, with the rule, when the grown design
+    reads an asynchronous reset where the designs it grew from did not
+    (`parents`: their rows); True when it does."""
+    error = step_reset_error(
+        child, clock or "clk", facts, antecedents,
+        [(p.get("verilog"), p.get("clock") or "clk",
+          p.get("invariants") or [], p.get("antecedents") or [])
+         for p in parents])
+    if error is None:
+        return False
+    record["verdict"] = "READS_RESET"
+    record["error"] = error
+    return True
+
+
 # --- prompt / call / grade ---
 
 def build_prompt(parent, ext_type, move=None, n=6, k=1, history=None,
@@ -1488,7 +2389,13 @@ def build_prompt(parent, ext_type, move=None, n=6, k=1, history=None,
         if move in BIG_MOVES:
             n, lo, hi = size_target(parent["verilog"], move)
             fields["move"] += SIZE_TEXT.format(n=n, lo=lo, hi=hi,
-                                               share=size_share(move))
+                                               share=size_share(move, n))
+        limit, biggest = new_array_limit(parent["verilog"],
+                                         [parent.get("top_module", "")])
+        if limit > MAX_NEW_DEPTH:
+            fields["move"] += ARRAY_ALLOWANCE_TEXT.format(
+                n=limit, array=biggest[1], module=biggest[0],
+                cap=MAX_NEW_DEPTH)
     return tmpl.format(**fields)
 
 
@@ -1500,9 +2407,10 @@ def call_model(prompt_text, schema):
 
 
 def grade_compose(pa, pb, out, record):
-    """assemble (A verbatim + B verbatim + glue wrapper) -> property
-    discipline -> coverage + glue-clause gates -> yosys -> oracle.
-    A DECORATIVE verdict here means the glue was not stateful enough."""
+    """assemble (A verbatim + B verbatim + glue wrapper) -> storage depth
+    -> property discipline -> coverage + glue-clause gates -> yosys ->
+    oracle. A DECORATIVE verdict here means the glue was not stateful
+    enough."""
     wrapper = strip_diff_decoration(out["wrapper"])
     top = out["top_module"]
     record["wrapper"] = wrapper
@@ -1531,6 +2439,12 @@ def grade_compose(pa, pb, out, record):
     child = (pa["verilog"].rstrip() + "\n\n" + pb["verilog"].rstrip()
              + "\n\n" + wrapper)
     record["child_verilog"] = child
+    # the glue's own storage small enough to prove (21 Oct 2026), or as
+    # big as either part's biggest array (22 Oct 2026)
+    if storage_too_deep(record, pa["verilog"] + "\n" + pb["verilog"],
+                        child, top,
+                        parent_tops=[pa["top_module"], pb["top_module"]]):
+        return record
 
     parent_props = pa["property"] + pb["property"]
     new_assert, err = split_second_property_asserts(
@@ -1540,6 +2454,11 @@ def grade_compose(pa, pb, out, record):
         record["error"] = err
         return record
     record["compose_property"] = new_assert
+    # the wrapper's assertion, its guard, facts and antecedents leave an
+    # asynchronous reset alone (23 Oct 2026, review finding F4)
+    if step_reads_reset(record, child, pa.get("clock"), out["invariants"],
+                        out.get("antecedents", []), [pa, pb]):
+        return record
 
     copied = property_copy(out["invariants"], extract_asserts(child))
     if copied:
@@ -1584,14 +2503,8 @@ def grade_compose(pa, pb, out, record):
                "antecedents": out["antecedents"],
                "sanity_covers": out["sanity_covers"],
                "invariants": out["invariants"]}
-    t0 = time.monotonic()
-    with Spinner(f"oracle grading composed {top}"):
-        result = grade_triple_generated(json.dumps(payload),
-                                        **grade_kwargs(record))
-    record["grade_wall_s"] = round(time.monotonic() - t0, 2)
-    record["verdict"] = result.verdict.name
-    record["reason"] = result.reason
-    record["result"] = asdict(result)
+    result = necessity_check(grade_triple_generated, payload, record,
+                             f"oracle grading composed {top}")
     if result.verdict.name == "DECORATIVE":
         record["error"] = ("glue not stateful enough: the composition "
                            "proves without any invariants (wire-equivalent)")
@@ -1599,8 +2512,8 @@ def grade_compose(pa, pb, out, record):
 
 
 def grade_replicate(parent, out, record, n):
-    """assemble (parent verbatim + wrapper) -> property discipline ->
-    coverage + aggregate checks -> yosys -> oracle."""
+    """assemble (parent verbatim + wrapper) -> storage depth -> property
+    discipline -> coverage + aggregate checks -> yosys -> oracle."""
     wrapper = strip_diff_decoration(out["wrapper"])
     top = out["top_module"]
     record["wrapper"] = wrapper
@@ -1629,6 +2542,11 @@ def grade_replicate(parent, out, record, n):
         return record
     child = parent["verilog"].rstrip() + "\n\n" + wrapper
     record["child_verilog"] = child
+    # the pool's own storage small enough to prove (21 Oct 2026), or as
+    # big as the copied design's biggest array (22 Oct 2026)
+    if storage_too_deep(record, parent["verilog"], child, top,
+                        parent_tops=[parent["top_module"]]):
+        return record
 
     new_assert, err = split_second_property_asserts(
         parent["property"], extract_asserts(child))
@@ -1637,6 +2555,12 @@ def grade_replicate(parent, out, record, n):
         record["error"] = err
         return record
     record["pool_property"] = new_assert
+    # the wrapper's assertion, its guard, facts and antecedents leave an
+    # asynchronous reset alone (23 Oct 2026, review finding F4)
+    if step_reads_reset(record, child, parent.get("clock"),
+                        out["invariants"], out.get("antecedents", []),
+                        [parent]):
+        return record
 
     copied = property_copy(out["invariants"], extract_asserts(child))
     if copied:
@@ -1675,21 +2599,16 @@ def grade_replicate(parent, out, record, n):
                "antecedents": out["antecedents"],
                "sanity_covers": out["sanity_covers"],
                "invariants": out["invariants"]}
-    t0 = time.monotonic()
-    with Spinner(f"oracle grading {top} (N={n})"):
-        result = grade_triple_generated(json.dumps(payload),
-                                        **grade_kwargs(record))
-    record["grade_wall_s"] = round(time.monotonic() - t0, 2)
-    record["verdict"] = result.verdict.name
-    record["reason"] = result.reason
-    record["result"] = asdict(result)
+    necessity_check(grade_triple_generated, payload, record,
+                    f"oracle grading {top} (N={n})")
     return record
 
 
 def _expanded(out, record):
     """`out` with its compact facts expanded, the record holding both
     forms; None, with the record marked FACT_FORMAT, when one is
-    malformed."""
+    malformed or, once expanded, a fact uses a system function (21 Oct
+    2026)."""
     compact = list(out.get("invariants", []))
     expanded, err = expand_facts(compact)
     if err:
@@ -1700,12 +2619,18 @@ def _expanded(out, record):
     record["invariants"] = expanded
     if expanded != compact:
         record["invariants_compact"] = compact
+    err = system_function_error(expanded)
+    if err:
+        record["verdict"] = "FACT_FORMAT"
+        record["error"] = err
+        return None
     return dict(out, invariants=expanded)
 
 
 def grade_step4(parent, ext_type, out, record):
-    """apply -> property discipline -> dispositions -> yosys -> oracle
-    (-> P2-unaided for second property). Fills record in place."""
+    """apply -> storage depth -> property discipline -> dispositions ->
+    yosys -> oracle (-> P2-unaided for second property). Fills record in
+    place."""
     record["patch"] = out["patch"]
     record["dispositions"] = out["dispositions"]
     compact = list(out["invariants"])
@@ -1732,6 +2657,10 @@ def grade_step4(parent, ext_type, out, record):
         record["error"] = str(exc)
         return record
     record["child_verilog"] = child
+    # storage small enough to prove, before any check runs (21 Oct 2026)
+    if storage_too_deep(record, parent["verilog"], child,
+                        parent.get("top_module", "")):
+        return record
 
     child_asserts = extract_asserts(child)
     sideways = False
@@ -1773,6 +2702,15 @@ def grade_step4(parent, ext_type, out, record):
                                "forces no new clause; rejected")
             return record
         child_props = child_asserts
+
+    # a new or changed assertion, its guard and the facts leave an
+    # asynchronous reset alone (23 Oct 2026, review finding F4); the
+    # antecedents are the parent's, judged only if the step made a signal
+    # they read an asynchronous reset
+    if step_reads_reset(record, child, parent.get("clock"),
+                        out["invariants"], parent.get("antecedents") or [],
+                        [parent]):
+        return record
 
     # what was kept or replaced is read in the facts as written: the
     # parent's compact facts against this answer's (21 Oct 2026)
@@ -1837,14 +2775,8 @@ def grade_step4(parent, ext_type, out, record):
                "clock": parent["clock"], "antecedents": parent["antecedents"],
                "sanity_covers": parent["sanity_covers"],
                "invariants": out["invariants"]}
-    t0 = time.monotonic()
-    with Spinner(f"oracle grading extended {parent['top_module']}"):
-        result = grade_triple_generated(json.dumps(payload),
-                                        **grade_kwargs(record))
-    record["grade_wall_s"] = round(time.monotonic() - t0, 2)
-    record["verdict"] = result.verdict.name
-    record["reason"] = result.reason
-    record["result"] = asdict(result)
+    necessity_check(grade_triple_generated, payload, record,
+                    f"oracle grading extended {parent['top_module']}")
     return record
 
 

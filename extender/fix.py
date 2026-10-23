@@ -18,6 +18,16 @@ Contract:
   usage) to logs/fixer_attempts.jsonl — failures included, because
   failed-vs-fixed pairs on the same task are future preference data and
   regeneration is the expensive thing.
+- A repaired list with a fact the benchmark's checker cannot read (a
+  system function, the compact forall form, a dotted name) is turned away
+  before it is checked, as FACT_FORMAT (22 Oct 2026), and so is one with
+  a fact that reads an asynchronous reset, as READS_RESET (23 Oct 2026).
+- After a list is turned away before any check, the next attempt's
+  question ends with why (23 Oct 2026); its log line keeps that reason as
+  retry_lesson.
+- Each attempt's checks are kept in logs/proofs/<task>_fix_<parent>_<id>/
+  fix_a<N>, and its log line names that folder as proof_dir, relative to
+  the log's folder (22 Oct 2026).
 - A winning repair is promoted into the corpus immediately, at the
   child's generation — a fixed branch rejoins the ladder.
 
@@ -40,11 +50,13 @@ sys.path.insert(0, str(HERE))
 
 from build_corpus import extract_asserts                 # noqa: E402
 from extend import out_of_scope, property_copy           # noqa: E402
-from distractor import MODEL, EFFORT, Spinner, grade_kwargs  # noqa: E402
+from distractor import MODEL, EFFORT, GRADE_KWARGS, Spinner  # noqa: E402
 from promote import child_top, promote                   # noqa: E402
 
+from fact_format import unreadable_facts                 # noqa: E402
 import llm_client                                        # noqa: E402
 from oracle import grade_triple_generated                # noqa: E402
+from reset_reads import step_reset_error                 # noqa: E402
 
 CORPUS = HERE / "corpus.jsonl"
 QUEUE = HERE / "logs" / "fixer_queue.jsonl"
@@ -93,7 +105,17 @@ the property text into the list; each clause is a plain synthesizable
 Verilog boolean expression over this module's own signals — no
 hierarchical refs (a.b), no prose, no |->, write !a || b for implication;
 match widths when adding or comparing — zero-extend narrow terms with
-{{N'b0, x}} exactly as the existing clauses do.
+{{N'b0, x}} exactly as the existing clauses do. Each clause is one
+same-cycle expression: it reads the signals as they are in one cycle,
+with no system function ($past, $stable, $rose, $fell, $changed,
+$countones, $onehot, $onehot0, $isunknown, $signed, $clog2). The checker
+that scores the facts cannot read them, and a list that uses one is
+turned away before it is checked. A relation across cycles is written
+between the registers that carry the value from one cycle to the next;
+a count of set bits is written as a sum (v[0] + v[1] + v[2]). No clause
+reads the reset, directly or through a wire that copies it: checkers
+disagree about what an asynchronous reset does within a cycle, and a list
+that reads one is turned away before it is checked.
 
 Reply with JSON: {{"diagnosis": "...", "invariants": ["..."]}}"""
 
@@ -198,6 +220,72 @@ def pre_gate(candidate, failed, properties):
     return None
 
 
+# 22 Oct 2026, review findings F9 and F11: a repaired list is promoted
+# into the corpus the training file is built from, and the trained model
+# is scored by EBMC 6.0, which cannot read a fact with a system function,
+# the compact forall form or a dotted name (fact_format.py). Such a list is
+# turned away before it is checked, as FACT_FORMAT. Before, a fact with
+# $past was turned away only by accident, as an "out-of-scope identifier
+# past", and one with $signed went on to be checked and could be promoted.
+def fact_format_error(candidate):
+    """Why the benchmark's checker could not read some of the facts, or
+    None when it can read them all."""
+    bad = unreadable_facts(candidate)
+    if not bad:
+        return None
+    return ("facts the benchmark's checker cannot read: "
+            + "; ".join(f"{fact} ({', '.join(problems)})"
+                        for fact, problems in bad)
+            + ". Each fact is one same-cycle expression over this module's "
+            "own signals, with no system function: write a count of set "
+            "bits as a sum (v[0] + v[1] + v[2]).")
+
+
+# 23 Oct 2026, review finding F4: a repaired fact that reads an
+# asynchronous reset can make our checker and EBMC disagree, as a step's
+# can (reset_reads.py). The design and its assertions are the fixer's to
+# keep, so only the facts are judged: the design is passed as its own
+# parent. Such a list is turned away before it is checked, as READS_RESET.
+def reset_error(candidate, ctx):
+    """Why some of the facts read an asynchronous reset of the design, or
+    None when none does."""
+    return step_reset_error(ctx["verilog"], ctx["clock"], candidate, [],
+                            [(ctx["verilog"], ctx["clock"], [], [])])
+
+
+# 23 Oct 2026, review finding: after a list was turned away before any
+# check (FACT_FORMAT, READS_RESET, PRE_GATE), the next attempt got exactly
+# the same question, so it could repeat the mistake (a probe's attempts 1
+# and 2 were both FACT_FORMAT, with identical questions). The next question
+# now ends with why, in the batch runner's words (batch.retry_section, its
+# review finding B1). A checked attempt needs none: the next question
+# carries its list and its new counterexample.
+def rejection_lesson(error):
+    """The reason a list was turned away, as one paragraph for the next
+    question: spaces made single, cut at batch.LESSON_MAX characters, and
+    ending in a full stop."""
+    from batch import LESSON_MAX
+    text = " ".join(str(error).split())
+    if len(text) > LESSON_MAX:
+        text = text[:LESSON_MAX].rstrip() + " ..."
+    return text if text.endswith((".", "...", "!", "?")) else text + "."
+
+
+# 22 Oct 2026, review finding B2: the fixer never set a proof folder, so
+# its checks went to the shared runs/ folder, while its attempt log copied
+# the record's proof_dir, which since 21 Oct points into the batch run's
+# own folder. Its checks now go in proofs/ next to its own log, the batch
+# runner's way (<log-dir>/proofs), and each attempt names its own folder.
+def proof_folder(record):
+    """A new folder for one task's repair checks: (its path as the
+    attempt log records it, relative to the folder of ATTEMPT_LOG, and its
+    full path). Each attempt's checks go in a fix_a<N> folder inside."""
+    import uuid
+    rel = (f"proofs/{record.get('extension_id', 'x')}_fix_"
+           f"{record.get('parent_id', '')}_{uuid.uuid4().hex[:6]}")
+    return rel, (ATTEMPT_LOG.parent / rel).resolve()
+
+
 # --- the attempt loop ---
 
 def run_task(record, corpus_rows, call=None, max_attempts=MAX_ATTEMPTS):
@@ -206,10 +294,13 @@ def run_task(record, corpus_rows, call=None, max_attempts=MAX_ATTEMPTS):
     ctx = fixer_context(record, corpus_rows)
     cti, leg = failing_cti(record)
     task_id = record.get("extension_id")
+    proof_dir, proof_root = proof_folder(record)
     current_invs = ctx["invariants"]
     current_cti = cti or "(no trace captured - reason: " + \
         str((record.get("result") or {}).get("with_invariants", {})
             .get("reason", "unknown")) + ")"
+    from batch import retry_section
+    lesson = None             # why the last list was turned away, if it was
 
     for attempt in range(1, max_attempts + 1):
         prompt = FIXER_PROMPT.format(
@@ -217,10 +308,12 @@ def run_task(record, corpus_rows, call=None, max_attempts=MAX_ATTEMPTS):
             property="\n".join(ctx["property"]),
             invariants="\n".join(current_invs),
             pdr=PDR_TRUE_LINE if pdr_says_true(record) else "",
-            cti=current_cti)
+            cti=current_cti) + retry_section(lesson)
         log = {"task_id": task_id, "attempt": attempt,
                "fixed_at": datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss"),
                "model": llm_client.model_label(MODEL), "cti_leg": leg}
+        if lesson:
+            log["retry_lesson"] = lesson
 
         if call is None:
             with Spinner(f"repair try {attempt}/3: model writing"):
@@ -240,6 +333,24 @@ def run_task(record, corpus_rows, call=None, max_attempts=MAX_ATTEMPTS):
         log["diagnosis"] = out.get("diagnosis")
         log["invariants"] = candidate
 
+        # before the scope check, which would name `past` in `$past(x)`
+        # as an unknown signal
+        err = fact_format_error(candidate)
+        if err:
+            log["verdict"] = "FACT_FORMAT"
+            log["error"] = err
+            _log(log)
+            lesson = rejection_lesson(err)
+            continue
+
+        err = reset_error(candidate, ctx)
+        if err:
+            log["verdict"] = "READS_RESET"
+            log["error"] = err
+            _log(log)
+            lesson = rejection_lesson(err)
+            continue
+
         bad = out_of_scope(candidate, ctx["verilog"], ctx["top_module"])
         err = (f"out-of-scope identifiers {sorted(bad)}: sub-module "
                "namespace - grading would score a fake FALSE") if bad \
@@ -248,7 +359,9 @@ def run_task(record, corpus_rows, call=None, max_attempts=MAX_ATTEMPTS):
             log["verdict"] = "PRE_GATE"
             log["error"] = err
             _log(log)
+            lesson = rejection_lesson(err)
             continue
+        lesson = None             # checked: the next question shows why
 
         payload = {"verilog": ctx["verilog"], "top_module": ctx["top_module"],
                    "clock": ctx["clock"], "antecedents": ctx["antecedents"],
@@ -257,13 +370,15 @@ def run_task(record, corpus_rows, call=None, max_attempts=MAX_ATTEMPTS):
         t0 = time.monotonic()
         with Spinner(f"repair try {attempt}/3: oracle checking"):
             result = grade_triple_generated(
-                json.dumps(payload),
-                **grade_kwargs(record, leg=f"fix_a{attempt}"))
+                json.dumps(payload), **dict(
+                    GRADE_KWARGS,
+                    workdir_root=proof_root / f"fix_a{attempt}"))
         log["grade_wall_s"] = round(time.monotonic() - t0, 2)
         log["verdict"] = result.verdict.name
         log["reason"] = result.reason
         log["result"] = asdict(result)
-        log["proof_dir"] = record.get("proof_dir")
+        # this attempt's own checks, relative to the attempt log's folder
+        log["proof_dir"] = f"{proof_dir}/fix_a{attempt}"
         _log(log)
         print(f"  attempt {attempt}: {result.verdict.name} - {result.reason[:80]}")
 

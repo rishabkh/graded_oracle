@@ -7,6 +7,28 @@ schemas require fixed keys on every object. Same information.
 """
 import re
 
+# The size-parameter rule at the end of the Verilog constraints (21 Oct 2026,
+# Rishab approved): 87% of 560 real open-source modules declare parameters
+# against about 40% of our designs (measured 15 Oct 2026). Defaults of 4 to
+# 8 entries keep the proof fast; a size seed, when one is drawn, sets the
+# default instead, so the real-hardware sizes of scales_real_hardware.txt
+# still arrive.
+# Two rules after it (22 Oct 2026, review findings):
+# - the property, its guard and the facts never read a reset. With the
+#   asynchronous-reset trait (1 in 5 designs), a property reading the reset
+#   was NECESSARY for our checker and false for EBMC 6.0, which scores the
+#   trained model: in a cycle where the reset is held, our checker shows
+#   each register at its reset value and EBMC the value it held. run.py's
+#   reset_gate turns such designs away. Since 23 Oct 2026 (Rishab chose)
+#   the rule names asynchronous resets only: both checkers read a
+#   synchronous reset the same way, and 30 of the 917 stored designs guard
+#   their property with one (`if (pv && !rst)`).
+# - each fact is a plain same-cycle expression, no system function: the
+#   prompt only said "use it in the property, not in the invariants" in
+#   the style seed, and c0_144 still came out with
+#   `occ == $countones(valid)`, which EBMC cannot read. The wording follows
+#   the extender's (extender/extend.py INVARIANT_RULES); run.py's
+#   facts_gate turns such designs away.
 SYSTEM_PROMPT = """\
 You write SystemVerilog modules for a formal verification dataset.
 
@@ -81,6 +103,21 @@ Three conditions, all required.
 - If a register's declared width admits values it can never reach (e.g. a counter
   that saturates at 8 in a 4-bit reg), include an invariant bounding it — induction
   otherwise starts from an impossible value and fails on a phantom CTI.
+- Declare the design's sizes as parameters, as real hardware does: a depth, a
+  number of entries or a number of channels is a `parameter` with a default
+  (e.g. `parameter DEPTH = 8`), and the widths and constants that depend on it
+  are written in terms of it. Give such a count a default of 4 to 8, never more
+  than 16, so the proof stays fast; when the question gives a size seed, the
+  seed's size is the default instead.
+- The property, its guard (the antecedents) and the invariants never read an
+  asynchronous reset (an input in an always block's sensitivity list, like
+  `negedge rst_n`) or a signal that carries one (like `wire in_reset = !rst_n`):
+  they describe the design in normal operation, not what holds while reset is
+  held. Checkers disagree about what an asynchronous reset does within a cycle,
+  so a design whose property, guard or invariants name one is rejected. A
+  synchronous reset, tested only inside `always @(posedge clk)`, may guard the
+  property. When a `$past` check must skip the cycle after an asynchronous reset,
+  let the reset clear the past-valid register instead.
 
 ## Output format
 
@@ -105,7 +142,12 @@ Field notes:
   yourself — fix one or the other.
 
 - `invariants` is R. Supplied SEPARATELY from the Verilog — it must NOT appear as
-  an assertion in the source. One string per clause.
+  an assertion in the source. One string per clause. Each clause is a same-cycle
+  boolean expression over the design's signals, with no system function: no
+  `$past`, `$stable`, `$rose`, `$fell`, `$countones`, `$onehot` or `$onehot0` in an
+  invariant, or it is rejected. Write a count of set bits as a sum
+  (v[0] + v[1] + v[2]), and a relation across cycles between the registers that
+  carry the value from one cycle to the next. The property may still use `$past`.
 
 - `verilog` is the full module source with the property assertion inline.
 
@@ -201,26 +243,73 @@ constant to match.
 """
 
 
+# Added before the pattern seed, after any size seed, when a design trait is
+# drawn (21 Oct 2026, Rishab approved: real hardware uses handshakes,
+# asynchronous resets, named states and registers loaded from inputs more
+# than our designs did; design_traits.txt has the numbers). Without one
+# the message is unchanged, so old rows rebuilt from their seeds stay as
+# they were.
+TRAIT_SECTION = """## Design trait seed
+
+Real hardware is often written this way, and this design must be too:
+
+{trait}
+
+The trait shapes how the design is written, not what is asked of it: every
+rule of the task still holds, including an initial value on every state
+register, an idle condition that leaves all state unchanged, and no assume.
+
+"""
+
+# What the two-step questions say when no size seed or no trait was drawn.
+# The size text was "choose ordinary sizes" until 21 Oct 2026; the
+# size-parameter rule of SYSTEM_PROMPT makes it precise.
+NO_SIZE_SEED = ("(no size seed: choose ordinary word widths, and give each "
+                "depth, number of entries or number of channels a parameter "
+                "default of 4 to 8, never more than 16)")
+NO_TRAIT_SEED = "(no design trait seed: plain synchronous style)"
+
+
 _CAP = re.compile(r"Keep the module under\s+(\d+)\s+lines")
+
+# The rules added since the line cap went (22 Oct 2026, review finding: the
+# stamp only read the cap, so the prompt with the size-parameter rule still
+# said "nocap", like the 9 Oct prompt). Each rule is found by a phrase only
+# it uses, so a stamp still cannot claim a rule its prompt lacks. The reset
+# rule's first wording (22 Oct 2026, every reset, stamped "no-reset-reads")
+# wrote no rows before it narrowed to asynchronous resets on 23 Oct 2026,
+# so only the narrow one has a stamp.
+STAMPED_RULES = (
+    ("size-params", "Declare the design's sizes as parameters"),
+    ("plain-facts", "boolean expression over the design's signals, with no "
+                    "system function"),
+    ("no-async-reset-reads", "never read an asynchronous reset"),
+)
 
 
 def prompt_version(system_prompt=None):
-    """A short stamp naming the design-size rule this prompt imposes,
-    read off the prompt itself so it cannot drift from the rule it
-    names. Rows carry it because raising the cap splits the corpus into
-    two populations, and a later score change is unreadable unless each
-    row says which prompt wrote it."""
-    m = _CAP.search(system_prompt if system_prompt is not None
-                    else SYSTEM_PROMPT)
-    return f"{m.group(1)}cap" if m else "nocap"
+    """A short stamp naming the rules this prompt imposes, read off the
+    prompt itself so it cannot drift from the rules it names: the line cap
+    ("200cap", "800cap" or "nocap"), then each rule of STAMPED_RULES the
+    prompt holds, joined by "+" (since 22 Oct 2026). Rows carry it because
+    each rule splits the corpus into two populations, and a later score
+    change is unreadable unless each row says which prompt wrote it. A
+    prompt without those rules gets the stamp it always had. The design
+    trait is not here: every row since 21 Oct 2026 names its own."""
+    text = system_prompt if system_prompt is not None else SYSTEM_PROMPT
+    m = _CAP.search(text)
+    flat = " ".join(text.split())
+    return "+".join([f"{m.group(1)}cap" if m else "nocap"]
+                    + [name for name, phrase in STAMPED_RULES
+                       if phrase in flat])
 
 
 # --- two-step and self-repairing generation (8 Oct 2026) ------------------
 # Formal Disco's idea -> implement split and its self-repairing generator
 # (formal-disco/language/*/prompt.py idea, implement, repair_full), adapted
 # to the planted-triple contract above. Their idea step sees only a README;
-# ours also gets the structural seeds (kind, size, pattern, scope, style),
-# which are where our variety comes from.
+# ours also gets the structural seeds (kind, size, design trait since 21 Oct
+# 2026, pattern, scope, style), which are where our variety comes from.
 
 IDEA_SYSTEM = """\
 You propose precise ideas for SystemVerilog modules for a formal
@@ -228,10 +317,11 @@ verification dataset. Each idea must be implementable as a "planted triple":
 a design with an internal relation R that holds by construction, plus a
 property P that is true of the design but cannot be proven by k-induction
 unless the prover is also given R. You will receive a GitHub README for the
-theme and seeds for the hardware kind, its size, and the property's pattern,
-scope and style. Output exactly one concise idea and specification. The
-README's project is most likely unrelated to hardware verification, so adapt
-or reinterpret its theme freely."""
+theme and seeds for the hardware kind, its size, a design trait (a way real
+hardware is written), and the property's pattern, scope and style. Output
+exactly one concise idea and specification. The README's project is most
+likely unrelated to hardware verification, so adapt or reinterpret its theme
+freely."""
 
 IDEA_TEMPLATE = """\
 ## Theme (loose inspiration only; do not implement the project)
@@ -248,6 +338,10 @@ Repository: {repo}
 
 {scale}
 
+## Design trait
+
+{trait}
+
 ## Property pattern
 
 {pattern}
@@ -263,9 +357,9 @@ Repository: {repo}
 ## Task
 
 - Propose one idea for a module built around the hardware kind, themed by
-  the README, at the given size.
-- Name its state registers with their widths, and the enable or idle input
-  that holds all state when low.
+  the README, at the given size, written with the given design trait.
+- Name its size parameters with their defaults, its state registers with
+  their widths, and the enable or idle input that holds all state when low.
 - State the relation R that holds by construction.
 - State the property P (following the pattern, scope and style) and a state
   that satisfies P, violates R, can be held while idle, and steps to a
@@ -285,6 +379,10 @@ IMPLEMENT_TEMPLATE = """\
 
 Declare the design's registers and storage at this size, and size every
 constant to match.
+
+## Design trait
+
+{trait}
 
 ## Worked example
 

@@ -8,6 +8,8 @@ No LLM, no API. Per triple:
   clause_count         number of invariant clauses
   invariant_templates  each clause with identifiers -> id, constants -> N,
                        so family collapse is a number, not an eyeball
+  engine_alone         could abc pdr prove the property with no facts:
+                       proved, timed_out, error or not_tried (21 Oct 2026)
 
   venv/bin/python extender/build_corpus.py            # needs yosys (hwtools)
   venv/bin/python extender/build_corpus.py --no-yosys # skip state_bits
@@ -194,6 +196,54 @@ def without_main_s(record):
     return max(times) if times else None
 
 
+# --- could the automatic engine prove it alone? (21 Oct 2026) ---
+# Rishab approved ("make all 1-8 changes"). Gary (formal verification
+# expert): engineers write helper facts by hand where the automatic engines
+# get stuck. The checker already runs one such engine, abc pdr, on the
+# proof without facts whenever k-induction does not close there (the
+# "second opinion"). Measured 21 Oct 2026 from the logs: it proved the
+# property with no facts for 198 of the 252 starting designs of 9 Oct
+# (79%) and ran out of its 120 s for 36 (14%); for 15 of the 19 designs
+# kept in the 21 Oct trial it proved it alone. A design the engine proves
+# alone needs no hand-written facts from anyone.
+
+# most wanted first: batch.py grows the timed_out rows first and the proved
+# ones last (batch.ENGINE_RANK)
+ENGINE_ALONE = ("timed_out", "error", "not_tried", "proved")
+
+
+def engine_alone(record):
+    """What the abc pdr run on the without-invariants leg found: "proved"
+    (rc 0: it proved the property with no helper facts), "timed_out" (rc 8,
+    or None when the outer guard stopped it), "error" (any other rc, a
+    refuted property included), or "not_tried" (no such run: k-induction
+    closed or ran out of time first, or the record has no result). A run
+    that does not say its rc is an "error", never "timed_out", which is
+    the most wanted."""
+    runs = ((record.get("result") or {}).get("without_invariants")
+            or {}).get("runs") or []
+    for run in runs:
+        if run.get("engine") == "abc pdr" and run.get("mode") == "prove":
+            rc = run.get("rc", "missing")
+            if rc == 0:
+                return "proved"
+            if rc in (8, None):
+                return "timed_out"
+            return "error"
+    return "not_tried"
+
+
+def engine_alone_share(rows):
+    """`timed_out 36 (14%), ..., proved 198 (79%)` over the rows'
+    metrics.engine_alone, most wanted first; a row built before 21 Oct
+    2026 has none and counts as "unknown"."""
+    counts = Counter((r.get("metrics") or {}).get("engine_alone")
+                     or "unknown" for r in rows)
+    return ", ".join(f"{k} {counts[k]} ({100 * counts[k] / len(rows):.0f}%)"
+                     for k in ENGINE_ALONE + ("unknown",)
+                     if counts[k]) or "no rows"
+
+
 # stat prints count first, then cell name:  "       26   $_SDFFE_PP0P_"
 _DFF_LINE = re.compile(r"^\s+(\d+)\s+(\$_[A-Z]*DFF[A-Z0-9_]*)\s*$", re.M)
 
@@ -231,8 +281,9 @@ def state_bits(verilog, top_module):
 # --- flatten ---
 
 def flatten_record(record, idx, prefix="g0"):
-    """`prefix` names a separate corpus (the catalog run's "c0"), whose
-    rows also keep the kinds file and size seed that made them."""
+    """`prefix` names a separate corpus (the catalog run's "c0"). A row
+    also keeps the kinds file, size seed and design trait that made it,
+    when the run recorded them."""
     t = json.loads(record["raw_json"])
     invariants = t.get("invariants", [])
     row = {
@@ -263,11 +314,17 @@ def flatten_record(record, idx, prefix="g0"):
             "state_bits": None,          # filled by main() when yosys runs
             "coi_ratio": None,           # filled by main() when yosys runs
             "pdr_wall_s": pdr_wall_s(record),
+            # could abc pdr prove it with no facts? (21 Oct 2026)
+            "engine_alone": engine_alone(record),
             "clause_count": len(invariants),
             "invariant_templates": [template(x) for x in invariants],
         },
     }
-    for key in ("constructs_file", "scale", "seed_weights", "model"):
+    # "trait": the design trait the generator drew since 21 Oct 2026
+    # (asynchronous reset, handshake, ...); kept on the row like the size
+    # seed (22 Oct 2026, review finding F10: it was dropped here)
+    for key in ("constructs_file", "scale", "seed_weights", "model",
+                "trait"):
         if key in record:
             row[key] = record[key]
     return row
@@ -305,6 +362,7 @@ def print_distributions(rows):
     _spread("state_bits", [r["metrics"]["state_bits"] for r in rows])
     _spread("coi_ratio", [r["metrics"].get("coi_ratio") for r in rows])
     _spread("pdr_wall_s", [r["metrics"]["pdr_wall_s"] for r in rows])
+    print("engine alone (abc pdr, no facts):", engine_alone_share(rows))
 
     clauses = Counter(r["metrics"]["clause_count"] for r in rows)
     print("clause_count:", dict(sorted(clauses.items())))

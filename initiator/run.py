@@ -37,14 +37,19 @@ sys.path.insert(0, str(HERE.parent))   # graded_oracle root -> `oracle` package
 sys.path.insert(0, str(HERE))
 
 from prompts import (IDEA_SYSTEM, IDEA_TEMPLATE,     # noqa: E402
-                     IMPLEMENT_TEMPLATE, REPAIR_TEMPLATE, SIZE_SECTION,
-                     SYSTEM_PROMPT, USER_TEMPLATE, prompt_version)
+                     IMPLEMENT_TEMPLATE, NO_SIZE_SEED, NO_TRAIT_SEED,
+                     REPAIR_TEMPLATE, SIZE_SECTION, SYSTEM_PROMPT,
+                     TRAIT_SECTION, USER_TEMPLATE, prompt_version)
 from schema import TRIPLE_SCHEMA                   # noqa: E402
 
 import llm_client                                            # noqa: E402
 import distill_log                                           # noqa: E402
+from fact_format import unreadable_facts                     # noqa: E402
 from oracle import NecessityVerdict, grade_triple_generated  # noqa: E402
 from oracle.contract import parse_generator_output           # noqa: E402
+# RESET_NAMES is kept here for callers of run.RESET_NAMES
+from reset_reads import (RESET_NAMES, describe,       # noqa: E402,F401
+                         reset_names, reset_reads)
 
 MODEL = "claude-opus-5-5"
 EFFORT = "high"
@@ -60,6 +65,10 @@ MAX_TOKENS = int(os.getenv("INITIATOR_MAX_TOKENS", "128000"))
 # 20 steps get a deeper look first (oracle/depth.py).
 GRADE_KWARGS = dict(timeout_s=300, pdr_timeout_s=120, cover_depth="auto")
 LOG_PATH = HERE / "logs" / "attempts.jsonl"
+# One design trait per design since 21 Oct 2026 (handshake, asynchronous
+# reset, named states, a register loaded from an input, or plain style);
+# the file's notes say where its weights came from.
+TRAITS_PATH = HERE / "design_traits.txt"
 
 
 class Spinner:
@@ -154,6 +163,15 @@ def load_pools(constructs_path=None, even=False):
     return exemplars, constructs, readmes, styles, patterns, scopes
 
 
+def load_traits(path=None):
+    """The design traits, weighted by repeated lines. Kept apart from
+    load_pools so its six pools stay as they were, and never flattened by
+    `even`, which is for weights counted on the evaluation sets: these
+    were not (the file's header says where each came from; 22 Oct 2026,
+    review finding: one is Rishab's choice, not a real-design count)."""
+    return _pool(Path(path or TRAITS_PATH))
+
+
 _BLOCK_START = re.compile(r"\b(always\w*|initial|assign|module)\b")
 
 
@@ -199,6 +217,97 @@ def scope_gate(scope, triple):
         return ("scope is armed but every assertion is unconditional - the "
                 "arm register is decoration, not a scope")
     return None
+
+
+# --- two more checks before the checker (22 Oct 2026, review findings) ----
+# Like scope_gate, each turns a design away with a verdict of its own and a
+# reason that a repair question passes on.
+#
+# reset_gate. In a cycle where an asynchronous reset is held, our checker
+# (yosys, which sby runs with async2sync) shows every register at its reset
+# value; EBMC 6.0, which scores the trained model, shows the value the
+# register held and resets it at the next clock edge. A property, guard or
+# fact that names the reset can then be true for one and false for the
+# other: the reviewer's probe, property `(rst_n || a == 0) && b <= 4` with
+# facts `a == b` and `a <= 4`, is NECESSARY for ours and REFUTED by EBMC.
+# Six asynchronous-reset designs whose property and facts leave the reset
+# alone got the same verdicts from both (22 Oct 2026; the test file
+# tests/test_generator_reset_and_fact_gates.py checks two of them). Until
+# 23 Oct 2026 the rule covered every reset, as the prompt then stated it,
+# so it also turned away a synchronous design whose property's guard tests
+# the reset (`if (pv && !rst) assert ...`). Both checkers read a
+# synchronous reset the same way, so since 23 Oct 2026 (Rishab chose) the
+# rule and the prompt cover asynchronous resets only. Measured that day on
+# the 917 stored designs (665 of September, 252 of 9 Oct): the old rule
+# turned away 30 (11 and 19), all for a synchronous reset in the
+# property's guard, and the new one turns away none.
+# 23 Oct 2026, review findings: the statement reader moved to
+# reset_reads.py, which the extender and the fixer now ask too, and it now
+# follows a reset through what copies it in the same cycle (`wire in_reset
+# = !rst_n` passed this check, and that design was NECESSARY for ours and
+# REFUTED by EBMC) and reads an assertion with a label (`p0: assert ...`,
+# which it skipped whole).
+#
+# facts_gate. EBMC reads a fact only as a plain same-cycle expression
+# (fact_format.py says which forms it cannot read); c0_144 reached the
+# corpus with `occ == $countones(valid)`.
+
+GATE_VERDICTS = ("SCOPE_UNARMED", "READS_RESET", "FACTS_NOT_PLAIN")
+
+
+def _strings(value):
+    return [x for x in value if isinstance(x, str)] \
+        if isinstance(value, list) else []
+
+
+def _short(text, n=100):
+    text = " ".join(text.split())
+    return text if len(text) <= n else text[:n - 3] + "..."
+
+
+def reset_gate(triple):
+    """The property (the assertion and what it sits under), the
+    antecedents and the invariants must not read an asynchronous reset,
+    directly or through a signal that carries one (22 Oct 2026, review
+    finding; asynchronous resets only since 23 Oct 2026: see the note
+    above; reset_reads.py says what counts). Returns a reason to reject,
+    or None."""
+    verilog = triple.get("verilog")
+    verilog = verilog if isinstance(verilog, str) else ""
+    clock = triple.get("clock")
+    clock = clock if isinstance(clock, str) and clock else "clk"
+    names = reset_names(verilog, clock)
+    reads = reset_reads(verilog, clock, _strings(triple.get("invariants")),
+                        _strings(triple.get("antecedents")), names=names)
+    if not reads:
+        return None
+    read, places = describe(reads, names, what="property")
+    return (f"the reset input {', '.join(read)} is read by "
+            + "; ".join(places)
+            + " - the property, its guard and the facts must describe "
+            "normal operation and never name an asynchronous reset (one in "
+            "an always block's sensitivity list), or a signal that carries "
+            "one: checkers disagree about what an asynchronous reset does "
+            "within a cycle, so such a design can be proven by one checker "
+            "and refuted by another")
+
+
+def facts_gate(triple):
+    """Every fact must be one EBMC 6.0 can read (fact_format.py; 22 Oct
+    2026, review finding). Returns a reason naming each fact that is not,
+    or None."""
+    bad = unreadable_facts(_strings(triple.get("invariants")))
+    if not bad:
+        return None
+    listed = "; ".join(f"`{_short(fact)}` ({', '.join(problems)})"
+                       for fact, problems in bad)
+    return ("facts that are not plain same-cycle expressions: " + listed
+            + " - write each fact as a boolean expression over the design's "
+            "signals in one cycle, with no system function: a count of set "
+            "bits is a sum (v[0] + v[1] + v[2]), a relation across cycles "
+            "is written between the registers that carry the value, and a "
+            "signal inside a sub-module is read through a wire of the top "
+            "module")
 
 
 def endpoint_model(list_models=None):
@@ -249,14 +358,20 @@ def assert_exemplar_pool(exemplars, proof_root=None):
 
 
 def build_user_msg(readme, construct, style, pattern, scope, exemplar,
-                   scale=None):
+                   scale=None, trait=None):
+    """The size seed and the design trait each get a section before the
+    pattern seed, only when drawn: without them the message is exactly the
+    old one."""
     msg = USER_TEMPLATE.format(
         readme=readme["readme"], construct=construct, style=style,
         pattern=pattern, scope=scope, exemplar=json.dumps(exemplar, indent=2))
+    extra = ""
     if scale:
-        marker = "## Property pattern seed"
-        msg = msg.replace(marker, SIZE_SECTION.format(scale=scale) + marker, 1)
-    return msg
+        extra += SIZE_SECTION.format(scale=scale)
+    if trait:
+        extra += TRAIT_SECTION.format(trait=trait)
+    marker = "## Property pattern seed"
+    return msg.replace(marker, extra + marker, 1) if extra else msg
 
 
 IDEA_SCHEMA = {"type": "object", "properties": {"idea": {"type": "string"}},
@@ -290,6 +405,7 @@ def seed_arguments(record, extras):
     return {"repo": extras["readme"]["repo"],
             "readme": extras["readme"]["readme"],
             "construct": record["construct"], "scale": record.get("scale"),
+            "trait": record.get("trait"),
             "pattern": record["pattern"], "scope": record["scope"],
             "style": record["style"], "exemplar_id": record["exemplar_id"]}
 
@@ -389,6 +505,7 @@ def plan_attempts(n, *, cmd, grade, model, constructs_path, scales_path,
     exemplars, constructs, readmes, styles, patterns, scopes = load_pools(
         constructs_path, even=even_seeds)
     scale_s = BalancedSampler(_pool(Path(scales_path))) if scales_path else None
+    trait_s = BalancedSampler(load_traits())
     # One id per invocation: attempts from different runs (one, grade-one,
     # pilot, the 200) all append to the same file and stay separable.
     # e.g. "2026-08-14_15h30m42s" (local wall clock; cmd is its own field).
@@ -404,6 +521,7 @@ def plan_attempts(n, *, cmd, grade, model, constructs_path, scales_path,
         (readme, construct, style, pattern, scope, ex_id,
          exemplar) = sample_seeds(*samplers)
         scale = scale_s.draw() if scale_s else None
+        trait = trait_s.draw()
         record = {
             "run_id": run_id,
             "cmd": cmd,
@@ -417,7 +535,7 @@ def plan_attempts(n, *, cmd, grade, model, constructs_path, scales_path,
             "prompt_version": prompt_version(),
             "readme_id": readme["repo"], "construct": construct,
             "style": style, "pattern": pattern, "scope": scope,
-            "exemplar_id": ex_id,
+            "trait": trait, "exemplar_id": ex_id,
         }
         if constructs_path:
             record["constructs_file"] = Path(constructs_path).name
@@ -426,7 +544,8 @@ def plan_attempts(n, *, cmd, grade, model, constructs_path, scales_path,
         if even_seeds:
             record["seed_weights"] = "even"
         plans.append((record, build_user_msg(readme, construct, style,
-                                             pattern, scope, exemplar, scale),
+                                             pattern, scope, exemplar, scale,
+                                             trait),
                       scope, {"readme": readme, "exemplar": exemplar}))
     return exemplars, run_id, plans
 
@@ -434,7 +553,8 @@ def plan_attempts(n, *, cmd, grade, model, constructs_path, scales_path,
 def judge(raw_json, stop, scope, grade=True, label="", proof_root=None,
           spin=True):
     """The checker on one answer, the same on every path: no design
-    (refused, cut off, unreadable), then the scope gate, then the oracle.
+    (refused, cut off, unreadable), then the gates in order (scope, reset,
+    plain facts; the last two since 22 Oct 2026), then the oracle.
     Returns verdict, reason, result and grading time (verdict None when
     grading is off). `proof_root` is where this check's proofs are kept."""
     out = {"verdict": None, "reason": None, "result": None,
@@ -443,9 +563,12 @@ def judge(raw_json, stop, scope, grade=True, label="", proof_root=None,
         out["verdict"] = {"refusal": "REFUSED",
                           "length": "TRUNCATED"}.get(stop, "UNPARSEABLE")
         return out
-    reason = scope_gate(scope, json.loads(raw_json))
-    if reason:
-        return dict(out, verdict="SCOPE_UNARMED", reason=reason)
+    triple = json.loads(raw_json)
+    for verdict, reason in (("SCOPE_UNARMED", scope_gate(scope, triple)),
+                            ("READS_RESET", reset_gate(triple)),
+                            ("FACTS_NOT_PLAIN", facts_gate(triple))):
+        if reason:
+            return dict(out, verdict=verdict, reason=reason)
     if not grade:
         return out
     t0 = time.monotonic()
@@ -481,11 +604,12 @@ def finish_attempt(i, record, raw_json, usage, stop, raw_text, *, grade,
         record["verdict"] = j["verdict"]
         record["raw_text"] = raw_text
         print(f"[{i}] {record['verdict']} - logged, continuing")
-    elif j["verdict"] == "SCOPE_UNARMED":
-        record["verdict"] = "SCOPE_UNARMED"
+    elif j["verdict"] in GATE_VERDICTS:
+        # turned away before the checker (scope, reset or plain facts)
+        record["verdict"] = j["verdict"]
         record["reason"] = j["reason"]
-        tally["SCOPE_UNARMED"] = tally.get("SCOPE_UNARMED", 0) + 1
-        print(f"[{i}] SCOPE_UNARMED - {j['reason'][:70]}")
+        tally[j["verdict"]] = tally.get(j["verdict"], 0) + 1
+        print(f"[{i}] {j['verdict']} - {j['reason'][:70]}")
     elif grade:
         record["grade_wall_s"] = j["grade_wall_s"]
         record["verdict"] = j["verdict"]
@@ -517,7 +641,8 @@ def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
     its designs never enter the main corpus. `model` swaps the writer
     (Opus 5.5 is $4/$20 per million tokens against Opus 5's $5/$25);
     `even_seeds` draws each style, pattern and scope equally often.
-    Unset, a run is as before."""
+    Unset, a run is as before, apart from the design trait every run has
+    drawn since 21 Oct 2026."""
     model = model or MODEL
     exemplars, run_id, plans = plan_attempts(
         n, cmd=cmd, grade=grade, model=model, constructs_path=constructs_path,
@@ -827,9 +952,11 @@ def design_pipeline(i, record, user_msg, extras, *, mode, repairs, model,
     if mode == "two-step":
         idea_user = IDEA_TEMPLATE.format(
             repo=extras["readme"]["repo"], readme=extras["readme"]["readme"],
-            construct=record["construct"], scale=record.get("scale") or
-            "(no size seed: choose ordinary sizes)", pattern=record["pattern"],
-            scope=record["scope"], style=record["style"])
+            construct=record["construct"],
+            scale=record.get("scale") or NO_SIZE_SEED,
+            trait=record.get("trait") or NO_TRAIT_SEED,
+            pattern=record["pattern"], scope=record["scope"],
+            style=record["style"])
         raw, u, stop, idea_call, idea_raw = _step(
             idea_user, model, system=IDEA_SYSTEM, schema=IDEA_SCHEMA)
         _add(usage, u)
@@ -851,8 +978,8 @@ def design_pipeline(i, record, user_msg, extras, *, mode, repairs, model,
         first_kind, first_args = "implement", {
             "idea": idea, "exemplar_id": record["exemplar_id"]}
         first_user = IMPLEMENT_TEMPLATE.format(
-            idea=idea, scale=record.get("scale") or
-            "(no size seed: choose ordinary sizes)",
+            idea=idea, scale=record.get("scale") or NO_SIZE_SEED,
+            trait=record.get("trait") or NO_TRAIT_SEED,
             exemplar=json.dumps(extras["exemplar"], indent=2))
     else:
         first_kind = "generate" if repairs else "initiate"

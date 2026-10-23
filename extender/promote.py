@@ -10,7 +10,8 @@
   INCONCLUSIVE
   (machinery)    reformat — PATCH_ERROR, NO_AGGREGATE, TRUNCATED, ... are
                  format failures; the cheap fix is a fresh call with the
-                 lesson, never a repair model
+                 lesson, never a repair model (batch.py's retry question
+                 ends with the error since 22 Oct 2026: retry_lesson)
 
 Rates are logged because they are the health signal: FALSE at 5% means
 dropping is right; FALSE at 40% means the extension prompt is generating
@@ -34,8 +35,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
-from build_corpus import (extract_asserts, honest_lines,             # noqa: E402
-                          pdr_wall_s, state_bits, template,
+from build_corpus import (engine_alone, extract_asserts,             # noqa: E402
+                          honest_lines, pdr_wall_s, state_bits, template,
                           without_main_s)
 from coi import coi_ratio                                            # noqa: E402
 import gates                                                         # noqa: E402
@@ -331,6 +332,9 @@ def promote(corpus_rows, ext_records, compute_metrics=True):
                 "coi_ratio": (coi_ratio(child_v, top)
                               if compute_metrics else None),
                 "pdr_wall_s": pdr_wall_s(rec),
+                # could abc pdr prove it with no facts? batch.py grows the
+                # rows it could not prove first (21 Oct 2026)
+                "engine_alone": engine_alone(rec),
                 # the branch stop reads this when a later run starts
                 "without_main_s": without_main_s(rec),
                 "clause_count": len(invariants),

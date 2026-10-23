@@ -350,8 +350,10 @@ def test_a_log_dir_takes_all_three_logs(monkeypatch, tmp_path):
     B, corpus = _logs(monkeypatch, tmp_path)
     logs = tmp_path / "catalog_logs"
     B.main(["--max-calls", "1", "--corpus", str(corpus), "--log-dir", str(logs)])
+    # and the run's realism report beside them (21 Oct 2026)
     assert sorted(p.name for p in logs.iterdir()) == [
-        "batch_queue.jsonl", "extensions.jsonl", "fixer_queue.jsonl"]
+        "batch_queue.jsonl", "extensions.jsonl", "fixer_queue.jsonl",
+        "realism_report.txt"]
     assert not list(tmp_path.glob("v2_*"))
 
 

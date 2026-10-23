@@ -18,10 +18,13 @@ from extender.build_corpus import flatten_record                   # noqa: E402
 
 def test_the_current_prompt_has_no_line_cap_and_says_so():
     """9 Oct 2026: the 200-line cap was removed, so new rows say "nocap",
-    apart from every earlier population ("200cap", "800cap", none)."""
+    apart from every earlier population ("200cap", "800cap", none). Since
+    22 Oct 2026 the stamp also names the rules added after it (review
+    finding: with the size-parameter rule in, rows still said "nocap")."""
     import re
     assert not re.search(r"under\s+(\d+)\s+lines", SYSTEM_PROMPT)
-    assert prompt_version(SYSTEM_PROMPT) == "nocap"
+    assert prompt_version(SYSTEM_PROMPT) == \
+        "nocap+size-params+plain-facts+no-async-reset-reads"
 
 
 def test_a_prompt_with_no_cap_says_so():

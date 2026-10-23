@@ -51,21 +51,70 @@ def test_pairs_carry_the_row_they_came_from():
     assert pairs[0]["id"] == "g0_000" and pairs[0]["generation"] == 0
 
 
+def refuted(trace):
+    """A fixer log line's "result" for a check whose proof was refused with
+    this counterexample, the way fix.py logs it."""
+    return {"verdict": "NOT_PROVEN",
+            "reason": "with-invariants grade is NOT_INDUCTIVE",
+            "with_invariants": {"runs": [{"mode": "cover", "trace_text": "x"},
+                                         {"mode": "prove",
+                                          "trace_text": trace}]}}
+
+
 def test_repairs_pair_the_failed_attempt_with_the_fix():
     """Run 2 data: what the model first said, why it was wrong, and what
-    finally closed the proof."""
+    finally closed the proof. The counterexample is the one that refuted
+    that attempt; until 23 Oct 2026 the prompt showed its cti_leg, the
+    name of a check (review finding)."""
     attempts = [
         {"task_id": 7, "attempt": 1, "verdict": "NOT_PROVEN",
+         "reason": "with-invariants grade is NOT_INDUCTIVE",
          "invariants": ["c <= 4'd15"], "diagnosis": "too weak",
-         "cti_leg": "c = 4'd12"},
+         "cti_leg": "with_invariants", "result": refuted("c = 4'd12")},
         {"task_id": 7, "attempt": 2, "verdict": "NECESSARY",
          "invariants": ["c <= 4'd9"]},
     ]
     out = repair_pairs(attempts, {7: ROW})
     assert len(out) == 1
     assert "c <= 4'd15" in out[0]["prompt"]        # the failed attempt
-    assert "c = 4'd12" in out[0]["prompt"]         # the counterexample
+    assert "Counterexample state: c = 4'd12" in out[0]["prompt"]
+    assert "with_invariants" not in out[0]["prompt"]
     assert json.loads(out[0]["completion"]) == {"invariants": ["c <= 4'd9"]}
+
+
+def test_only_attempts_the_prover_refused_become_repairs():
+    """23 Oct 2026, review finding: "The prover refused them" was said of
+    attempts that never reached it."""
+    never_checked = [
+        {"verdict": v, "invariants": ["c <= $past(c)"], "error": "e"}
+        for v in ("FACT_FORMAT", "READS_RESET", "PRE_GATE")] + [
+        {"verdict": v} for v in ("REFUSED", "UNPARSEABLE")]
+    not_about_facts = [
+        {"verdict": "NOT_PROVEN", "invariants": ["c <= 4'd15"],
+         "reason": f"with-invariants grade is {g}", "result": {}}
+        for g in ("TIMEOUT", "ERROR")]
+    refused = {"verdict": "NOT_PROVEN", "invariants": ["c <= 4'd14"],
+               "reason": "with-invariants grade is NOT_INDUCTIVE",
+               "result": refuted("c = 4'd13")}
+    winner = {"verdict": "NECESSARY", "invariants": ["c <= 4'd9"]}
+    attempts = [dict(a, task_id=7, attempt=n) for n, a in enumerate(
+        never_checked + not_about_facts + [refused, winner], 1)]
+    [pair] = repair_pairs(attempts, {7: ROW})
+    assert "c <= 4'd14" in pair["prompt"]
+    assert "Counterexample state: c = 4'd13" in pair["prompt"]
+    from build_sft import refused_by_the_prover
+    assert [refused_by_the_prover(a) for a in attempts] == \
+        [False] * 7 + [True, False]
+
+
+def test_a_refused_attempt_with_no_trace_kept_says_so():
+    attempts = [{"task_id": 7, "attempt": 1, "verdict": "NOT_PROVEN",
+                 "reason": "with-invariants grade is NOT_INDUCTIVE",
+                 "invariants": ["c <= 4'd15"], "result": {}},
+                {"task_id": 7, "attempt": 2, "verdict": "NECESSARY",
+                 "invariants": ["c <= 4'd9"]}]
+    [pair] = repair_pairs(attempts, {7: ROW})
+    assert "Counterexample state: (none recorded)" in pair["prompt"]
 
 
 def test_a_task_that_never_got_fixed_yields_nothing():
@@ -586,3 +635,966 @@ def test_an_idea_answered_as_json_is_matched_to_its_design():
         _ex("implement", _design("module a; endmodule"), "success",
             idea="GOOD IDEA")])
     assert [r["kind"] for r in recs] == ["idea", "implement"]
+
+
+# --- designs the automatic engine cannot prove alone count for more ----------
+# (21 Oct 2026, Rishab approved.) Rows whose metrics say the engine ran out
+# of time on the property alone are written K times; held-back rows never.
+
+from sft_data import split                                       # noqa: E402
+
+
+def _engine(rows, which):
+    """Copies of `rows` with metrics["engine_alone"] set by index."""
+    return [dict(r, metrics={"engine_alone": which[i]}) if i in which
+            else r for i, r in enumerate(rows)]
+
+
+def _hard_rows(n=20):
+    """n rows: three trained and one held-back row timed out alone, two
+    proved alone, the rest built before the metric existed."""
+    rows = _rows("g0", n)
+    held = bs.held_back(rows)
+    is_held = [bs.build_pair(r)["prompt"] in held for r in rows]
+    trained = [i for i, h in enumerate(is_held) if not h]
+    held_i = [i for i, h in enumerate(is_held) if h]
+    which = {i: "timed_out" for i in trained[:3]}
+    which[held_i[0]] = "timed_out"
+    which.update({trained[3]: "proved", trained[4]: "proved"})
+    return _engine(rows, which), trained[:3], held_i[0]
+
+
+def _counts(lines):
+    out = {}
+    for l in lines:
+        out[l["prompt"]] = out.get(l["prompt"], 0) + 1
+    return out
+
+
+def test_engine_hard_pairs_repeat_right_after_themselves_held_back_never():
+    pairs = [{"prompt": q, "completion": "c", "holdout": h}
+             for q, h in (("a", False), ("b", False), ("c", True))]
+    out, repeated, held = bs.repeat_engine_hard(pairs, {"b", "c"}, 3)
+    assert [p["prompt"] for p in out] == ["a", "b", "b", "b", "c"]
+    assert (repeated, held) == (1, 1)
+    assert out[2] is not out[1] and out[2] == out[1]
+
+
+def test_one_copy_changes_nothing():
+    pairs = [{"prompt": "b", "completion": "c", "holdout": False}]
+    assert bs.repeat_engine_hard(pairs, {"b"}, 1)[0] == pairs
+
+
+def test_repeating_unmarked_pairs_is_refused():
+    """An unmarked file lets the trainer pick its own held-back rows, so a
+    copy could land on the other side."""
+    with pytest.raises(ValueError, match="mark every pair"):
+        bs.repeat_engine_hard([{"prompt": "b", "completion": "c"}], {"b"}, 2)
+
+
+def test_only_rows_that_timed_out_alone_are_engine_hard():
+    rows = _engine(_rows("c0", 5), {0: "timed_out", 1: "proved", 2: "error",
+                                    3: "not_tried"})
+    assert bs.engine_hard_questions(rows) == {bs.build_pair(rows[0])["prompt"]}
+    assert bs.engine_alone(rows[4]) is None
+
+
+def test_the_answers_file_with_repeats_marks_every_line(tmp_path, capsys):
+    rows, hard, held_hard = _hard_rows()
+    corpus = _write_jsonl(tmp_path / "corpus.jsonl", rows)
+    out = tmp_path / "out.jsonl"
+    bs.main(["--corpus", str(corpus), "--out", str(out),
+             "--engine-hard-copies", "3"])
+    lines = [json.loads(l) for l in out.read_text().splitlines()]
+    held = bs.held_back(rows)
+    assert all(set(l) == {"prompt", "completion", "holdout"} for l in lines)
+    assert all(l["holdout"] is (l["prompt"] in held) for l in lines)
+    counts = _counts(lines)
+    prompt = lambda i: bs.build_pair(rows[i])["prompt"]           # noqa: E731
+    assert [counts[prompt(i)] for i in hard] == [3, 3, 3]
+    assert counts[prompt(held_hard)] == 1                # held back: once
+    assert sum(counts.values()) == len(rows) + 2 * 3     # everyone else once
+    # the trainer keeps exactly v2's held-back rows, no copy crosses over
+    train, ev = split(lines)
+    assert {l["prompt"] for l in ev} == held
+    assert not {l["prompt"] for l in train} & held
+    said = capsys.readouterr().out
+    assert "3 repeated, each written 3 times (+6 lines)" in said
+    assert "1 held back, never repeated" in said
+    assert "proved 2" in said and "timed_out 4" in said
+
+
+def test_with_one_copy_the_answers_file_is_byte_for_byte_unchanged(tmp_path):
+    rows, _, _ = _hard_rows()
+    plain = _write_jsonl(tmp_path / "plain.jsonl",
+                         [{k: v for k, v in r.items() if k != "metrics"}
+                          for r in rows])
+    marked = _write_jsonl(tmp_path / "marked.jsonl", rows)
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    bs.main(["--corpus", str(plain), "--out", str(a)])
+    bs.main(["--corpus", str(marked), "--out", str(b)])
+    assert a.read_text() == b.read_text()
+    assert "holdout" not in a.read_text()
+
+
+def test_the_combined_file_repeats_engine_hard_rows_of_both_corpora(
+        tmp_path, capsys):
+    rows, hard, held_hard = _hard_rows()
+    new = _engine(_rows("c0", 4), {0: "timed_out", 1: "proved"})
+    v2 = _write_jsonl(tmp_path / "v2.jsonl", rows)
+    extra = _write_jsonl(tmp_path / "new.jsonl", new)
+    out = tmp_path / "combined.jsonl"
+    bs.main(["--corpus", str(v2), "--extra-corpus", str(extra),
+             "--out", str(out), "--engine-hard-copies", "2"])
+    lines = [json.loads(l) for l in out.read_text().splitlines()]
+    counts = _counts(lines)
+    assert counts[bs.build_pair(new[0])["prompt"]] == 2
+    assert counts[bs.build_pair(new[1])["prompt"]] == 1
+    assert [counts[bs.build_pair(rows[i])["prompt"]] for i in hard] == [2] * 3
+    assert counts[bs.build_pair(rows[held_hard])["prompt"]] == 1
+    assert len(lines) == 24 + 4
+    train, ev = split(lines)
+    assert {l["prompt"] for l in ev} == bs.held_back(rows)
+    assert "4 repeated, each written 2 times (+4 lines)" in \
+        capsys.readouterr().out
+
+
+def test_the_reasoning_file_repeats_engine_hard_rows_too(tmp_path):
+    rows = _engine([ROW, ROW2], {1: "timed_out"})
+    corpus = _write_jsonl(tmp_path / "corpus.jsonl", rows)
+    reasoning = _write_jsonl(tmp_path / "r.jsonl",
+                             [_regen("g0_000", 1, True),
+                              _regen("g0_001", 1, True)])
+    out = tmp_path / "v3.jsonl"
+    bs.main(["--corpus", str(corpus), "--reasoning", str(reasoning),
+             "--out", str(out), "--engine-hard-copies", "2"])
+    lines = [json.loads(l) for l in out.read_text().splitlines()]
+    expect = 1 if bs.build_pair(ROW2)["prompt"] in bs.held_back(rows) else 2
+    assert _counts(lines)[bs.build_pair(ROW2)["prompt"]] == expect
+    assert _counts(lines)[bs.build_pair(ROW)["prompt"]] == 1
+
+
+def test_the_clean_file_repeats_engine_hard_rows_too(tmp_path):
+    rows = _engine([ROW, ROW2], {0: "timed_out"})
+    corpus = _write_jsonl(tmp_path / "corpus.jsonl", rows)
+    clean = tmp_path / "v4a.jsonl"
+    bs.main(["--corpus", str(corpus), "--one-step",
+             str(_one_step_log(tmp_path)), "--clean", str(clean),
+             "--engine-hard-copies", "2"])
+    lines = [json.loads(l) for l in clean.read_text().splitlines()]
+    expect = 1 if bs.build_pair(ROW)["prompt"] in bs.held_back(rows) else 2
+    assert len(lines) == expect
+
+
+def test_fewer_than_one_copy_is_refused(tmp_path):
+    corpus = _write_jsonl(tmp_path / "corpus.jsonl", [ROW])
+    with pytest.raises(SystemExit) as e:
+        bs.main(["--corpus", str(corpus), "--out", str(tmp_path / "o"),
+                 "--engine-hard-copies", "0"])
+    assert "1 or more" in str(e.value)
+    assert not (tmp_path / "o").exists()
+
+
+def test_copies_without_a_solving_file_are_refused(tmp_path):
+    """Preference pairs are not solving pairs and never repeat, so the
+    option alone with them would quietly do nothing."""
+    corpus = _write_jsonl(tmp_path / "corpus.jsonl", [ROW, ROW2])
+    pref = tmp_path / "v4b.jsonl"
+    with pytest.raises(SystemExit) as e:
+        bs.main(["--corpus", str(corpus), "--one-step",
+                 str(_one_step_log(tmp_path)), "--preference", str(pref),
+                 "--engine-hard-copies", "2"])
+    assert "needs a solving file" in str(e.value)
+    assert not pref.exists()
+
+
+def test_a_log_from_before_the_clock_edge_fix_is_flagged(tmp_path, capsys):
+    corpus = _write_jsonl(tmp_path / "corpus.jsonl", [ROW, ROW2])
+    bs.main(["--corpus", str(corpus), "--one-step",
+             str(_one_step_log(tmp_path)),
+             "--clean", str(tmp_path / "v4a.jsonl")])
+    assert "before the clock-edge fix" in capsys.readouterr().out
+
+
+# --- extend records and held-back rows (10 Oct review) ----------------------
+# An extend answer is a patch and a fact list, never a whole design, so a
+# grown design that IS a held-back row, or that grew FROM one, has to be
+# caught by its metadata: child_verilog (the whole grown design, or null)
+# and parent_ids (the corpus ids it grew from), as distill_log.record keeps
+# them.
+
+import distill_log                                               # noqa: E402
+
+PATCH = json.dumps({"patch": "@@ -1 +1 @@\n-x\n+y",
+                    "invariants": ["c <= 4'd9", "c != 4'd15"]})
+
+
+def _extend(tmp_path, child=None, parents=(), question="grow this design"):
+    log = tmp_path / "distill.jsonl"
+    distill_log.record(log, "extend", {"move": "double"}, PATCH, "NECESSARY",
+                       [SYS, {"role": "user", "content": question}],
+                       child_verilog=child, parent_ids=list(parents),
+                       extension_id="2026-10-21_x")
+    return distill_log.read(log)[-1]
+
+
+def _held_row():
+    rows = _rows("g0", 20)
+    held = bs.held_back(rows)
+    return rows, next(r for r in rows if bs.build_pair(r)["prompt"] in held)
+
+
+def test_an_extend_record_whose_grown_design_is_held_back_is_held_back(
+        tmp_path):
+    rows, h = _held_row()
+    respaced = "\n\n".join("    " + l for l in h["verilog"].splitlines())
+    assert respaced != h["verilog"]
+    [rec], _ = bs.generation_records([_extend(tmp_path, child=respaced)],
+                                     bs.held_designs(rows), bs.held_ids(rows))
+    assert rec["holdout"] is True
+
+
+def test_an_extend_record_grown_from_a_held_back_row_is_held_back(tmp_path):
+    rows, h = _held_row()
+    ex = _extend(tmp_path, child="module grown; endmodule",
+                 parents=["c0_001", h["id"]])
+    [rec], _ = bs.generation_records([ex], bs.held_designs(rows),
+                                     bs.held_ids(rows))
+    assert rec["holdout"] is True
+
+
+def test_a_held_back_design_in_the_question_holds_it_back_in_any_spacing(
+        tmp_path):
+    rows, h = _held_row()
+    question = "Grow this design:\n" + " ".join(h["verilog"].split())
+    [rec], _ = bs.generation_records([_extend(tmp_path, question=question)],
+                                     bs.held_designs(rows), bs.held_ids(rows))
+    assert rec["holdout"] is True
+
+
+def test_an_extend_record_from_trained_rows_is_trained(tmp_path):
+    rows, h = _held_row()
+    trained = next(r for r in rows if r is not h
+                   and r["id"] not in bs.held_ids(rows))
+    exs = [_extend(tmp_path, child="module grown; endmodule",
+                   parents=[trained["id"]],
+                   question="Grow:\n" + trained["verilog"]),
+           _extend(tmp_path, child=None, parents=[])]
+    recs, counts = bs.generation_records(exs, bs.held_designs(rows),
+                                         bs.held_ids(rows))
+    assert [r["holdout"] for r in recs] == [False, False]
+    assert counts["extend"] == {"kept": 2, "skipped": 0}
+
+
+def test_held_ids_are_the_ids_of_v2s_held_back_rows():
+    rows = _rows("g0", 20)
+    assert bs.held_ids(rows) == {r["id"] for r in rows
+                                 if r["verilog"] in bs.held_designs(rows)}
+    assert bs.held_ids(rows)
+
+
+def test_a_blank_held_design_holds_nothing_back(tmp_path):
+    [rec], _ = bs.generation_records([_extend(tmp_path, child="module a;")],
+                                     {"", "  \n"})
+    assert rec["holdout"] is False
+
+
+def test_the_command_holds_back_extend_records_by_parent_and_design(
+        tmp_path, capsys):
+    rows = _rows("g0", 20)
+    held = bs.held_back(rows)
+    held_rows = [r for r in rows if bs.build_pair(r)["prompt"] in held]
+    v2 = _write_jsonl(tmp_path / "v2.jsonl", rows)
+    log = tmp_path / "distill.jsonl"
+    for child, parents in ((None, [held_rows[0]["id"]]),
+                           (held_rows[1]["verilog"], ["c0_000"]),
+                           ("module free; endmodule", ["c0_000"])):
+        distill_log.record(log, "extend", {}, PATCH, "NECESSARY",
+                           [SYS, {"role": "user", "content": "grow it"}],
+                           child_verilog=child, parent_ids=parents,
+                           extension_id="e")
+    out = tmp_path / "both.jsonl"
+    bs.main(["--corpus", str(v2), "--distill", str(log), "--out", str(out)])
+    lines = [json.loads(l) for l in out.read_text().splitlines()]
+    assert [l["holdout"] for l in lines if l.get("kind") == "extend"] == \
+        [True, True, False]
+    assert "2 generation record(s) held back" in capsys.readouterr().out
+
+
+# --- only facts the benchmark's checker can read (22 Oct 2026) -------------
+# Review findings F2, F3 and F9: EBMC 6.0, the benchmark's checker, cannot
+# read a fact with a system function, the compact `forall` form or a dotted
+# name (fact_format.py). Every answer written is checked: an extend answer
+# gets the plain list the checker proved, any other unreadable answer is
+# left out and named, never rewritten, and leaving one out never moves
+# another row across the held-back line.
+
+from fact_format import unreadable_facts                         # noqa: E402
+
+ONEHOT = ["$onehot(c)", "c <= 4'd9"]
+COUNTONES = ["occ == $countones(c)", "c != 4'd15"]
+COMPACT = ["forall k in 0..1: !v[k] || (tag[k] != 4'd15)", "c <= 4'd9"]
+EXPANDED = ["!v[0] || (tag[0] != 4'd15)", "!v[1] || (tag[1] != 4'd15)",
+            "c <= 4'd9"]
+
+
+def _bad(rows, i, facts):
+    """`rows` with row i's answer holding facts EBMC cannot read."""
+    return [dict(r, invariants=list(facts)) if k == i else r
+            for k, r in enumerate(rows)]
+
+
+def _held_and_trained(rows):
+    """Indexes of v2's held-back rows and of its trained rows."""
+    held = bs.held_back(rows)
+    is_held = [bs.build_pair(r)["prompt"] in held for r in rows]
+    return ([i for i, h in enumerate(is_held) if h],
+            [i for i, h in enumerate(is_held) if not h])
+
+
+def _facts_of(line):
+    comp = line["completion"]
+    if isinstance(comp, list):
+        comp = comp[0]["content"]
+    return bs.answer_facts(comp) or []
+
+
+def _lines(path):
+    return [json.loads(l) for l in path.read_text().splitlines()]
+
+
+@pytest.mark.parametrize("text, facts", [
+    (json.dumps({"invariants": ["a == b"]}), ["a == b"]),
+    ('```json\n{"invariants": ["$onehot(s)"]}\n```', ["$onehot(s)"]),
+    ('Here: {"reasoning": "{x}", "invariants": ["a"]} done', ["a"]),
+    (json.dumps([{"invariants": ["a"]}]), ["a"]),
+    ("an idea in plain words", None),
+    (json.dumps({"note": "why", "patch": "+x"}), None),
+    (None, None),
+])
+def test_answer_facts_reads_an_answer_the_way_the_scorer_does(text, facts):
+    assert bs.answer_facts(text) == facts
+
+
+def test_unreadable_answers_are_left_out_named_and_never_rewritten():
+    pairs = [{"id": "a", "completion": json.dumps({"invariants": EXPANDED})},
+             {"id": "b", "completion": json.dumps({"invariants": ONEHOT})},
+             {"id": "c", "completion": json.dumps({"invariants": COMPACT})}]
+    kept, left_out = bs.leave_out_unreadable(pairs)
+    assert kept == [pairs[0]] and kept[0] is pairs[0]
+    assert left_out == [
+        ("b", [("$onehot(c)", ["system function $onehot"])]),
+        ("c", [(COMPACT[0], ["compact forall form"])])]
+
+
+def test_a_left_out_answer_is_never_silent(capsys):
+    bs.say_left_out("solving answers", [])
+    assert "solving answers: EBMC can read every fact" in \
+        capsys.readouterr().out
+    onehot = [("$onehot(st)", ["system function $onehot"])]
+    bs.say_left_out("preference pairs", [
+        ("g0_051", onehot), ("g0_051", onehot),
+        ("c0_144", [("occ == $countones(valid)",
+                     ["system function $countones"])])])
+    said = capsys.readouterr().out
+    assert ("left out 3 preference pairs with facts EBMC cannot read (not "
+            "rewritten): g0_051, c0_144") in said
+    assert said.count("g0_051: $onehot(st)  (system function $onehot)") == 1
+    assert "c0_144: occ == $countones(valid)  (system function " \
+        "$countones)" in said
+
+
+def test_the_answers_file_leaves_out_unreadable_answers_and_keeps_v2s_choice(
+        tmp_path, capsys):
+    rows = _rows("g0", 30)
+    h, t = _held_and_trained(rows)
+    rows = _bad(_bad(rows, h[0], ONEHOT), t[0], COUNTONES)
+    held = bs.held_back(rows)                  # v2's choice on every row
+    gone = {bs.build_pair(rows[i])["prompt"] for i in (h[0], t[0])}
+    out = tmp_path / "out.jsonl"
+    bs.main(["--corpus", str(_write_jsonl(tmp_path / "c.jsonl", rows)),
+             "--out", str(out)])
+    lines = _lines(out)
+    assert len(lines) == 28
+    assert not any(unreadable_facts(_facts_of(l)) for l in lines)
+    assert not gone & {l["prompt"] for l in lines}
+    said = capsys.readouterr().out
+    assert "left out 2 solving answers" in said
+    assert rows[h[0]]["id"] in said and rows[t[0]]["id"] in said
+    # every line carries v2's own held-back choice, and the trainer keeps
+    # it: a fresh shuffle of the shorter list would pick other rows
+    assert all(set(l) == {"prompt", "completion", "holdout"} for l in lines)
+    assert all(l["holdout"] is (l["prompt"] in held) for l in lines)
+    train, ev = split(lines)
+    assert {l["prompt"] for l in ev} == held - gone
+    assert {l["prompt"] for l in train} == \
+        {bs.build_pair(r)["prompt"] for r in rows} - held - gone
+
+
+def test_with_every_fact_readable_the_answers_file_is_as_before(tmp_path,
+                                                               capsys):
+    out = tmp_path / "v2.jsonl"
+    bs.main(["--corpus", str(_write_jsonl(tmp_path / "c.jsonl", [ROW, ROW2])),
+             "--out", str(out)])
+    assert out.read_text() == "".join(
+        json.dumps({"prompt": p["prompt"], "completion": p["completion"]})
+        + "\n" for p in build_pairs([ROW, ROW2]))
+    assert "solving answers: EBMC can read every fact" in \
+        capsys.readouterr().out
+
+
+def test_the_combined_file_leaves_out_unreadable_answers_of_both_corpora(
+        tmp_path, capsys):
+    rows = _rows("g0", 20)
+    h, _ = _held_and_trained(rows)
+    rows = _bad(rows, h[0], ONEHOT)
+    new = _bad(_rows("c0", 4), 1, COUNTONES)
+    held = bs.held_back(rows)
+    out = tmp_path / "combined.jsonl"
+    bs.main(["--corpus", str(_write_jsonl(tmp_path / "v2.jsonl", rows)),
+             "--extra-corpus", str(_write_jsonl(tmp_path / "n.jsonl", new)),
+             "--out", str(out)])
+    lines = _lines(out)
+    gone = {bs.build_pair(rows[h[0]])["prompt"],
+            bs.build_pair(new[1])["prompt"]}
+    assert len(lines) == 24 - 2 and not gone & {l["prompt"] for l in lines}
+    assert not any(unreadable_facts(_facts_of(l)) for l in lines)
+    assert all(l["holdout"] is (l["prompt"] in held) for l in lines)
+    said = capsys.readouterr().out
+    assert "left out 2 solving answers" in said
+    assert rows[h[0]]["id"] in said and "c0_001" in said
+
+
+def test_the_reasoning_file_leaves_out_unreadable_answers(tmp_path, capsys):
+    rows = _rows("g0", 20)
+    h, t = _held_and_trained(rows)
+    rows = _bad(_bad(rows, h[0], ONEHOT), t[0], ONEHOT)
+    held = bs.held_back(rows)
+    reasoning = _write_jsonl(tmp_path / "r.jsonl",
+                             [_regen(r["id"], 1, True) for r in rows])
+    out = tmp_path / "v3.jsonl"
+    bs.main(["--corpus", str(_write_jsonl(tmp_path / "c.jsonl", rows)),
+             "--reasoning", str(reasoning), "--out", str(out)])
+    lines = _lines(out)
+    assert len(lines) == 18
+    assert not any(unreadable_facts(_facts_of(l)) for l in lines)
+    assert all(l["holdout"] is (l["prompt"] in held) for l in lines)
+    assert sum(l["holdout"] for l in lines) == len(held) - 1
+    said = capsys.readouterr().out
+    assert "left out 2 solving answers" in said and "(18 lines)" in said
+
+
+def _all_pass_log(tmp_path, rows):
+    """A fixed-check 1-step log: every answer passes, its first fact
+    needed."""
+    lines = []
+    for r in rows:
+        lines += [{"id": r["id"], "dropped": d, "tier": "INDUCTIVE",
+                   "clock_edge_fix": True} for d in (-1, -2)]
+        lines += [{"id": r["id"], "dropped": i, "clause": c,
+                   "clock_edge_fix": True,
+                   "tier": "NOT_INDUCTIVE" if i == 0 else "INDUCTIVE",
+                   "trace": "cex" if i == 0 else None}
+                  for i, c in enumerate(r["invariants"])]
+    return _write_jsonl(tmp_path / "one_step_fixed.jsonl", lines)
+
+
+def test_the_clean_and_preference_files_leave_out_unreadable_answers(
+        tmp_path, capsys):
+    rows = _rows("g0", 20)
+    h, t = _held_and_trained(rows)
+    rows = _bad(_bad(rows, h[0], ONEHOT), t[0], COUNTONES)
+    held = bs.held_back(rows)
+    clean, pref = tmp_path / "v4a.jsonl", tmp_path / "v4b.jsonl"
+    bs.main(["--corpus", str(_write_jsonl(tmp_path / "c.jsonl", rows)),
+             "--one-step", str(_all_pass_log(tmp_path, rows)),
+             "--clean", str(clean), "--preference", str(pref)])
+    a, b = _lines(clean), _lines(pref)
+    assert len(a) == 18 and len(b) == 18
+    assert not {rows[h[0]]["id"], rows[t[0]]["id"]} & {p["id"] for p in b}
+    assert not any(unreadable_facts(_facts_of(l)) for l in a)
+    assert not any(unreadable_facts(bs.answer_facts(p["chosen"]))
+                   for p in b)
+    assert all(l["holdout"] is (l["prompt"] in held) for l in a + b)
+    said = capsys.readouterr().out
+    assert "left out 2 clean answers" in said
+    assert "left out 2 preference pairs" in said
+    assert "before the clock-edge fix" not in said
+
+
+def _repair_setup(tmp_path, monkeypatch, bad_task=None):
+    """20 fixed tasks, each a failed attempt then a winner; the winner of
+    `bad_task` holds a fact EBMC cannot read."""
+    rows = [dict(r, source_task=k) for k, r in enumerate(_rows("g0", 20))]
+    attempts = []
+    for k in range(20):
+        attempts += [
+            {"task_id": k, "attempt": 1, "verdict": "NOT_PROVEN",
+             "invariants": ["c <= 4'd15"], "diagnosis": "too weak",
+             "cti_leg": "c = 4'd12"},
+            {"task_id": k, "attempt": 2, "verdict": "NECESSARY",
+             "invariants": ["c <= 4'd9"] + (["!b || (a == $past(b))"]
+                                           if k == bad_task else [])}]
+    monkeypatch.setattr(bs, "FIXER_LOG",
+                        _write_jsonl(tmp_path / "fixer.jsonl", attempts))
+    corpus = _write_jsonl(tmp_path / "corpus.jsonl", rows)
+    return bs.repair_pairs(attempts, {r["source_task"]: r for r in rows}), \
+        corpus
+
+
+def test_the_repairs_file_leaves_out_unreadable_answers_and_keeps_the_choice(
+        tmp_path, monkeypatch, capsys):
+    full, _ = _repair_setup(tmp_path, monkeypatch)
+    held = {p["prompt"] for p in split(full)[1]}   # the trainer's choice
+    bad = next(p["task_id"] for p in full if p["prompt"] not in held)
+    _, corpus = _repair_setup(tmp_path, monkeypatch, bad_task=bad)
+    out = tmp_path / "repairs.jsonl"
+    bs.main(["--corpus", str(corpus), "--repairs", str(out)])
+    lines = _lines(out)
+    assert len(lines) == 19 and bad not in {l["task_id"] for l in lines}
+    assert not any(unreadable_facts(_facts_of(l)) for l in lines)
+    assert all(l["holdout"] is (l["prompt"] in held) for l in lines)
+    assert {l["prompt"] for l in split(lines)[1]} == held
+    said = capsys.readouterr().out
+    assert f"left out 1 repair answers with facts EBMC cannot read (not " \
+        f"rewritten): {bad}" in said
+
+
+def test_with_every_fact_readable_the_repairs_file_is_as_before(
+        tmp_path, monkeypatch):
+    full, corpus = _repair_setup(tmp_path, monkeypatch)
+    out = tmp_path / "repairs.jsonl"
+    bs.main(["--corpus", str(corpus), "--repairs", str(out)])
+    assert out.read_text() == "".join(json.dumps(o) + "\n" for o in full)
+
+
+# extend answers: the plain list the checker proved (review finding F2)
+
+def _extend_answer(facts):
+    return json.dumps({"claim": "two entries", "patch": "@@ -1 +1 @@\n-x\n+y",
+                       "invariants": list(facts), "dispositions": []})
+
+
+def _saved_extend(tmp_path, answer, expanded=None, ext_id="2026-10-22_t001"):
+    """A saved extension example as the extender writes it; `expanded`
+    is its metadata "invariants_expanded"."""
+    log = tmp_path / f"distill_{ext_id}.jsonl"
+    meta = {} if expanded is None else {"invariants_expanded": expanded}
+    distill_log.record(log, "extend", {"move": "STORAGE"}, answer,
+                       "NECESSARY", [SYS, {"role": "user",
+                                           "content": "grow it"}],
+                       child_verilog="module grown; endmodule",
+                       parent_ids=["c0_000"], extension_id=ext_id, **meta)
+    return distill_log.read(log)[-1]
+
+
+def test_an_extend_answer_gets_the_plain_list_the_checker_proved(tmp_path):
+    answer = _extend_answer(COMPACT)
+    report = {}
+    [rec], counts = bs.generation_records(
+        [_saved_extend(tmp_path, answer, EXPANDED)], fact_report=report)
+    got = json.loads(rec["completion"][0]["content"])
+    assert got == dict(json.loads(answer), invariants=EXPANDED)
+    assert list(got) == list(json.loads(answer))    # every field, in place
+    assert report == {"rebuilt": ["2026-10-22_t001"], "left_out": [],
+                      "lists": []}
+    assert counts["extend"] == {"kept": 1, "skipped": 0}
+
+
+def test_compact_facts_with_no_plain_list_leave_the_answer_out(tmp_path):
+    report = {}
+    recs, counts = bs.generation_records(
+        [_saved_extend(tmp_path, _extend_answer(COMPACT))],
+        fact_report=report)
+    assert recs == [] and counts["extend"] == {"kept": 0, "skipped": 1}
+    assert report == {"rebuilt": [], "left_out": [
+        ("extend 2026-10-22_t001", [(COMPACT[0], ["compact forall form"])])],
+        "lists": []}
+
+
+def test_an_extend_answer_already_plain_stays_exactly_as_written(tmp_path):
+    answer = json.dumps(json.loads(_extend_answer(EXPANDED)), indent=2)
+    report = {}
+    recs, _ = bs.generation_records(
+        [_saved_extend(tmp_path, answer, EXPANDED),
+         _saved_extend(tmp_path, answer, ext_id="e2")], fact_report=report)
+    assert [r["completion"][0]["content"] for r in recs] == [answer, answer]
+    assert report == {"rebuilt": [], "left_out": [], "lists": []}
+
+
+def test_a_proved_list_ebmc_still_cannot_read_is_left_out(tmp_path):
+    report = {}
+    recs, counts = bs.generation_records(
+        [_saved_extend(tmp_path, _extend_answer(COMPACT),
+                       EXPANDED + ["a == $past(b)"])], fact_report=report)
+    assert recs == [] and counts["extend"]["skipped"] == 1
+    assert report["left_out"][0][1] == [("a == $past(b)",
+                                         ["system function $past"])]
+
+
+def test_a_distractor_answer_has_no_facts_and_is_kept_as_written(tmp_path):
+    answer = json.dumps({"note": "irrelevant logic", "patch": "+x"})
+    report = {}
+    [rec], _ = bs.generation_records(
+        [_saved_extend(tmp_path, answer, EXPANDED)], fact_report=report)
+    assert rec["completion"][0]["content"] == answer
+    assert report == {"rebuilt": [], "left_out": [], "lists": []}
+
+
+# the kept/replaced list of an extend answer (23 Oct 2026, Rishab chose to
+# leave out an answer whose list names a compact fact)
+
+def _kept(fact):
+    return {"clause": fact, "status": "kept", "replaced_by": [],
+            "reason": "unchanged"}
+
+
+def _listed_answer(facts, dispositions):
+    return json.dumps({"claim": "two entries", "patch": "@@ -1 +1 @@\n-x\n+y",
+                       "invariants": list(facts),
+                       "dispositions": dispositions})
+
+
+def test_an_answer_that_kept_a_compact_parent_fact_is_left_out(tmp_path):
+    """The parent's compact fact was kept; spelled out, the answer's list
+    no longer holds it, and the list still writes the compact form."""
+    answer = _listed_answer(COMPACT, [_kept(COMPACT[0]), _kept("c <= 4'd9")])
+    report = {}
+    recs, counts = bs.generation_records(
+        [_saved_extend(tmp_path, answer, EXPANDED)], fact_report=report)
+    assert recs == [] and counts["extend"] == {"kept": 0, "skipped": 1}
+    assert report == {"rebuilt": [], "lists": ["2026-10-22_t001"],
+                      "left_out": [("extend 2026-10-22_t001", [
+                          (COMPACT[0], ["compact forall form, in the "
+                                        "kept/replaced list"])])]}
+
+
+def test_an_answer_that_replaced_a_fact_by_a_compact_one_is_left_out(
+        tmp_path):
+    answer = _listed_answer(COMPACT, [
+        {"clause": "c <= 4'd15", "status": "superseded",
+         "replaced_by": COMPACT[0], "reason": "tighter"}])
+    report = {}
+    recs, _ = bs.generation_records(
+        [_saved_extend(tmp_path, answer, EXPANDED)], fact_report=report)
+    assert recs == [] and report["lists"] == ["2026-10-22_t001"]
+    assert report["left_out"][0][1] == [
+        (COMPACT[0], ["compact forall form, in the kept/replaced list"])]
+
+
+def test_a_list_of_plain_facts_keeps_the_rebuilt_answer(tmp_path):
+    """The answer's own new fact is compact, but its list names only
+    plain facts, which are the same once the compact one is spelled
+    out."""
+    disps = [_kept("c <= 4'd9"),
+             {"clause": "c <= 4'd15", "status": "superseded",
+              "replaced_by": ["c <= 4'd9"], "reason": "tighter"}]
+    answer = _listed_answer(COMPACT, disps)
+    report = {}
+    [rec], _ = bs.generation_records(
+        [_saved_extend(tmp_path, answer, EXPANDED)], fact_report=report)
+    got = json.loads(rec["completion"][0]["content"])
+    assert got["invariants"] == EXPANDED and got["dispositions"] == disps
+    assert report == {"rebuilt": ["2026-10-22_t001"], "left_out": [],
+                      "lists": []}
+
+
+@pytest.mark.parametrize("answer, facts", [
+    (_listed_answer([], [{"clause": "a", "status": "superseded",
+                          "replaced_by": ["b", "c"], "reason": "r"},
+                         _kept("d")]), ["a", "b", "c", "d"]),
+    (_listed_answer([], [{"clause": "a", "replaced_by": "b"}]), ["a", "b"]),
+    (_listed_answer([], ["a", None, {"clause": " "}, {}]), []),
+    (_extend_answer(["x"]), []),
+    (json.dumps({"patch": "+x"}), []),
+    ("not json", []),
+])
+def test_listed_facts_reads_every_fact_the_list_names(answer, facts):
+    assert bs.listed_facts(answer) == facts
+
+
+def test_the_command_says_how_many_answers_were_left_out_for_their_list(
+        tmp_path, capsys):
+    log = tmp_path / "distill.jsonl"
+    for ext_id, disps in (("kept_compact", [_kept(COMPACT[0])]),
+                          ("plain_list", [_kept("c <= 4'd9")])):
+        distill_log.record(log, "extend", {}, _listed_answer(COMPACT, disps),
+                           "NECESSARY", [SYS, {"role": "user",
+                                               "content": "grow it"}],
+                           extension_id=ext_id, invariants_expanded=EXPANDED)
+    out = tmp_path / "o.jsonl"
+    bs.main(["--corpus", str(_write_jsonl(tmp_path / "v2.jsonl",
+                                          _rows("g0", 5))),
+             "--distill", str(log), "--out", str(out)])
+    said = capsys.readouterr().out
+    assert ("1 extend answer(s) left out because their kept/replaced list "
+            "names a fact EBMC cannot read") in said
+    assert "extend kept_compact" in said
+    assert "extend 1 kept / 1 skipped" in said
+    assert [_facts_of(l) for l in _lines(out) if l.get("kind") == "extend"] \
+        == [EXPANDED]
+
+
+def test_a_design_answer_ebmc_cannot_read_is_left_out_and_its_idea_kept():
+    """The idea still led to a design that passed; only the answer that
+    writes a fact EBMC cannot read is left out."""
+    bad = json.dumps({"top_module": "m", "verilog": "module m; endmodule",
+                      "invariants": ["occ == $countones(valid)"]})
+    implement = _ex("implement", bad, "success", idea="GOOD IDEA")
+    implement["metadata"].update(run_id="run9", attempt=4)
+    report = {}
+    recs, counts = bs.generation_records(
+        [_ex("idea", "GOOD IDEA", "success"), implement,
+         _ex("generate", _design("module ok; endmodule"), "success")],
+        fact_report=report)
+    assert [r["kind"] for r in recs] == ["idea", "generate"]
+    assert counts["implement"] == {"kept": 0, "skipped": 1}
+    assert report["left_out"] == [("implement run9 attempt 4", [
+        ("occ == $countones(valid)", ["system function $countones"])])]
+
+
+@pytest.mark.parametrize("meta, name", [
+    ({"extension_id": "e7", "run_id": "r"}, "e7"),
+    ({"run_id": "r1", "attempt": 3}, "r1 attempt 3"),
+    ({"source_run_id": "old", "source_attempt": 2}, "old attempt 2"),
+    ({}, "example 5 of the input"),
+])
+def test_a_left_out_example_is_named_so_it_can_be_found(meta, name):
+    assert bs.example_name({"metadata": meta}, 4) == name
+
+
+def test_leaving_answers_out_moves_no_record_across_the_held_back_line(
+        tmp_path, capsys):
+    rows = _rows("g0", 20)
+    h, t = _held_and_trained(rows)
+    held_row = rows[h[0]]
+    rows = _bad(rows, h[0], ONEHOT)        # its solving answer is left out
+    log = tmp_path / "distill.jsonl"
+    for child, parents, facts, ext_id in (
+            # a design showing the left-out held-back row: still held back
+            (held_row["verilog"], ["c0_000"], EXPANDED, "shows_held"),
+            (None, [held_row["id"]], EXPANDED, "grew_from_held"),
+            # compact facts and no plain list: left out
+            ("module free; endmodule", ["c0_000"], COMPACT, "unreadable"),
+            ("module free2; endmodule", [rows[t[0]]["id"]], EXPANDED,
+             "trained")):
+        distill_log.record(log, "extend", {}, _extend_answer(facts),
+                           "NECESSARY", [SYS, {"role": "user",
+                                               "content": "grow it"}],
+                           child_verilog=child, parent_ids=parents,
+                           extension_id=ext_id)
+    out = tmp_path / "both.jsonl"
+    bs.main(["--corpus", str(_write_jsonl(tmp_path / "v2.jsonl", rows)),
+             "--distill", str(log), "--out", str(out)])
+    lines = _lines(out)
+    assert [l["holdout"] for l in lines if l.get("kind") == "extend"] == \
+        [True, True, False]
+    solving = [l for l in lines if isinstance(l["prompt"], str)]
+    held = bs.held_back(rows)
+    assert len(solving) == 19
+    assert all(l["holdout"] is (l["prompt"] in held) for l in solving)
+    said = capsys.readouterr().out
+    assert "extend 3 kept / 1 skipped" in said
+    assert "0 extend answer(s) rebuilt" in said
+    assert ("left out 1 generation answers (counted as skipped) with facts "
+            "EBMC cannot read (not rewritten): extend unreadable") in said
+
+
+def test_the_command_says_how_many_extend_answers_were_rebuilt(tmp_path,
+                                                              capsys):
+    log = tmp_path / "distill.jsonl"
+    for ext_id, meta in (("rebuilt_one", {"invariants_expanded": EXPANDED}),
+                         ("left_out_one", {})):
+        distill_log.record(log, "extend", {}, _extend_answer(COMPACT),
+                           "NECESSARY", [SYS, {"role": "user",
+                                               "content": "grow it"}],
+                           extension_id=ext_id, **meta)
+    out = tmp_path / "o.jsonl"
+    bs.main(["--corpus", str(_write_jsonl(tmp_path / "v2.jsonl",
+                                          _rows("g0", 5))),
+             "--distill", str(log), "--out", str(out)])
+    said = capsys.readouterr().out
+    assert ("1 extend answer(s) rebuilt with the plain fact list the checker "
+            "proved") in said
+    assert "extend left_out_one" in said
+    assert "extend 1 kept / 1 skipped" in said
+    gen = [l for l in _lines(out) if l.get("kind") == "extend"]
+    assert [_facts_of(g) for g in gen] == [EXPANDED]
+
+
+# the real data, read only (22 Oct 2026: five answers with $onehot(st) in
+# corpus.jsonl, c0_144 with $countones in corpus_2026-10-09.jsonl, and a
+# kept step of the 21 Oct trial with a compact fact)
+
+REAL_NEW_CORPUS = REAL_CORPUS.parent / "corpus_2026-10-09.jsonl"
+REAL_TRIAL = REAL_CORPUS.parent / "logs" / "real_systems_trial_2026-10-21"
+
+
+def _real_rows(path):
+    return [json.loads(l) for l in path.read_text().splitlines()
+            if l.strip()]
+
+
+def _unreadable_ids(rows):
+    return [r["id"] for r in rows
+            if r.get("invariants") and unreadable_facts(r["invariants"])]
+
+
+@pytest.mark.skipif(not REAL_CORPUS.exists(), reason="no corpus here")
+def test_no_real_answer_ebmc_cannot_read_reaches_the_answers_file(
+        tmp_path, capsys):
+    rows = _real_rows(REAL_CORPUS)
+    bad = _unreadable_ids(rows)
+    out = tmp_path / "v2.jsonl"
+    bs.main(["--corpus", str(REAL_CORPUS), "--out", str(out)])
+    lines = _lines(out)
+    assert not any(unreadable_facts(_facts_of(l)) for l in lines)
+    assert len(lines) == len(bs.build_pairs(rows)) - len(bad)
+    held = bs.held_back(rows)
+    assert all(l["holdout"] is (l["prompt"] in held) for l in lines)
+    if bad:
+        assert (f"left out {len(bad)} solving answers with facts EBMC cannot "
+                f"read (not rewritten): {', '.join(bad)}") in \
+            capsys.readouterr().out
+
+
+@pytest.mark.skipif(not (REAL_CORPUS.exists() and REAL_NEW_CORPUS.exists()),
+                    reason="no corpora here")
+def test_no_real_answer_ebmc_cannot_read_reaches_the_combined_file(
+        tmp_path, capsys):
+    rows, new = _real_rows(REAL_CORPUS), _real_rows(REAL_NEW_CORPUS)
+    bad = _unreadable_ids(rows) + _unreadable_ids(new)
+    out = tmp_path / "combined.jsonl"
+    bs.main(["--corpus", str(REAL_CORPUS), "--extra-corpus",
+             str(REAL_NEW_CORPUS), "--out", str(out)])
+    lines = _lines(out)
+    assert not any(unreadable_facts(_facts_of(l)) for l in lines)
+    assert len(lines) == (len(bs.build_pairs(rows)) + len(bs.build_pairs(new))
+                          - len(bad))
+    held = bs.held_back(rows)
+    assert all(l["holdout"] is (l["prompt"] in held) for l in lines)
+    if bad:
+        assert f"left out {len(bad)} solving answers" in \
+            capsys.readouterr().out
+
+
+@pytest.mark.skipif(not (REAL_TRIAL / "extensions.jsonl").exists(),
+                    reason="no 21 Oct trial here")
+def test_the_real_kept_step_with_a_compact_fact_trains_its_plain_list(
+        tmp_path):
+    rec = next(json.loads(l) for l in
+               (REAL_TRIAL / "extensions.jsonl").read_text().splitlines()
+               if '"2026-10-21_07h28m39s_t001"' in l)
+
+    def facts_of(call):
+        try:
+            return json.loads(call["raw"]).get("invariants")
+        except (TypeError, ValueError, AttributeError):
+            return None
+    raw = next(c["raw"] for c in map(
+        json.loads, (REAL_TRIAL / "calls.jsonl").read_text().splitlines())
+        if facts_of(c) == rec["invariants_compact"])
+    assert unreadable_facts(rec["invariants_compact"])     # as written
+    assert not unreadable_facts(rec["invariants"])         # as proved
+    [kept], _ = bs.generation_records(
+        [_saved_extend(tmp_path, raw, rec["invariants"],
+                       ext_id=rec["extension_id"])])
+    assert _facts_of(kept) == rec["invariants"]
+    assert bs.generation_records(
+        [_saved_extend(tmp_path, raw, ext_id="no_plain_list")])[0] == []
+
+
+@pytest.mark.skipif(not (REAL_TRIAL / "extensions.jsonl").exists(),
+                    reason="no 21 Oct trial here")
+def test_the_real_kept_step_that_kept_a_compact_parent_fact_is_left_out(
+        tmp_path):
+    """2026-10-21_08h58m35s_t030 kept its parent's `forall k in 0..7: ...`
+    fact; of the trial's 19 kept steps, it is the only one whose
+    kept/replaced list names a fact EBMC cannot read."""
+    recs = [json.loads(l) for l in
+            (REAL_TRIAL / "extensions.jsonl").read_text().splitlines()
+            if l.strip()]
+    kept = [r for r in recs if r.get("verdict") == "NECESSARY"]
+    assert len(kept) == 19
+
+    def listed(r):
+        return bs.listed_facts(json.dumps(
+            {"dispositions": r.get("dispositions") or []}))
+    assert [r["extension_id"] for r in kept
+            if unreadable_facts(listed(r))] == ["2026-10-21_08h58m35s_t030"]
+    rec = next(r for r in kept
+               if r["extension_id"] == "2026-10-21_08h58m35s_t030")
+    answer = json.dumps({"patch": "+x", "invariants": rec["invariants_compact"],
+                         "dispositions": rec["dispositions"]})
+    report = {}
+    assert bs.generation_records(
+        [_saved_extend(tmp_path, answer, rec["invariants"],
+                       ext_id=rec["extension_id"])],
+        fact_report=report)[0] == []
+    assert report["lists"] == ["2026-10-21_08h58m35s_t030"]
+
+
+# --- the combined build and a v2 file rebuilt in place (23 Oct 2026) --------
+# Review finding: rebuilt with this builder, sft_train_v2.jsonl leaves out
+# the answers EBMC cannot read and marks every line, and the combined
+# build, which compared line for line with the file as first written,
+# stopped with "the v2 part differs". Either form is now accepted.
+
+def _v2_setup(tmp_path, monkeypatch):
+    """A v2 corpus of 20 rows, one of them with a fact EBMC cannot read,
+    made the builder's own corpus, and a small new corpus."""
+    rows = _bad(_rows("g0", 20), 3, ONEHOT)
+    corpus = _write_jsonl(tmp_path / "corpus.jsonl", rows)
+    monkeypatch.setattr(bs, "CORPUS", corpus)
+    monkeypatch.setattr(bs, "V2_FILE", tmp_path / "sft_train_v2.jsonl")
+    new = _write_jsonl(tmp_path / "new.jsonl", _rows("c0", 4))
+    return rows, corpus, new
+
+
+def _combined(corpus, new, out):
+    bs.main(["--corpus", str(corpus), "--extra-corpus", str(new),
+             "--out", str(out)])
+    return _lines(out)
+
+
+def test_a_v2_file_rebuilt_in_place_lets_the_combined_build_run(
+        tmp_path, monkeypatch, capsys):
+    rows, corpus, new = _v2_setup(tmp_path, monkeypatch)
+    bs.main(["--out", str(bs.V2_FILE)])             # rebuilt in place
+    assert len(_lines(bs.V2_FILE)) == 19
+    lines = _combined(corpus, new, tmp_path / "combined.jsonl")
+    assert len(lines) == 19 + 4
+    assert "v2 part matches sft_train_v2.jsonl line for line (rebuilt " \
+        "with unreadable answers left out)" in capsys.readouterr().out
+
+
+def test_the_v2_file_as_first_written_still_matches(tmp_path, monkeypatch,
+                                                   capsys):
+    rows, corpus, new = _v2_setup(tmp_path, monkeypatch)
+    bs.V2_FILE.write_text("".join(
+        json.dumps({"prompt": p["prompt"], "completion": p["completion"]})
+        + "\n" for p in bs.build_pairs(rows)))       # all 20, unmarked
+    assert len(_combined(corpus, new, tmp_path / "combined.jsonl")) == 23
+    assert "(as first written)" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("change", ["answer", "mark", "order", "a line more"])
+def test_any_other_v2_file_still_stops_the_combined_build(tmp_path,
+                                                          monkeypatch,
+                                                          change):
+    rows, corpus, new = _v2_setup(tmp_path, monkeypatch)
+    bs.main(["--out", str(bs.V2_FILE)])
+    lines = _lines(bs.V2_FILE)
+    if change == "answer":
+        lines[0]["completion"] = json.dumps({"invariants": ["c <= 4'd8"]})
+    elif change == "mark":
+        lines[0]["holdout"] = not lines[0]["holdout"]
+    elif change == "order":
+        lines[0], lines[1] = lines[1], lines[0]
+    else:
+        lines.append(lines[-1])
+    _write_jsonl(bs.V2_FILE, lines)
+    out = tmp_path / "combined.jsonl"
+    with pytest.raises(SystemExit, match="the v2 part differs"):
+        _combined(corpus, new, out)
+    assert not out.exists()

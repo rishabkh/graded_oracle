@@ -12,9 +12,27 @@ Stopping conditions, per the directive:
 
 Every attempt is logged with task_id + attempt number (format failures
 retry the same task up to three attempts — the step-6 requirement, so
-failed-vs-fixed pairs are future preference data). Accepted children
-promote immediately and join the frontier, which is what makes the loop
-recursive: children of children get extended in the same run.
+failed-vs-fixed pairs are future preference data). Since 22 Oct 2026 a
+retry's question ends with why the attempt before it was sent back
+(retry_lesson). Accepted children promote immediately and join the
+frontier, which is what makes the loop recursive: children of children
+get extended in the same run.
+
+A step whose verdict came from the checker's time limit is checked once
+more with a longer limit before it is routed (--recheck-timeout-s, 900 s by
+default), and with --log-dir a run's proofs go in <log-dir>/proofs, next to
+its logs (21 Oct 2026).
+
+Rows the automatic engine (abc pdr) could not prove without facts are
+grown first (metrics.engine_alone; --no-prefer-engine-hard turns it off),
+and every answer to an extension question is also saved as an `extend`
+training example in distill_extensions.jsonl, next to the extension log
+(21 Oct 2026).
+
+A run with --log-dir ends with a realism report, written to
+<log-dir>/realism_report.txt and printed: how the kept designs compare
+with real open-source hardware, and what the run cost
+(realism_report.py, 21 Oct 2026). A report that fails never fails the run.
 
   venv/bin/python extender/batch.py --dry --max-calls 20      # plan only
   venv/bin/python extender/batch.py --max-calls 20 --seed 1   # spend money
@@ -35,13 +53,14 @@ sys.path.insert(0, str(HERE))
 
 from extend import (MOVE_WEIGHTS, SECOND_PROPERTY_RATE,          # noqa: E402
                     REPLICATE_SCHEMA, SECOND_SCHEMA, STRUCTURAL_SCHEMA,
-                    COMPOSE_SCHEMA, PARTNER_SCHEMA, build_prompt,
-                    call_model, compose_prompt, expose_for_wrapper,
-                    grade_compose, grade_replicate, grade_step4,
-                    keep_reasoning, partner_prompt, wrappable)
+                    COMPOSE_SCHEMA, PARTNER_SCHEMA, SYSTEM_PROMPT,
+                    build_prompt, call_model, compose_prompt, expand_facts,
+                    expose_for_wrapper, grade_compose, grade_replicate,
+                    grade_step4, keep_reasoning, partner_prompt, wrappable)
+import distill_log                                                # noqa: E402
 import llm_client                                                 # noqa: E402
-from build_corpus import (extract_asserts, honest_lines,          # noqa: E402
-                          without_main_s)
+from build_corpus import (engine_alone_share, extract_asserts,    # noqa: E402
+                          honest_lines, without_main_s)
 from distractor import (Spinner, dump, OUT_LOG, MODEL, EFFORT,    # noqa: E402
                         GRADE_KWARGS, build_prompt as distractor_prompt,
                         call_model as distractor_call, grade_extension)
@@ -144,6 +163,50 @@ def extendable(row, without_s, max_gen=MAX_GEN):
     if without_s is not None and without_s > MAX_WITHOUT_S:
         return False
     return True
+
+
+# Rows the automatic engine could not prove alone are grown first (21 Oct
+# 2026, Rishab approved: "make all 1-8 changes"). The checker's abc pdr run
+# proved the property with no helper facts for 79% of the 252 starting
+# designs, so a real tool would need no hand-written facts for them; Gary
+# (formal verification expert): engineers write facts by hand where the
+# engines get stuck. A stable preference: the engine ran out of time first,
+# then it failed or was not tried, then it proved the property alone. A row
+# without the metric (made before 21 Oct) ranks with "not tried", so it is
+# not pushed back. Within one rank the run's own order holds.
+ENGINE_RANK = {"timed_out": 0, "error": 1, "not_tried": 1, "proved": 2}
+
+
+def engine_word(row):
+    """The row's metrics.engine_alone (build_corpus.engine_alone), or
+    "unknown" for a row made before 21 Oct 2026."""
+    return (row.get("metrics") or {}).get("engine_alone") or "unknown"
+
+
+def engine_rank(row):
+    """0 when the engine ran out of time on the row, 2 when it proved the
+    row alone, 1 otherwise (failed, not tried, or not known)."""
+    return ENGINE_RANK.get(engine_word(row), 1)
+
+
+def engine_hard_first(rows):
+    """`rows` in engine_rank order, keeping their order within a rank."""
+    return sorted(rows, key=engine_rank)
+
+
+def join_frontier(frontier, row, prefer=True):
+    """Put `row` back in the frontier: at the back, or with the preference
+    on, after the last row ranked no better, so a row the engine could not
+    prove alone does not wait behind rows it proved."""
+    if not prefer:
+        frontier.append(row)
+        return
+    rank = engine_rank(row)
+    for i in range(len(frontier) - 1, -1, -1):
+        if engine_rank(frontier[i]) <= rank:
+            frontier.insert(i + 1, row)
+            return
+    frontier.appendleft(row)
 
 
 # Which hardware groups are combined (18 Oct 2026). Partners drawn from the
@@ -299,18 +362,21 @@ def sample_task(rng, parent, corpus_rows):
             "k": k if move == "STAGE" else 1}
 
 
-def largest_starts(corpus_rows, n, max_gen=MAX_GEN):
+def largest_starts(corpus_rows, n, max_gen=MAX_GEN, prefer_engine_hard=True):
     """The n biggest starting designs that can still be extended, no two
     from the same hardware group, so a trial grows several kinds of
     hardware. 18 Oct 2026: good designs stayed close to their starting
     size, and the trials had started from designs of 62 to 84 lines.
     A design with no property the extender can read is skipped: 29 of the
     252 write `assert property (...)`, which extract_asserts does not
-    read, and two of the five biggest are among them."""
+    read, and two of the five biggest are among them. With
+    `prefer_engine_hard` the designs the engine could not prove alone are
+    taken first, biggest first among them (engine_rank, 21 Oct 2026)."""
     by_id = {r["id"]: r for r in corpus_rows}
     rows = sorted((r for r in corpus_rows if r.get("generation", 0) == 0
                    and r.get("property") and extendable(r, None, max_gen)),
-                  key=lambda r: (-len(r["verilog"].splitlines()), r["id"]))
+                  key=lambda r: (engine_rank(r) if prefer_engine_hard else 1,
+                                 -len(r["verilog"].splitlines()), r["id"]))
     out, taken = [], set()
     for r in rows:
         groups = design_groups(r, by_id)
@@ -323,10 +389,50 @@ def largest_starts(corpus_rows, n, max_gen=MAX_GEN):
     return out
 
 
+# --- a retry says why the answer before it was sent back (22 Oct 2026) ------
+# Review finding B1: a step sent back for a format failure (STORAGE_TOO_DEEP,
+# FACT_FORMAT, PATCH_ERROR, ...) was retried with the very same question;
+# the error, which says how to fix it, went only to the log. promote.py has
+# always said a format failure means "retry with the lesson". The retry's
+# question now ends with the error of the attempt before it.
+RETRY_TEXT = """
+
+Your previous answer to this question was sent back: {lesson}
+Fix that in a new, complete answer."""
+LESSON_MAX = 1500         # characters; a long error is cut, not the question
+# what a format failure with no error text of its own says
+_NO_ERROR_TEXT = {
+    "TRUNCATED": ("it was cut off at the length limit before it was "
+                  "complete; write a shorter answer"),
+    "UNPARSEABLE": "it could not be read as the JSON reply asked for",
+}
+
+
+def retry_lesson(record):
+    """Why a task's last answer was sent back, in one plain paragraph for
+    the retry's question; None when there is nothing to say: the question
+    was never answered (a failed partner choice: only the extension
+    question's answer sets "usage"), or the model refused it."""
+    if "usage" not in record:
+        return None
+    text = record.get("error") or _NO_ERROR_TEXT.get(record.get("verdict"))
+    if not text:
+        return None
+    text = " ".join(str(text).split())
+    if len(text) > LESSON_MAX:
+        text = text[:LESSON_MAX].rstrip() + " ..."
+    return text if text.endswith((".", "...", "!", "?")) else text + "."
+
+
+def retry_section(lesson):
+    """The section a retry's question ends with ("" without a lesson)."""
+    return RETRY_TEXT.format(lesson=lesson) if lesson else ""
+
+
 def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
              rng=None, on_task=None, on_fixer=None, workers=1,
              on_promote=None, order="shuffle", per_family=3,
-             start_ids=None):
+             start_ids=None, prefer_engine_hard=True):
     """The while loop, now a worker pool. `executor(task, corpus_rows) ->
     record` is injectable so tests run without API or sby. `workers`
     threads share one frontier under one lock; the executor runs
@@ -338,7 +444,10 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
     `start_ids` names the only rows the run starts from (every row stays
     a possible partner for a composition); order "chase" extends each
     accepted child next, so a lineage goes deep within one run (17 Oct
-    2026). Returns promoted rows."""
+    2026). With `prefer_engine_hard` (21 Oct 2026) the rows the engine
+    could not prove alone go first (engine_rank): the starting rows, unless
+    `start_ids` gives their order, and every row that rejoins the frontier;
+    a chased child still goes next. Returns promoted rows."""
     rng = rng or random.Random()
     corpus_rows = list(corpus_rows)
     if start_ids:
@@ -359,12 +468,19 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
                                    per_family=per_family)
         else:
             rng.shuffle(start)   # sample the corpus, not the oldest rows first
+        if prefer_engine_hard:
+            start = engine_hard_first(start)
     frontier = deque(start)
     branch_fails = Counter()
     dead_branches = set()
     new_rows = []
     state = {"calls": 0, "task_seq": 0}
     lock = threading.Lock()
+
+    def rejoin(row):
+        """A row goes back in the frontier (join_frontier). Lock held by
+        caller."""
+        join_frontier(frontier, row, prefer_engine_hard)
 
     def next_task():
         """Reserve budget and a parent, or None. Lock held by caller."""
@@ -385,7 +501,8 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
 
     def settle(parent, task, record):
         """Route one graded record. Lock held by caller. Returns True
-        when the same task should be retried (reformat)."""
+        when the same task should be retried (reformat), with the
+        record's retry_lesson as task["lesson"] for the next question."""
         record["task_id"] = task["task_id"]
         record["attempt"] = task["attempt"]
         # here as well as in the executor, so a child no harder than its
@@ -408,23 +525,30 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
                     if order == "chase":
                         frontier.appendleft(child)   # the newest goes next
                     else:
-                        frontier.append(child)
-            frontier.append(parent)      # a healthy parent stays live
+                        rejoin(child)
+            rejoin(parent)               # a healthy parent stays live
             return False
         if action == "pass":             # nothing fit (NO_PARTNER): not a
-            frontier.append(parent)      # failure of the design
+            rejoin(parent)               # failure of the design
             return False
         if action == "fixer" and on_fixer:
             on_fixer(record)      # the branch still counts the failure
         if action == "reformat" and task["attempt"] < MAX_ATTEMPTS \
                 and state["calls"] < max_calls:
             task["attempt"] += 1
+            # the next question says why this answer was sent back
+            # (22 Oct 2026); only the latest attempt's reason is kept
+            lesson = retry_lesson(record)
+            if lesson:
+                task["lesson"] = lesson
+            else:
+                task.pop("lesson", None)
             return True
         branch_fails[parent["id"]] += 1
         if branch_fails[parent["id"]] >= BRANCH_FAILS:
             dead_branches.add(parent["id"])
         else:
-            frontier.append(parent)
+            rejoin(parent)
         return False
 
     def worker():
@@ -457,6 +581,15 @@ def run_loop(corpus_rows, executor, *, max_calls, max_gen=MAX_GEN,
         for t in threads:
             t.join()
     return new_rows
+
+
+def recheck_note(record):
+    """What a task's line adds when its step was checked a second time
+    (distractor.necessity_check): the limit, and what the first check said."""
+    if not record.get("rechecked"):
+        return ""
+    return (f" (checked again with a {record['recheck_timeout_s']} s limit;"
+            f" the first check said {record['first_result']['verdict']})")
 
 
 def finalize_distractor(record):
@@ -510,6 +643,165 @@ def _choose_partner(task, record, parent, by_id):
                     "connection": out.get("connection", "")}
 
 
+# --- every extension answer is a training example (21 Oct 2026) -------------
+# Rishab approved ("make all 1-8 changes"): the extender's answers are saved
+# the way initiator/run.py saves the generator's, one `extend` example per
+# answer in Formal Disco's shape (distill_log.py): the question exactly as
+# sent, the answer exactly as the model wrote it, and the step's final
+# verdict (after the second check, the shape rule, the design checks and the
+# review), from which distill_log says success, fail or error. The partner
+# choice and the reviewer's calls are not extension answers and are not
+# saved. main() points this next to the extension log; None (a test calling
+# the executor) saves nothing.
+# 22 Oct 2026, two changes after review:
+# - finding F2: an answer may hold compact `forall k in 0..7:` facts, which
+#   the benchmark's checker (EBMC 6.0) cannot read, so the metadata also
+#   carries "invariants_expanded", the facts as the checker got them, every
+#   compact fact expanded (training/build_sft.py puts them in the answer);
+# - finding B1: a retry's question ends with why the answer before it was
+#   sent back (retry_lesson). That section is kept OUT of the example's
+#   question: the training builder trains on the saved messages as they
+#   are, the benchmark never asks a question with such a section, and the
+#   section points at an earlier answer the example does not contain, while
+#   the retry's answer is a whole answer to the question without it. What
+#   was sent is still known exactly: the example's metadata carries the
+#   lesson ("retry_lesson") and its attempt number, and the run's
+#   calls.jsonl keeps the request as sent.
+DISTILL_LOG = None
+
+# how a call the model answered ends (llm_client); any other ending is a
+# failed request, with no answer to save
+ANSWERED = ("ok", "length", "refusal")
+
+
+def distill_path(out_log):
+    """A run's examples: next to its extension log, named the way
+    initiator/run.py names its own (distill_<log name>)."""
+    out_log = Path(out_log)
+    return out_log.with_name("distill_" + out_log.name)
+
+
+def sent_messages(request):
+    """The chat messages of a request as the client sent it: the system
+    text first when there is one, then the messages of an Anthropic
+    request or the user text of an OpenRouter one."""
+    system = request.get("system")
+    chat = request.get("messages") or [{"role": "user",
+                                        "content": request.get("user")}]
+    return ([{"role": "system", "content": system}] if system else []) \
+        + list(chat)
+
+
+def _kept_from_note(note):
+    return {"messages": sent_messages(note.get("request") or {}),
+            "response": note.get("raw"),
+            "call": {k: note.get(k) for k in ("usage", "stop", "seconds",
+                                              "batch_id", "custom_id")}}
+
+
+def call_and_keep(kept, call, prompt, *args, system=None):
+    """`call(prompt, *args)`: one extension question. Once the model has
+    answered, `kept` gets what its training example needs: the messages as
+    sent and the answer text exactly as written, from the client's own note
+    of the call (llm_client.last_call, kept per thread, so workers do not
+    mix them up). A fake model in a test leaves no note; then `system`,
+    `prompt` and the answer written back as JSON stand in. An answer that
+    could not be read (the call raised after the model answered) is kept
+    too; a failed request has no answer and keeps nothing."""
+    before = llm_client.last_call()
+    try:
+        out = call(prompt, *args)
+    except Exception:
+        note = llm_client.last_call()
+        if note is not None and note is not before \
+                and note.get("stop") in ANSWERED:
+            kept.update(_kept_from_note(note))
+        raise
+    note = llm_client.last_call()
+    if note is not None and note is not before:
+        kept.update(_kept_from_note(note))
+    else:
+        answer, usage, stop = out
+        kept.update(messages=sent_messages({"system": system,
+                                            "user": prompt}),
+                    response=None if answer is None else json.dumps(answer),
+                    call={"usage": usage, "stop": stop})
+    return out
+
+
+def grown_from(ids, by_id):
+    """`ids` and every corpus id they were grown from, nearest first,
+    through both parents of a combination."""
+    out, todo = [], deque(i for i in ids if i)
+    while todo:
+        i = todo.popleft()
+        if i in out:
+            continue
+        out.append(i)
+        row = by_id.get(i) or {}
+        todo.extend(p for p in (row.get("parent"), row.get("parent2")) if p)
+    return out
+
+
+def expanded_facts(record):
+    """The facts the checker got for this step, every compact fact
+    expanded: record["invariants"], once the grader has expanded them (a
+    debug block's are its parent's, already expanded). None when there are
+    none, or when they could not be expanded (the record then holds them
+    as written)."""
+    facts = record.get("invariants")
+    if not (isinstance(facts, list)
+            and all(isinstance(f, str) for f in facts)):
+        return None
+    expanded, err = expand_facts(facts)
+    return facts if err is None and expanded == facts else None
+
+
+def without_section(messages, section):
+    """`messages` with `section` taken off the end of the last user
+    message that ends with it; unchanged when none does."""
+    out = [dict(m) for m in messages]
+    for m in reversed(out):
+        content = m.get("content")
+        if m.get("role") == "user" and isinstance(content, str) \
+                and section and content.endswith(section):
+            m["content"] = content[:-len(section)]
+            break
+    return out
+
+
+def save_example(path, record, kept, by_id):
+    """One answered extension question as an `extend` training example.
+    The metadata says what a held-back test row would show up as:
+    child_verilog (the whole grown design, None when there is none),
+    parent_ids and extension_id. parent_ids are the step's own parents
+    first, then every row they were grown from: a design grown from a
+    held-back row's child still carries most of its text and facts.
+    invariants_expanded holds the facts as the checker got them, compact
+    facts expanded (expanded_facts). A retry's question is saved without
+    its retry section, whose lesson the metadata keeps as retry_lesson
+    (see the note above DISTILL_LOG; 22 Oct 2026)."""
+    meta = {k: record[k] for k in ("model", "effort", "batch", "batch_task",
+                                   "batch_attempt", "proof_dir", "rechecked",
+                                   "error", "retry_lesson") if k in record}
+    messages = kept["messages"]
+    if record.get("retry_lesson"):
+        messages = without_section(messages,
+                                   retry_section(record["retry_lesson"]))
+    distill_log.record(
+        path, "extend",
+        {k: record.get(k) for k in ("parent_id", "parent2_id", "ext_type",
+                                    "move", "k")},
+        kept["response"], record.get("verdict"), messages,
+        reason=record.get("reason"),
+        child_verilog=record.get("child_verilog"),
+        parent_ids=grown_from([record.get("parent_id"),
+                               record.get("parent2_id")], by_id),
+        extension_id=record.get("extension_id"),
+        invariants_expanded=expanded_facts(record),
+        call=kept["call"], **meta)
+
+
 def _real_executor(task, corpus_rows):
     by_id = {r["id"]: r for r in corpus_rows}
     parent = by_id[task["parent_id"]]
@@ -524,6 +816,12 @@ def _real_executor(task, corpus_rows):
               "model": llm_client.model_label(MODEL), "effort": EFFORT}
     if llm_client._gate is not None:
         record["batch"] = True            # sent at half price
+    # a retry's question ends with why the answer before it was sent back
+    # (retry_lesson, 22 Oct 2026); the record says which lesson it got
+    section = retry_section(task.get("lesson"))
+    if section:
+        record["retry_lesson"] = task["lesson"]
+    kept = {}               # the answered question, for its training example
     try:
         if task["ext_type"] == "distractor":
             record["invariants"] = parent["invariants"]     # verbatim
@@ -532,7 +830,8 @@ def _real_executor(task, corpus_rows):
             label = (f"task {task['task_id']}.{task['attempt']} distractor "
                      f"on {task['parent_id']}")
             with Spinner(f"{label}: model writing"):
-                out, usage, stop = distractor_call(distractor_prompt(parent))
+                out, usage, stop = call_and_keep(
+                    kept, distractor_call, distractor_prompt(parent) + section)
             record["usage"] = usage
             if out is None:
                 record["verdict"] = ("REFUSED" if stop == "refusal"
@@ -550,11 +849,14 @@ def _real_executor(task, corpus_rows):
                 record["parent2_id"] = task["parent2_id"]
                 parent, p2 = _ready_for_wrapper(
                     record, [parent, by_id[task["parent2_id"]]])
-                prompt = compose_prompt(parent, p2, task.get("plan"))
+                prompt = compose_prompt(parent, p2, task.get("plan")) \
+                    + section
                 label = (f"task {task['task_id']}.{task['attempt']} compose "
                          f"{task['parent_id']}+{task['parent2_id']}")
                 with Spinner(f"{label}: model writing"):
-                    out, usage, stop = call_model(prompt, COMPOSE_SCHEMA)
+                    out, usage, stop = call_and_keep(
+                        kept, call_model, prompt, COMPOSE_SCHEMA,
+                        system=SYSTEM_PROMPT)
                 record["usage"] = usage
                 if out is None:
                     record["verdict"] = ("REFUSED" if stop == "refusal"
@@ -574,7 +876,7 @@ def _real_executor(task, corpus_rows):
                                   k=task.get("k", 1),
                                   history=history(parent, by_id),
                                   siblings=children(parent, by_id),
-                                  rejected=rejected)
+                                  rejected=rejected) + section
             schema = {"structural": STRUCTURAL_SCHEMA,
                       "second": SECOND_SCHEMA,
                       "replicate": REPLICATE_SCHEMA}[task["ext_type"]]
@@ -582,7 +884,8 @@ def _real_executor(task, corpus_rows):
                      f"{task['ext_type']} {task.get('move') or ''} "
                      f"on {task['parent_id']}")
             with Spinner(f"{label}: model writing"):
-                out, usage, stop = call_model(prompt, schema)
+                out, usage, stop = call_and_keep(kept, call_model, prompt,
+                                                 schema, system=SYSTEM_PROMPT)
             record["usage"] = usage
             if out is None:
                 record["verdict"] = ("REFUSED" if stop == "refusal"
@@ -613,6 +916,8 @@ def _real_executor(task, corpus_rows):
         with _rejected_lock:
             REJECTED[task["parent_id"]].append(rejection_note(record))
     dump(record)
+    if DISTILL_LOG is not None and kept:
+        save_example(DISTILL_LOG, record, kept, by_id)
     with _progress_lock:
         PROGRESS["done"] += 1
         if PROGRESS["spinner"]:
@@ -622,8 +927,22 @@ def _real_executor(task, corpus_rows):
     print(f"{clear}  task {task['task_id']}.{task['attempt']} "
           f"{task['ext_type']:10s} on {task['parent_id']}"
           + (f"+{task['parent2_id']}" if task.get("parent2_id") else "")
-          + f" -> {record.get('verdict')}")
+          + f" -> {record.get('verdict')}" + recheck_note(record))
     return record
+
+
+# A realism report after every run with --log-dir (21 Oct 2026, Rishab
+# approved: "make all 1-8 changes", item 8d): the kept designs beside real
+# open-source hardware, and the run's cost. Imported here, not at the top,
+# so that not even a broken report module can stop a run.
+def report_after_run(log_dir, corpus):
+    """Write and print the run's realism report; a failure is printed and
+    never fails the run, whose work is already saved."""
+    try:
+        import realism_report
+        realism_report.write_report(log_dir, corpus)
+    except Exception as exc:
+        print(f"realism report not written: {type(exc).__name__}: {exc}")
 
 
 def main(argv=None):
@@ -662,8 +981,15 @@ def main(argv=None):
                         "training file is built from")
     p.add_argument("--log-dir", type=Path, default=None,
                    help="write the extension, queue and fixer logs here "
-                        "instead of extender/logs; required with any "
+                        "instead of extender/logs, and the proofs in its "
+                        "proofs/ folder; required with any "
                         "--corpus other than extender/corpus.jsonl")
+    p.add_argument("--recheck-timeout-s", type=int,
+                   default=distractor.RECHECK_TIMEOUT_S, metavar="S",
+                   help="check a step once more with this time limit when "
+                        "its verdict came from the first check's "
+                        f"{GRADE_KWARGS['timeout_s']} s limit; 0 turns the "
+                        "second check off")
     p.add_argument("--batch", action="store_true",
                    help="send the workers' calls as half-price Message "
                         "Batches (llm_client.batch_gate); --workers sets how "
@@ -680,13 +1006,22 @@ def main(argv=None):
                    help="have a second model review every proved step "
                         "(sense_check.py) and keep only what it keeps; "
                         "paid, one call per proved step")
+    p.add_argument("--no-prefer-engine-hard", action="store_true",
+                   help="do not grow first the rows the automatic engine "
+                        "(abc pdr) could not prove without facts "
+                        "(metrics.engine_alone); the run's own order only")
     args = p.parse_args(argv)
+    prefer = not args.no_prefer_engine_hard
     if args.start and args.start_largest:
         p.error("--start and --start-largest cannot be used together")
+    first_s = GRADE_KWARGS["timeout_s"]
+    if args.recheck_timeout_s < 0 or 0 < args.recheck_timeout_s <= first_s:
+        p.error("--recheck-timeout-s must be 0 (no second check) or longer "
+                f"than the first check's {first_s} s")
     # 8 Oct 2026: --corpus used to change only the corpus. The logs stayed
     # v2's, so a later promote or fix run could copy another corpus's
     # designs into v2's corpus under clashing names.
-    global QUEUE_LOG, FIXER_QUEUE, GRADE_SLOTS, SENSE_CHECK
+    global QUEUE_LOG, FIXER_QUEUE, GRADE_SLOTS, SENSE_CHECK, DISTILL_LOG
     SENSE_CHECK = args.sense_check
     if not args.dry and args.log_dir is None and \
             args.corpus.resolve() != CORPUS.resolve():
@@ -709,10 +1044,13 @@ def main(argv=None):
     rng = random.Random(args.seed)
     if args.start_largest:
         args.start = ",".join(largest_starts(corpus_rows, args.start_largest,
-                                             args.max_gen))
-        print("starting from the biggest designs, one per hardware group: "
+                                             args.max_gen, prefer))
+        print("starting from the biggest designs, one per hardware group"
+              + (", those the engine could not prove alone first"
+                 if prefer else "") + ": "
               + ", ".join(
-                  f"{i} ({len(r['verilog'].splitlines())} lines)"
+                  f"{i} ({len(r['verilog'].splitlines())} lines, engine "
+                  f"alone: {engine_word(r)})"
                   for i in args.start.split(",") for r in corpus_rows
                   if r["id"] == i))
 
@@ -724,6 +1062,8 @@ def main(argv=None):
             frontier = [r for i in wanted for r in frontier if r["id"] == i]
         else:
             rng.shuffle(frontier)
+            if prefer:
+                frontier = engine_hard_first(frontier)
         print(f"frontier: {len(frontier)} extendable rows; "
               f"first {min(args.max_calls, 15)} planned tasks:")
         for parent in frontier[:min(args.max_calls, 15)]:
@@ -769,6 +1109,18 @@ def main(argv=None):
         gate = llm_client.batch_gate(
             flush_after_s=args.flush_after, poll_s=60,
             manifest_dir=(args.log_dir or QUEUE_LOG.parent) / "batches")
+    # the checker's settings for this run, put back when it ends: the
+    # second check's limit, and the proofs next to the logs (21 Oct 2026:
+    # nothing set PROOF_ROOT, so every run's proofs went to the shared
+    # runs/ folder and a record's proof_dir was never written)
+    before = distractor.PROOF_ROOT, distractor.RECHECK_TIMEOUT_S
+    distractor.RECHECK_TIMEOUT_S = args.recheck_timeout_s
+    if args.log_dir is not None:
+        distractor.PROOF_ROOT = (args.log_dir / "proofs").resolve()
+    # every answer a training example, next to the extension log (21 Oct
+    # 2026); put back after the run like the settings above
+    examples = distill_path(distractor.OUT_LOG)
+    examples_before, DISTILL_LOG = DISTILL_LOG, examples
     try:
         with llm_client.call_log((args.log_dir or QUEUE_LOG.parent)
                                  / "calls.jsonl"), \
@@ -780,12 +1132,21 @@ def main(argv=None):
                                 workers=args.workers, on_promote=checkpoint,
                                 order=args.order, per_family=args.per_family,
                                 start_ids=(args.start.split(",")
-                                           if args.start else None))
+                                           if args.start else None),
+                                prefer_engine_hard=prefer)
     finally:
         GRADE_SLOTS = None
+        distractor.PROOF_ROOT, distractor.RECHECK_TIMEOUT_S = before
+        DISTILL_LOG = examples_before
     print(f"\nrun complete: {len(new_rows)} promoted "
           f"(corpus now {len(corpus_rows) + len(new_rows)} rows); "
-          f"log: {distractor.OUT_LOG}")
+          f"log: {distractor.OUT_LOG}; training examples: {examples}")
+    if new_rows:
+        # how much of what this run made is where the engine gets stuck
+        print("could the engine prove the kept designs without facts? "
+              + engine_alone_share(new_rows))
+    if args.log_dir is not None:
+        report_after_run(args.log_dir, args.corpus)
 
 
 if __name__ == "__main__":

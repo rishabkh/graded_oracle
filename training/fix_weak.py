@@ -16,6 +16,17 @@ counterexample holds every fact and breaks the property only through a
 hidden "previous peak" of 19 beside a real peak of 16, a history that
 cannot happen. This fixes the other 103.
 
+Only the fixed 1-step check picks rows (22 Oct 2026, review finding F6).
+All 207 were the clock-edge quirk in the old check, which read clocked
+assertions one step late (one_step.py, fixed 21 Oct 2026); with the fix
+all 665 corpus answers pass at one step, so a run on the old log
+(extender/logs/one_step.jsonl) would pay to "fix" 103 answers that
+already pass. Rows now come from the fixed check's own log
+(extender/logs/one_step_clock_edge_fix_2026-10-21.jsonl, one_step.OUT),
+and a log line without the fix's mark ("clock_edge_fix", which one_step.py
+puts on every line it writes since 21 Oct) stops the run before any call.
+The look-back rule above was made for the old check; it is kept as it was.
+
 Each row: the design, its property, its current facts and the proof
 tool's 1-step counterexample go to Opus, which returns a full new list.
 The list is kept only if the whole proof passes at one step
@@ -30,9 +41,10 @@ Every attempt is one line in extender/logs/fix_weak.jsonl; a row with an
 accepted line is skipped next time, so a rerun never pays twice.
 
   source ~/Desktop/HarvardResearch/oss-cad-suite/environment
+  venv/bin/python training/one_step.py                # the fixed check first
   venv/bin/python training/fix_weak.py --dry          # no calls
   venv/bin/python training/fix_weak.py --n 3          # spends money
-  venv/bin/python training/fix_weak.py                # all 103
+  venv/bin/python training/fix_weak.py                # every row it finds
   venv/bin/python training/fix_weak.py --report       # no calls
 """
 import argparse
@@ -56,7 +68,13 @@ from regen_reasoning import (append, assertions, cost,        # noqa: E402
                              line_cost, now, read_log, require_key, say)
 
 CORPUS = HERE.parent / "extender" / "corpus.jsonl"
-ONE_STEP = HERE.parent / "extender" / "logs" / "one_step.jsonl"
+# the fixed 1-step check's log, one_step.OUT (22 Oct 2026, review finding
+# F6); extender/logs/one_step.jsonl holds the 6 Oct verdicts made before
+# the clock-edge fix and is never read here
+ONE_STEP = HERE.parent / "extender" / "logs" / \
+    "one_step_clock_edge_fix_2026-10-21.jsonl"
+# the mark one_step.py puts on every line its fixed check writes
+FIXED_CHECK_MARK = "clock_edge_fix"
 LOG = HERE.parent / "extender" / "logs" / "fix_weak.jsonl"
 
 MODEL = "claude-opus-5-5"
@@ -149,9 +167,27 @@ _lock = threading.Lock()
 _work = {}
 
 
+def before_fix_lines(one_step_log):
+    """How many 1-step log lines were not made by the fixed check: they
+    carry no "clock_edge_fix" mark (22 Oct 2026, review finding F6)."""
+    return sum(not r.get(FIXED_CHECK_MARK) for r in one_step_log)
+
+
 def targets(rows, one_step_log):
     """(row, counterexample) for each row whose answer passed at 20 steps
-    and failed at 1, leaving out properties that look back a cycle."""
+    and failed at 1, leaving out properties that look back a cycle. Every
+    line must come from the fixed check: a ValueError says how many do
+    not (22 Oct 2026, review finding F6: the old check called 207 good
+    answers too weak)."""
+    old = before_fix_lines(one_step_log)
+    if old:
+        raise ValueError(
+            f"{old} of {len(one_step_log)} 1-step log line(s) were made "
+            "before the clock-edge fix (21 Oct 2026; they have no "
+            f"\"{FIXED_CHECK_MARK}\" mark): that check read clocked "
+            "assertions one step late and called good answers too weak, "
+            "so no row is picked from them. Run training/one_step.py for "
+            "a log made with the fix")
     by = {}
     for r in one_step_log:
         by.setdefault(r["id"], {})[r["dropped"]] = r
@@ -346,7 +382,17 @@ def main(argv=None):
 
     rows = [json.loads(l) for l in CORPUS.read_text().splitlines()
             if l.strip()]
-    picked = targets(rows, read_log(ONE_STEP))
+    # only the fixed check picks rows (22 Oct 2026, review finding F6);
+    # a missing log would otherwise read as "nothing to fix"
+    if not Path(ONE_STEP).exists():
+        sys.exit(f"no 1-step log from the fixed check at {ONE_STEP}: run "
+                 "training/one_step.py first (the old "
+                 "extender/logs/one_step.jsonl was made before the "
+                 "clock-edge fix and is not used); nothing was called")
+    try:
+        picked = targets(rows, read_log(ONE_STEP))
+    except ValueError as exc:
+        sys.exit(f"{ONE_STEP}: {exc}; nothing was called")
     if args.ids:
         wanted = {i.strip() for i in args.ids.split(",") if i.strip()}
         unknown = wanted - {r["id"] for r, _ in picked}
