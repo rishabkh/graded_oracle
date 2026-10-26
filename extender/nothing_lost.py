@@ -474,6 +474,9 @@ def declaration_error(streams, kind, child, top, clock, parent=None,
                         "valid, which stays true while it waits; put the "
                         "design's enable in ready instead.")
             shared = sorted(o_src & new_state & counted)
+            # 27 Oct 2026, Rishab approved: the last sentence covers a
+            # sender that is the step's own new logic, whose own valid is
+            # refused here too (GPT-6.1 Sol's journal and state machine)
             if shared:                                              # D14
                 return (f"stream '{name}': the offer {_short(offer)} reads "
                         f"{', '.join(shared)}, which delivered or held also "
@@ -481,7 +484,9 @@ def declaration_error(streams, kind, child, top, clock, parent=None,
                         "taken: an offer that counts only the items the "
                         "design chose to take hides every drop. Write the "
                         "sender's own valid in offer and put what makes it "
-                        "wait in ready.")
+                        "wait in ready. When the sender is logic your step "
+                        "adds, start the stream where items come into that "
+                        "logic, or leave that stream out.")
             if wrapper is None:
                 continue
             senders = sorted(k for k, v in parts.items() if v["outs"] & o_src)
@@ -940,6 +945,8 @@ def lesson(result, streams):
     streams = _normalized(streams) or []
     kind = result.get("result")
     s = _found(result, streams)
+    # 27 Oct 2026, Rishab approved: the enable goes in only when the design
+    # waits for it (r0_062 takes items whatever its enable)
     if kind == "lost" and s:
         cycle = _at_cycle(result)
         return ("the checker's own nothing-is-lost search (written by the "
@@ -955,10 +962,10 @@ def lesson(result, streams):
                 "reads, or by holding only the registers that carry the "
                 "stream, never the module's enable for everything. If the "
                 "declaration is what is wrong, fix it instead: offer is the "
-                "sender's own valid (with the design's enable for a sender "
-                "outside the design), ready is what the sender reads, held "
-                "counts every item inside, and an input that empties the "
-                "stream on purpose goes in flush.")
+                "sender's own valid (with the design's enable only when the "
+                "design takes items only while it is high), ready is what "
+                "the sender reads, held counts every item inside, and an "
+                "input that empties the stream on purpose goes in flush.")
     if kind == "gave_up" and s:
         j = result.get("input")
         e = s["inputs"][j] if isinstance(j, int) and \

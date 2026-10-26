@@ -38,6 +38,23 @@ def test_the_example_is_a_compact_fact_the_checker_expands():
     assert not extend.system_function_facts(facts)
 
 
+def test_the_fact_limit_is_told_and_the_transitive_fact_kept_under_it():
+    """27 Oct 2026: expand_facts refuses a list that comes to more than
+    MAX_EXPANDED facts written out; the transitive order fact on 8 entries
+    is 8 x 7 x 6 = 336 by itself."""
+    assert f"at most {extend.MAX_EXPANDED} facts" in \
+        squash(extend.INVARIANT_RULES)
+    assert "on more than 5 entries leave this one out" in \
+        squash(extend.IBEX_FACT_PATTERNS)
+    transitive = ("forall k in 0..{n}, m in 0..{n}, j in 0..{n} where "
+                  "k != m && m != j && k != j: "
+                  "!(older[k][m] && older[m][j]) || older[k][j]")
+    facts, error = extend.expand_facts([transitive.format(n=4)])
+    assert error is None and len(facts) == 60       # 5 entries
+    facts, error = extend.expand_facts([transitive.format(n=7)])
+    assert facts is None and "more than 256" in error
+
+
 def test_every_question_with_facts_carries_the_patterns():
     """Structural steps get them through the shared fact guidance; the
     combining question, which has fact rules of its own, gets the same

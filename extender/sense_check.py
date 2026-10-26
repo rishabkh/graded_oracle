@@ -51,7 +51,11 @@ from promote import history as family_history                   # noqa: E402
 
 WRAPPERS = ("compose", "replicate")
 PATCHED = ("structural", "second", "distractor")
-MAX_TOKENS = 16000
+# 27 Oct 2026, Rishab approved: 64000, as the builder has (was 16000). With
+# GPT-6.1 Sol the limit counts its hidden thinking too: its 3 design answers
+# in the 26 Oct test used 6,853, 13,933 and 16,700 tokens, and a review cut
+# off twice rejects a proved design (UNREVIEWED).
+MAX_TOKENS = 64000
 TRIES = 2
 
 SYSTEM = """\
@@ -67,6 +71,11 @@ Answer plainly and strictly."""
 # now judges the code alone, with what the checker's own tools found, and
 # is also asked about any lost item counted or not, delayed copies, and
 # values cut or padded.
+# 27 Oct 2026, Rishab approved: question 8 asks only about the part the
+# change adds or changes. Asked about any input of the design, it had to
+# turn down every step on a design that already ignores an input in some
+# state: 3 of the 10 starting designs of the GPT-6.1 Sol run (r0_054,
+# r0_093, r0_098).
 PROMPT = """\
 This design was built by {how}.
 {history}{change}
@@ -108,15 +117,17 @@ question later; do not assume anything the code does not show.
    part between the two designs does a job when it is a buffer that makes
    the sender wait, a conversion that keeps the meaning, or an arbiter; a
    plain wire or a delayed copy does not.
-8. item_can_be_dropped: can an item offered at any input of the design, or
-   handed from one part to another, be lost in some state: dropped when a
-   part is full or busy, overwritten before it is used, or ignored while a
-   part is busy, not idle or paused, or while a lane loses an arbitration?
-   Answer true if it can, even when the loss is counted, flagged or raised
-   as an error bit: counting a lost item does not make losing it
-   acceptable. Making the sender wait is the right answer; losing the item
-   is not. The checker's search above covers only the streams it lists,
-   and only so many cycles.
+8. item_can_be_dropped: can an item handed to the part the change adds or
+   changes, or handed from one part to another through it, be lost in some
+   state: dropped when a part is full or busy, overwritten before it is
+   used, or ignored while a part is busy, not idle or paused, or while a
+   lane loses an arbitration? Answer true if it can, even when the loss is
+   counted, flagged or raised as an error bit: counting a lost item does
+   not make losing it acceptable. Making the sender wait is the right
+   answer; losing the item is not. Judge only the change: an input the
+   design already ignored in some state before the change, and still
+   treats the same way, is not a loss of this change. The checker's search
+   above covers only the streams it lists, and only so many cycles.
 9. breaks_what_it_did: does the change stop the old part doing anything it
    did before? For example a request, setting or table write it used to
    take is now ignored or lost (for instance because the change holds its

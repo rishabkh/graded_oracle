@@ -672,6 +672,10 @@ def test_an_offer_that_counts_only_items_taken_is_sent_back():
                               f"{offer} reads rp, used, wp, which delivered "
                               "or held also reads, so it folds in whether "
                               "the item will be taken")
+        # 27 Oct 2026: and what to do when the sender is the step's own logic
+        assert err.endswith("When the sender is logic your step adds, start "
+                            "the stream where items come into that logic, "
+                            "or leave that stream out.")
     assert storage_error(stream(offer="en && in_valid")) is None
     assert storage_error(stream(offer="en && in_valid",
                                 ready="in_ready")) is None

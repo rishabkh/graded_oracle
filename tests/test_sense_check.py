@@ -158,3 +158,20 @@ def test_the_review_is_off_until_switched_on():
     import batch
     assert batch.SENSE_CHECK is False
     assert "--sense-check" in inspect.getsource(batch.main)
+
+
+def test_question_8_judges_only_the_change():
+    """27 Oct 2026: asked about any input of the design, the reviewer had
+    to turn down every step on a design that already ignores an input in
+    some state (r0_054, r0_093 and r0_098 of the GPT-6.1 Sol run)."""
+    text = " ".join(S.PROMPT.split())
+    assert "any input of the design" not in text
+    assert "can an item handed to the part the change adds or changes" in text
+    assert "is not a loss of this change" in text
+
+
+def test_a_review_may_think_as_long_as_the_builder():
+    """27 Oct 2026: with GPT-6.1 Sol the limit counts its hidden thinking,
+    and its design answers in the 26 Oct test used up to 16,700 tokens."""
+    import extend
+    assert S.MAX_TOKENS >= extend.MAX_TOKENS

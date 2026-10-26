@@ -142,6 +142,10 @@ def test_an_exposed_design_reads_and_counts_the_same():
 def test_the_wrapper_questions_explain_the_mirror_ports():
     for template in (extend.COMPOSE_TEMPLATE, extend.REPLICATE_TEMPLATE):
         assert "assign count_o = count;" in template
+    # 27 Oct 2026: on a wire inside the wrapper the registers only the
+    # mirror reads count as unused, so the combination brings it out
+    assert "connect that port to an output of the wrapper" in \
+        " ".join(extend.COMPOSE_TEMPLATE.split())
 
 
 # --- 2. the size count --------------------------------------------------
@@ -276,8 +280,11 @@ def test_the_irrelevant_logic_step_asks_for_a_real_block():
     assert "80 lines" in text and "40 to 60 new lines" in text
 
 
-def test_pipeline_stages_come_in_bigger_runs():
+def test_pipeline_stages_come_in_bigger_runs(monkeypatch):
     """Never a single stage since 18 Oct (a small tweak)."""
+    # STAGE is off since 27 Oct 2026; turned back on, it still comes in
+    # runs of 4 or 8
+    monkeypatch.setitem(batch.MOVE_WEIGHTS, "STAGE", 1)
     rng = random.Random(2)
     ks = {t["k"] for t in (batch.sample_task(rng, lines_row(40),
                                              [lines_row(40)])

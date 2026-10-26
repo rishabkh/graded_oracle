@@ -592,13 +592,17 @@ def test_small_tweaks_are_no_longer_drawn():
     w = extend.MOVE_WEIGHTS
     for small in ("SPLIT", "LEDGER", "BOUND", "GUARD"):
         assert w[small] == 0, small
-    # their turns went to the two moves that stayed good
-    assert (w["SUBUNIT"], w["STORAGE"], w["PEER"], w["STAGE"]) == (7, 6, 3, 1)
+    # their turns went to the two moves that stayed good; STAGE off since
+    # 27 Oct 2026 (Rishab approved): all 3 reviewed were only delayed copies
+    assert (w["SUBUNIT"], w["STORAGE"], w["PEER"], w["STAGE"]) == (7, 6, 3, 0)
     drawn = kinds_drawn([lines_row(60)])
     assert not drawn & {"SPLIT", "LEDGER", "BOUND", "GUARD"}
 
 
-def test_pipelines_are_never_a_single_stage():
+def test_pipelines_are_never_a_single_stage(monkeypatch):
+    # STAGE is off since 27 Oct 2026; turned back on, it still comes in
+    # runs of 4 or 8
+    monkeypatch.setitem(batch.MOVE_WEIGHTS, "STAGE", 1)
     rng = random.Random(2)
     ks = {t["k"] for t in (batch.sample_task(rng, lines_row(40),
                                              [lines_row(40)])

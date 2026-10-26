@@ -410,7 +410,11 @@ def size_share(move, n=0):
 # go to SUBUNIT and STORAGE; LEDGER's weight of 2 (Rishab, 6 Sep) is
 # dropped with his "do all 6 changes". STAGE stays, in runs of 4 or 8.
 # The moves remain for runs by hand (extend.py --move).
-MOVE_WEIGHTS = {"STAGE": 1, "SPLIT": 0, "PEER": 3, "BOUND": 0, "GUARD": 0,
+# 27 Oct 2026, Rishab approved: STAGE 0 (was 1). It asks for a row of
+# registers that pass a value along, which the reviewer must turn down as
+# only a delayed copy (question 5): all 3 STAGE steps reviewed were (18 Oct
+# t008, 21 Oct t002, 23 Oct t028).
+MOVE_WEIGHTS = {"STAGE": 0, "SPLIT": 0, "PEER": 3, "BOUND": 0, "GUARD": 0,
                 "LEDGER": 0, "SUBUNIT": 7, "STORAGE": 6}
 # 19 Oct 2026: kept 0 times in 8 in the 18 Oct good-growth trial, and a big
 # step can now carry an assertion of its own; the type stays for runs by
@@ -434,6 +438,8 @@ STAGE_K_TEXT = """
 # requests-in-flight count, oldest first, the oldest buffer's address,
 # one-hot selects), written as our same-cycle facts. Ibex is real hardware
 # and not in the benchmark.
+# 27 Oct 2026, Rishab approved: the 256-fact limit of expand_facts is told
+# (MAX_EXPANDED); the transitive order fact on 8 entries is 336 by itself.
 IBEX_FACT_PATTERNS = """\
 - When the design keeps several entries (buffers, queue slots, requests
   in flight), these are the facts real processor engineers write for
@@ -441,7 +447,9 @@ IBEX_FACT_PATTERNS = """\
   (1) order among entries: when entries carry an age or an order (an
   older-than table, sequence numbers), no busy entry is older than
   itself, two busy entries are never each older than the other, the
-  order is transitive, and any two busy entries are ordered, for example
+  order is transitive (three indexes: on more than 5 entries leave this
+  one out, as on 8 it alone makes 336 facts), and any two busy entries
+  are ordered, for example
   `forall k in 0..3, m in 0..3 where k != m: !(busy[k] && busy[m]) || (older[k][m] != older[m][k])`;
   (2) work in flight: what was requested minus what came back, added up
   over the entries, equals the count of requests still outstanding, and
@@ -492,7 +500,8 @@ INVARIANT_RULES = """\
   `forall k in 0..7, m in 0..7 where k != m: !(v[k] && v[m]) || (age[k] != age[m])`.
   Use index names that are not signals of the module. Write the range in
   numbers, the value a size parameter has (0..3 when DEPTH = 4), never
-  its name. Each such fact is checked once for every index value."""
+  its name. Each such fact is checked once for every index value, and
+  written out that way the whole list may come to at most 256 facts."""
 INVARIANT_RULES += "\n" + IBEX_FACT_PATTERNS
 
 DISPOSITION_BLOCK = """\
@@ -607,28 +616,45 @@ arbiter or the shared thing:
 # counts what is lost; the model only says where the items go. It counts
 # what the SENDER hands over: counting only the items the design chose to
 # take missed every drop in the 25 Oct study.
+# 26 Oct 2026, Rishab approved ("fix these things"): the limits and the
+# flush rule of nothing_lost.declaration_error are stated here too. The
+# first real answers (GPT-6.1 Sol, 3 of 3) were sent back for rules the
+# question never gave: two named the reset as the flush, one combination
+# declared 4 streams.
+# 27 Oct 2026, Rishab approved: the design's enable goes in offer or ready
+# only when the design waits for it (r0_062 takes items whatever its
+# enable, and "ce && in_valid" was refused as counting wrong), and the
+# question gives rule 14: GPT's journal and state-machine streams, sent by
+# the step's own new logic, were refused by it.
 STREAMS_TEXT = """\
 STREAMS. The checker counts, by itself, every item handed over to the part
 your step adds or changes (an item is one request, data word, command or
 event), and searches every input sequence for many cycles from the start
 for an item that is neither delivered nor still held. A step it finds
 losing an item is sent back. In "streams", declare each stream of items
-the step adds or changes:
+the step adds or changes, at most 3 streams (the ones it adds or changes
+most):
 - name: a few words, for example "requests into the new queue";
-- inputs: one entry for each place items enter (two lanes that share one
-  thing are one stream with two inputs), each with:
+- inputs: one entry for each place items enter, at most 4 inputs (two
+  lanes that share one thing are one stream with two inputs), each with:
   offer: true in a cycle when the sender has an item for the stream. For a
     sender outside the design (its items arrive on input ports): its valid
-    input, and the design's enable if it has one ("en && in_valid"), only
-    input ports. For a sender inside the design (logic it already has,
-    logic you add, or in a combination the sending design): that sender's
-    own valid signal ("st_v", "a_out_valid"), which stays true while it
-    waits. Never fold in whether the item will be taken (full, busy, a
-    grant, your new state): that belongs in ready.
+    input, only input ports, with the design's enable ("en && in_valid")
+    only when the design takes items only while the enable is high; when
+    its handshake ignores the enable, the valid alone ("in_valid"). For a
+    sender inside the design (logic it already has, logic you add, or in a
+    combination the sending design): that sender's own valid signal
+    ("st_v", "a_out_valid"), which stays true while it waits. Never fold in
+    whether the item will be taken (full, busy, a grant, your new state):
+    that belongs in ready. The offer may not read state your step adds
+    that delivered or held also read: when the sender is logic your step
+    adds (a state machine that sends on what it took in), start the stream
+    where items come into that logic, or leave that stream out.
   ready: what tells the sender its item is taken this cycle. For a sender
     outside the design: the ready or busy output it reads ("in_ready" or
     "!busy_o"). For a sender inside: the condition under which its item is
-    taken, with the design's enable if it has one ("en && !q_full").
+    taken ("!q_full"), with the design's enable ("en && !q_full") only
+    when taking an item waits for the enable.
     Write "" when the sender cannot be made to wait: then every cycle its
     offer is true counts as one item handed over, so the offer must be
     true for exactly one cycle per item;
@@ -642,8 +668,11 @@ the step adds or changes:
   can wait (queue entries, holding registers, an output stage): the name
   of a count the design keeps, a sum of 1-bit flags ("q_count",
   "slot_v[0] + slot_v[1]") or "0";
-- flush: an input that empties the stream on purpose (a clear, abort or
-  flush command), or "" when there is none.
+- flush: an input port that empties the stream on purpose (a clear, abort
+  or flush command), or "" when there is none. Never the reset: the
+  checker holds the reset only in the first cycle, so a reset never
+  empties a stream there. Never the enable, and never the stream's own
+  offer or ready signals.
 Write every value as a Verilog expression over the top module's signals:
 no prose, no instance.signal, no $ functions, and no subtraction in
 delivered or held (name a wire of the design that holds a difference of
@@ -975,6 +1004,10 @@ def _schema(reasoning_fields, streams=False):
 # a receiver that refuses "never refuses". The part between the designs now
 # does a real job, waiting holds back only the stream's own path, refusal
 # is judged from what the receiver does, and either design may send.
+# 27 Oct 2026, Rishab approved: mirror ports go to outputs of the wrapper.
+# On a wire inside it, the registers only they read count as unused
+# (r0_092 with r0_076 measured 67% that way, 100% on outputs), and 38 of
+# the 213 starting pairs of the GPT-6.1 Sol run would fall under 70%.
 COMPOSE_TEMPLATE = """\
 Extension type: COMPOSE.
 
@@ -1045,7 +1078,10 @@ B's invariants: {invariants_b}
    rejected (the toolchain silently turns them into dangling wires).
    Where a parent's facts need an internal register, the parent carries a
    mirror output port for it (for example `assign count_o = count;`):
-   connect that port to a wrapper wire and state the fact through it.
+   connect that port to an output of the wrapper and state the fact
+   through it. Connected only to a wire inside the wrapper, the register
+   behind it counts as unused, and too much unused state turns the
+   combination down.
 3. The wrapper contains exactly ONE new assertion about the composed
    behaviour, guarded by an antecedent where natural.
 4. The invariant list must contain every parent clause renamed to the
