@@ -445,6 +445,29 @@ def test_strip_diff_decoration_leaves_plain_verilog_alone():
     assert strip_diff_decoration(plain) == plain
 
 
+# 27 Oct 2026: GPT-6.1 Sol wrote both tries of a combination this way, and
+# the header lines reached yosys ("unexpected OP_POW" at *** Begin Patch)
+OPENAI_PATCH_DECORATED = """\
+*** Begin Patch
+*** Add File: wrapped_top.sv
++// a comment
++module wrapped_top (
++    input wire clk
++);
++    reg r;
++    initial r = 1'b0;
++endmodule
+*** End Patch
+"""
+
+
+def test_strip_diff_decoration_recovers_module_from_openai_patch():
+    from extend import strip_diff_decoration
+    out = strip_diff_decoration(OPENAI_PATCH_DECORATED)
+    assert out == strip_diff_decoration(DIFF_DECORATED)
+    assert "***" not in out and "+" not in out
+
+
 # --- LEDGER: the move that manufactures the failure mode opus showed ---
 
 def test_ledger_move_exists_and_is_weighted():

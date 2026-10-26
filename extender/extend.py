@@ -1998,20 +1998,28 @@ def wrappable(row):
     return _WRAPPABLE[key]
 
 
-_DIFF_MARKER = re.compile(r"^(---\s|\+\+\+\s|@@)", re.M)
+# 27 Oct 2026, Rishab approved ("start fixing the yosys errors"): GPT-6.1
+# Sol also wraps a combination's wrapper in OpenAI's own patch layout
+# (*** Begin Patch, *** Add File: name, + on every line, *** End Patch);
+# both tries of task 1 in the GPT run came back that way and failed yosys
+_PATCH_HEADER = (r"\*\*\* (Begin Patch|End Patch|Add File:|Update File:|"
+                 r"Delete File:|Move to:|End of File)")
+_DIFF_MARKER = re.compile(rf"^(---\s|\+\+\+\s|@@|{_PATCH_HEADER})", re.M)
 
 
 def strip_diff_decoration(text):
     """Recover a plain module from an answer wrapped in unified-diff
-    syntax (---/+++/@@ headers, + line prefixes). Applied only when diff
-    markers are present, so plain Verilog passes through untouched —
-    same philosophy as fence-stripping: a formatting tic must not waste
-    the call."""
+    syntax (---/+++/@@ headers, + line prefixes) or OpenAI's patch layout
+    (*** Begin Patch / *** Add File: headers, + line prefixes). Applied
+    only when diff markers are present, so plain Verilog passes through
+    untouched — same philosophy as fence-stripping: a formatting tic must
+    not waste the call."""
     if not _DIFF_MARKER.search(text):
         return text
     out = []
     for line in text.splitlines():
-        if re.match(r"^(---\s|\+\+\+\s|@@)", line) or line == "@@":
+        if re.match(rf"^(---\s|\+\+\+\s|@@|{_PATCH_HEADER})", line) \
+                or line == "@@":
             continue
         if line.startswith("+"):
             out.append(line[1:])
