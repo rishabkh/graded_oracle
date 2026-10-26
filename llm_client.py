@@ -12,6 +12,11 @@ the project has.
                                                            # openrouter.ai/models
                                                            # for the exact slug
 
+  # OpenAI directly (26 Oct 2026), batches included:
+  export CLAUDE_PROVIDER=openai
+  export OPENAI_API_KEY=sk-proj-...
+  export OPENAI_MODEL=gpt-6.1-sol        # optional; the default
+
 Differences that matter, handled here:
 - Anthropic enforces the JSON schema server-side (output_config); OpenRouter
   forwards an OpenAI-style response_format when the provider supports it and
@@ -41,18 +46,36 @@ def provider():
     return os.environ.get("CLAUDE_PROVIDER", "anthropic")
 
 
+# 26 Oct 2026, Rishab approved: OpenAI as a third route, for extender runs
+# while the Anthropic key was out (it expired after 30 days). GPT-6.1 Sol is
+# OpenAI's tier below its top model, as Opus 5.5 is below Fable; it came
+# out on 29 Sep 2026. Every call site keeps passing its Claude model id;
+# this route ignores it and calls OPENAI_MODEL, and the logs name the
+# model that really answered.
+OPENAI_MODEL_DEFAULT = "gpt-6.1-sol"
+
+
+def openai_model():
+    return os.environ.get("OPENAI_MODEL", OPENAI_MODEL_DEFAULT)
+
+
 def model_label(anthropic_model):
     """What to record in logs: the model actually called, provider-tagged."""
     if provider() == "openrouter":
         slug = os.environ.get("OPENROUTER_CLAUDE_MODEL",
                               "anthropic/claude-opus-5")
         return f"openrouter:{slug}"
+    if provider() == "openai":
+        return f"openai:{openai_model()}"
     return anthropic_model
 
 
 # Published list prices, dollars per million tokens (input, output).
 # Opus 5.5 replaced Opus 5 for every call on 8 Oct 2026 at 20% less.
-PRICES = {"claude-opus-5": (5.0, 25.0), "claude-opus-5-5": (4.0, 20.0)}
+# GPT-6.1 Sol: $2 in, $10 out (OpenAI's pricing page as quoted on 4 and 11
+# Oct 2026); its Batch API is half price too.
+PRICES = {"claude-opus-5": (5.0, 25.0), "claude-opus-5-5": (4.0, 20.0),
+          "gpt-6.1-sol": (2.0, 10.0)}
 
 
 def dollars(model, tokens_in, tokens_out, batch=False):
@@ -107,13 +130,29 @@ def call_claude(*, model, max_tokens, user, system=None, schema=None,
     or (OpenRouter path) unparseable output."""
     global LAST_RAW
     entry = {"started": datetime.now(timezone.utc).isoformat(),
-             "provider": provider(), "model": model,
-             "batch": _gate is not None and provider() == "anthropic",
+             "provider": provider(),
+             "model": model_label(model) if provider() == "openai" else model,
+             "batch": _gate is not None and provider() in BATCH_PROVIDERS,
              "batch_id": None, "custom_id": None, "request": None,
              "raw": None, "stop": None, "usage": None, "refusal": None}
     t0 = time.monotonic()
     try:
-        if provider() == "openrouter":
+        if provider() == "openai":
+            body = openai_request_body(max_tokens=max_tokens, user=user,
+                                       system=system, schema=schema,
+                                       effort=effort)
+            entry["request"] = body
+            if _gate is not None:
+                stop, text, usage, raw, info = _gate.call(body)
+                entry.update(info)
+                if stop.startswith("error"):
+                    entry.update(stop=stop, usage=usage)
+                    raise RuntimeError(f"batch {stop}")
+            else:
+                text, usage, stop, raw, refusal = _call_openai(body)
+                entry["refusal"] = refusal
+            LAST_RAW = raw
+        elif provider() == "openrouter":
             entry["request"] = {"model": model, "max_tokens": max_tokens,
                                 "system": system, "user": user,
                                 "schema": schema, "effort": effort}
@@ -255,10 +294,17 @@ def _call_anthropic(kwargs):
 
 
 # --- Message Batches API: the same requests at half price, answered within
-# 24 hours (usually under one). Anthropic direct only.
+# 24 hours (usually under one). Anthropic direct, and since 26 Oct 2026
+# OpenAI's Batch API through the same three functions.
+
+BATCH_PROVIDERS = ("anthropic", "openai")
+
 
 def batch_submit(items):
-    """items: [(custom_id, request_kwargs(...))]. Returns the batch id."""
+    """items: [(custom_id, request_kwargs(...))], or OpenAI request
+    bodies on that route. Returns the batch id."""
+    if provider() == "openai":
+        return _openai_batch_submit(items)
     batch = _client().messages.batches.create(
         requests=[{"custom_id": cid, "params": kw} for cid, kw in items])
     return batch.id
@@ -266,6 +312,8 @@ def batch_submit(items):
 
 def batch_status(batch_id):
     """("in_progress" | "canceling" | "ended", request counts)."""
+    if provider() == "openai":
+        return _openai_batch_status(batch_id)
     b = _client().messages.batches.retrieve(batch_id)
     c = b.request_counts
     return b.processing_status, {k: getattr(c, k, 0) for k in (
@@ -277,6 +325,9 @@ def batch_results(batch_id):
     refusal)), a succeeded entry read exactly as a direct reply
     (read_message, refusal_reason); an errored, canceled or expired one as
     stop "error:<kind>"."""
+    if provider() == "openai":
+        yield from _openai_batch_results(batch_id)
+        return
     zero = {"input": 0, "output": 0}
     for r in _client().messages.batches.results(batch_id):
         kind = r.result.type
@@ -338,6 +389,141 @@ def _call_openrouter(*, model, max_tokens, user, system, schema, effort):
     # Re-serialise so callers always receive clean JSON text, exactly as
     # the Anthropic structured-output path would have produced.
     return json.dumps(obj), usage, "ok"
+
+
+# --- OpenAI directly (26 Oct 2026) ------------------------------------------
+# The same structured-output call through OpenAI's Chat Completions API,
+# and the same half-price batches through its Batch API (a file of
+# requests, answered within 24 hours). The system text goes in as a
+# "system" message, so a saved training example rebuilds the same chat
+# turns as a Claude call (batch.sent_messages). All our schemas already
+# meet OpenAI's strict rules (every property required, no extra
+# properties; tests/test_llm_client_openai.py checks each one).
+
+_oa_client = None
+
+# our effort names, as OpenAI's reasoning_effort reads them
+OPENAI_EFFORT = {"low": "low", "medium": "medium", "high": "high",
+                 "xhigh": "high", "max": "high"}
+
+
+def _openai():
+    global _oa_client
+    if _oa_client is None:
+        from openai import OpenAI
+        # a long answer at high effort can take many minutes
+        _oa_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"],
+                            timeout=3600)
+    return _oa_client
+
+
+def openai_request_body(*, max_tokens, user, system=None, schema=None,
+                        effort=None):
+    """The Chat Completions request, built once for both the direct call
+    and a batch line, so the two cannot drift apart."""
+    messages = ([{"role": "system", "content": system}] if system else []) \
+        + [{"role": "user", "content": user}]
+    body = {"model": openai_model(), "messages": messages,
+            "max_completion_tokens": max_tokens}
+    if effort:
+        body["reasoning_effort"] = OPENAI_EFFORT.get(effort, effort)
+    if schema:
+        body["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "output", "strict": True,
+                            "schema": schema}}
+    return body
+
+
+def read_openai_completion(body):
+    """One chat completion (as a dict) read like read_message reads a
+    Claude reply: (raw_json_text | None, usage, stop, raw_text, refusal),
+    stop "ok", "refusal" or "length" (cut off with no complete JSON
+    object). The JSON text is re-serialised clean; raw_text keeps what
+    came back."""
+    u = body.get("usage") or {}
+    usage = {"input": u.get("prompt_tokens") or 0,
+             "output": u.get("completion_tokens") or 0}
+    choice = (body.get("choices") or [{}])[0]
+    message = choice.get("message") or {}
+    finish = choice.get("finish_reason")
+    if message.get("refusal") or finish == "content_filter":
+        return None, usage, "refusal", None, {
+            "category": "refusal" if message.get("refusal")
+            else "content_filter",
+            "explanation": message.get("refusal")}
+    text = message.get("content") or ""
+    obj = extract_json(text)
+    if obj is None:
+        return None, usage, ("length" if finish == "length" else "ok"), \
+            text, None
+    return json.dumps(obj), usage, "ok", text, None
+
+
+def _call_openai(body):
+    """(text, usage, stop, raw, refusal), as _call_anthropic gives."""
+    resp = _openai().chat.completions.create(**body)
+    return read_openai_completion(resp.model_dump())
+
+
+def _openai_batch_submit(items):
+    lines = "".join(json.dumps({"custom_id": cid, "method": "POST",
+                                "url": "/v1/chat/completions",
+                                "body": body}) + "\n"
+                    for cid, body in items)
+    upload = _openai().files.create(
+        file=("batch_requests.jsonl", lines.encode()), purpose="batch")
+    batch = _openai().batches.create(input_file_id=upload.id,
+                                     endpoint="/v1/chat/completions",
+                                     completion_window="24h")
+    return batch.id
+
+
+# OpenAI's batch states, as the gate reads Anthropic's: a state not listed
+# here counts as ended, so a new one can never hold the run forever.
+OPENAI_BATCH_STATES = {"validating": "in_progress", "in_progress": "in_progress",
+                       "finalizing": "in_progress", "cancelling": "canceling",
+                       "completed": "ended", "failed": "ended",
+                       "expired": "ended", "cancelled": "ended"}
+
+
+def _openai_batch_status(batch_id):
+    b = _openai().batches.retrieve(batch_id)
+    c = b.request_counts
+    return OPENAI_BATCH_STATES.get(b.status, "ended"), {
+        k: getattr(c, k, 0) or 0 for k in ("total", "completed", "failed")}
+
+
+def _openai_batch_results(batch_id):
+    """Yields (custom_id, (stop, raw_json_text | None, usage, raw_text,
+    refusal)) from the batch's output and error files; a request that
+    failed reads as stop "error:<code>". A batch OpenAI turned away whole
+    (a request it could not read) raises with OpenAI's reasons."""
+    b = _openai().batches.retrieve(batch_id)
+    if b.status == "failed":
+        errors = getattr(getattr(b, "errors", None), "data", None) or []
+        reasons = "; ".join(str(getattr(e, "message", e)) for e in errors)
+        raise RuntimeError(f"OpenAI batch failed: {reasons[:600]}")
+    zero = {"input": 0, "output": 0}
+    for file_id in (b.output_file_id, b.error_file_id):
+        if not file_id:
+            continue
+        for line in _openai().files.content(file_id).text.splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            response = row.get("response") or {}
+            if response.get("status_code") == 200 \
+                    and isinstance(response.get("body"), dict):
+                text, usage, stop, raw, refusal = read_openai_completion(
+                    response["body"])
+                yield row["custom_id"], (stop, text, usage, raw, refusal)
+                continue
+            err = row.get("error") or \
+                (response.get("body") or {}).get("error") or {}
+            code = err.get("code") or err.get("type") \
+                or response.get("status_code") or "unknown"
+            yield row["custom_id"], (f"error:{code}", None, zero, None, None)
 
 
 # --- the batch gate (8 Oct 2026) -------------------------------------------
@@ -456,12 +642,13 @@ class _Gate:
 @contextlib.contextmanager
 def batch_gate(flush_after_s=20, poll_s=60, manifest_dir=None,
                max_size=10000):
-    """Inside the block, Anthropic call_claude calls from any thread go out
-    as Message Batches at half price (see the notes above)."""
+    """Inside the block, call_claude calls from any thread go out as
+    batches at half price (see the notes above): Anthropic's Message
+    Batches, or OpenAI's Batch API on that route (26 Oct 2026)."""
     global _gate
-    if provider() != "anthropic":
-        raise RuntimeError("batch mode needs the Anthropic API, not "
-                           f"{provider()}")
+    if provider() not in BATCH_PROVIDERS:
+        raise RuntimeError("batch mode needs the Anthropic or OpenAI API, "
+                           f"not {provider()}")
     gate = _Gate(flush_after_s, poll_s, manifest_dir, max_size)
     _gate = gate
     try:

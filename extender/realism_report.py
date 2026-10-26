@@ -250,8 +250,15 @@ CALL_KINDS = ("extension questions and partner choices", "reviews",
 def call_kind(entry):
     """Who asked, read from the system text: the extension questions and
     partner choices share extend.SYSTEM_PROMPT, the reviewer has
-    sense_check.SYSTEM, and the distractor sends none."""
-    system = first_line((entry.get("request") or {}).get("system"))
+    sense_check.SYSTEM, and the distractor sends none. An OpenAI request
+    (26 Oct 2026) carries the system text as its first message."""
+    request = entry.get("request") or {}
+    system = request.get("system")
+    if system is None:
+        system = next((m.get("content") for m in request.get("messages") or []
+                       if isinstance(m, dict) and m.get("role") == "system"),
+                      None)
+    system = first_line(system)
     if not system:
         return "distractor questions"
     return {first_line(extend.SYSTEM_PROMPT): CALL_KINDS[0],

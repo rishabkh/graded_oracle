@@ -426,6 +426,33 @@ STAGE_K_TEXT = """
         each held in its own stage, and the invariant list must pin every
         stage."""
 
+# 26 Oct 2026, Rishab approved (Gary's suggestion, the hardware expert):
+# IBEX_FACT_PATTERNS, the last bullet of INVARIANT_RULES and a paragraph of
+# the combining question, gives the fact patterns of the Ibex core's own buffer
+# proofs (lowRISC Ibex, formal/icache/formal_tb.sv, its "internal
+# (induction) assertions": the older-than order of its fill buffers, the
+# requests-in-flight count, oldest first, the oldest buffer's address,
+# one-hot selects), written as our same-cycle facts. Ibex is real hardware
+# and not in the benchmark.
+IBEX_FACT_PATTERNS = """\
+- When the design keeps several entries (buffers, queue slots, requests
+  in flight), these are the facts real processor engineers write for
+  their proofs (the Ibex core's own buffer proofs):
+  (1) order among entries: when entries carry an age or an order (an
+  older-than table, sequence numbers), no busy entry is older than
+  itself, two busy entries are never each older than the other, the
+  order is transitive, and any two busy entries are ordered, for example
+  `forall k in 0..3, m in 0..3 where k != m: !(busy[k] && busy[m]) || (older[k][m] != older[m][k])`;
+  (2) work in flight: what was requested minus what came back, added up
+  over the entries, equals the count of requests still outstanding, and
+  no entry has more replies than requests;
+  (3) oldest first: an entry has started its work only when every older
+  busy entry has finished;
+  (4) the oldest busy entry's address is the address being sent out, and
+  the entry after it holds the next address;
+  (5) a select that picks one entry has at most one bit set, written as a
+  sum (sel[0] + sel[1] + sel[2] + sel[3] <= 1)."""
+
 # 21 Oct 2026: facts are same-cycle expressions with no system functions,
 # which the benchmark's checker cannot read (system_function_facts below);
 # and with sizes now parameters (SYSTEM_PROMPT rule 11), a compact fact's
@@ -466,6 +493,7 @@ INVARIANT_RULES = """\
   Use index names that are not signals of the module. Write the range in
   numbers, the value a size parameter has (0..3 when DEPTH = 4), never
   its name. Each such fact is checked once for every index value."""
+INVARIANT_RULES += "\n" + IBEX_FACT_PATTERNS
 
 DISPOSITION_BLOCK = """\
 For every invariant clause in the parent list, record what happened to it:
@@ -1037,6 +1065,8 @@ B's invariants: {invariants_b}
    $countones, $onehot, ...): the checker that scores the facts cannot
    read them.
 
+{ibex_patterns}
+
 {streams}WORK IT OUT BEFORE YOU WRITE THE WRAPPER
 
 1. glue_scheme: which design sends what to which, the job of the part
@@ -1096,7 +1126,8 @@ def compose_prompt(pa, pb, plan=None):
         plan=PLAN_TEXT.format(system=plan.get("system", ""),
                               connection=plan.get("connection", ""))
         if plan else "",
-        streams=streams_text("compose"))
+        streams=streams_text("compose"),
+        ibex_patterns=IBEX_FACT_PATTERNS)
 
 
 # --- the partner for a combination (19 Oct 2026) ---
