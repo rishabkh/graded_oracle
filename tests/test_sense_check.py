@@ -11,12 +11,23 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "extender"))
 
 import promote                                                  # noqa: E402
 import sense_check as S                                         # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def no_checker_notes(monkeypatch):
+    # 26 Oct 2026: the reviewer now reads the checker's notes
+    # (nothing_lost.reviewer_notes) because change 6 shows it what the
+    # checker's own tools found; these records carry none, and the
+    # reviewer is tested here on its own
+    monkeypatch.setattr(S, "checker_notes", lambda record: [])
 
 
 def wrapped(**kw):
@@ -29,11 +40,18 @@ def wrapped(**kw):
 
 
 def answer(**kw):
+    # 26 Oct 2026: three questions added (value_cut_or_padded,
+    # only_a_delayed_copy, item_can_be_dropped) because change 6 asks about
+    # cut or padded values, delayed copies and lost items; an answer
+    # without them is now a failed try
     a = {"parts_connected_sensibly": True,
          "value_used_against_its_meaning": False,
+         "value_cut_or_padded": False,
          "new_logic_only_copies_existing_state": False,
+         "only_a_delayed_copy": False,
          "results_of_parts_used": True,
          "new_part_has_its_own_job": True,
+         "item_can_be_dropped": False,
          "breaks_what_it_did": False,
          "engineer_would_build_this": True,
          "why": "a sensible pipeline"}
@@ -47,15 +65,24 @@ class Model:
 
     def __call__(self, prompt):
         self.prompts.append(prompt)
+        # 26 Oct 2026: the second call (the builder's claims) gets a claims
+        # answer because change 6 reads the builder's words in a call of
+        # their own, after the design is judged
+        if prompt.startswith("You reviewed a hardware design"):
+            return {"claims_match_design": True, "false_claims": ""}
         return self.reply
 
 
 def test_the_reviewer_sees_the_whole_design_and_how_it_was_built():
     model = Model(answer())
     S.review(wrapped(), call=model)
-    [prompt] = model.prompts
-    assert "module a; endmodule" in prompt and "module top" in prompt
-    assert "a one-entry report buffer feeds the CRC checker" in prompt
+    # 26 Oct 2026: the builder's words moved from the first question to the
+    # second because change 6 has the reviewer judge the code before it
+    # reads them
+    design, claims = model.prompts
+    assert "module a; endmodule" in design and "module top" in design
+    assert "a one-entry report buffer feeds the CRC checker" not in design
+    assert "a one-entry report buffer feeds the CRC checker" in claims
 
 
 def test_a_sensible_design_is_kept():

@@ -48,7 +48,7 @@ def pair(body, **fields):
     triple = {"verilog": PAIR.replace("BODY", body), "top_module": "rst_pair",
               "clock": "clk", "antecedents": [], "sanity_covers": [],
               "invariants": ["a == b", "a <= 3'd4"],
-              "cti_reasoning": "a=5, b=4", "cti_state": []}
+              "cti_explanation": "a=5, b=4", "cti_state": []}
     return dict(triple, **fields)
 
 

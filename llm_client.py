@@ -110,7 +110,7 @@ def call_claude(*, model, max_tokens, user, system=None, schema=None,
              "provider": provider(), "model": model,
              "batch": _gate is not None and provider() == "anthropic",
              "batch_id": None, "custom_id": None, "request": None,
-             "raw": None, "stop": None, "usage": None}
+             "raw": None, "stop": None, "usage": None, "refusal": None}
     t0 = time.monotonic()
     try:
         if provider() == "openrouter":
@@ -133,7 +133,8 @@ def call_claude(*, model, max_tokens, user, system=None, schema=None,
                     entry.update(stop=stop, usage=usage)
                     raise RuntimeError(f"batch {stop}")
             else:
-                text, usage, stop, raw = _call_anthropic(kwargs)
+                text, usage, stop, raw, *reason = _call_anthropic(kwargs)
+                entry["refusal"] = reason[0] if reason else None
             LAST_RAW = raw
     except Exception as exc:
         if not entry["stop"]:
@@ -221,6 +222,19 @@ def read_message(resp):
     return text, usage, "ok", text
 
 
+def refusal_reason(resp):
+    """Anthropic's stated reason for a refusal, {"category", "explanation"},
+    or None for any other reply. Either value may be None: stop_details can
+    be missing even on a refusal. The call log keeps it since 26 Oct 2026;
+    the 7 refusals of the 25 Oct initiator run had to be read back from
+    their batches by hand."""
+    if resp.stop_reason != "refusal":
+        return None
+    details = getattr(resp, "stop_details", None)
+    return {"category": getattr(details, "category", None),
+            "explanation": getattr(details, "explanation", None)}
+
+
 def _client():
     global _an_client
     if _an_client is None:
@@ -230,14 +244,14 @@ def _client():
 
 
 def _call_anthropic(kwargs):
-    """(text, usage, stop, raw). raw is None on a refusal: before 8 Oct 2026
-    LAST_RAW kept the previous reply then, so a refused attempt was logged
-    with another attempt's text."""
+    """(text, usage, stop, raw, refusal). raw is None on a refusal: before
+    8 Oct 2026 LAST_RAW kept the previous reply then, so a refused attempt
+    was logged with another attempt's text. refusal is refusal_reason's."""
     # stream, not create: the SDK refuses a plain create() whose max_tokens
     # could run past ten minutes, which is every call at our 32k budget
     with _client().messages.stream(**kwargs) as s:
         resp = s.get_final_message()
-    return read_message(resp)
+    return read_message(resp) + (refusal_reason(resp),)
 
 
 # --- Message Batches API: the same requests at half price, answered within
@@ -259,22 +273,24 @@ def batch_status(batch_id):
 
 
 def batch_results(batch_id):
-    """Yields (custom_id, (stop, raw_json_text | None, usage, raw_text)),
-    a succeeded entry read exactly as a direct reply (read_message); an
-    errored, canceled or expired one as stop "error:<kind>"."""
+    """Yields (custom_id, (stop, raw_json_text | None, usage, raw_text,
+    refusal)), a succeeded entry read exactly as a direct reply
+    (read_message, refusal_reason); an errored, canceled or expired one as
+    stop "error:<kind>"."""
     zero = {"input": 0, "output": 0}
     for r in _client().messages.batches.results(batch_id):
         kind = r.result.type
         if kind == "succeeded":
             text, usage, stop, raw = read_message(r.result.message)
-            yield r.custom_id, (stop, text, usage, raw)
+            yield r.custom_id, (stop, text, usage, raw,
+                                refusal_reason(r.result.message))
         elif kind == "errored":
             err = getattr(r.result, "error", None)
             etype = getattr(getattr(err, "error", None), "type", None) \
                 or getattr(err, "type", None) or "unknown"
-            yield r.custom_id, (f"error:{etype}", None, zero, None)
+            yield r.custom_id, (f"error:{etype}", None, zero, None, None)
         else:
-            yield r.custom_id, (f"error:{kind}", None, zero, None)
+            yield r.custom_id, (f"error:{kind}", None, zero, None, None)
 
 
 def _call_openrouter(*, model, max_tokens, user, system, schema, effort):
@@ -423,8 +439,11 @@ class _Gate:
         rec.update(usage=usage, ended=datetime.now(timezone.utc).isoformat())
         self._write(path, rec)
         for cid, slot in slots.items():
-            slot["result"] = results[cid] + (
-                {"batch_id": rec["batch_id"], "custom_id": cid},)
+            stop, text, use, raw, *reason = results[cid]
+            info = {"batch_id": rec["batch_id"], "custom_id": cid}
+            if reason and reason[0]:
+                info["refusal"] = reason[0]
+            slot["result"] = (stop, text, use, raw, info)
             slot["event"].set()
 
     def close(self):

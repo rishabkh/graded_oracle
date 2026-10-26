@@ -24,9 +24,15 @@ def test_route_covers_the_spec():
 
 
 def test_route_machinery_verdicts_are_reformat():
+    # 26 Oct 2026: the four new verdicts (changes 2-5) are retried with
+    # their lesson, because promote.route sends every machinery verdict it
+    # does not name to "reformat"; NO_GLUE_CLAUSE is no longer produced
+    # but stays here, because old logs still hold it
     for v in ("PATCH_ERROR", "DISPOSITION_ERROR", "PROPERTY_COPY",
               "NO_AGGREGATE", "NO_GLUE_CLAUSE", "HIERARCHICAL_REF",
-              "TRUNCATED", "UNPARSEABLE", "REFUSED", "WRAPPER_ERROR"):
+              "TRUNCATED", "UNPARSEABLE", "REFUSED", "WRAPPER_ERROR",
+              "NEW_INPUT", "STREAM_INVALID", "ITEMS_LOST",
+              "PAUSES_WHOLE_DESIGN"):
         assert route(v) == "reformat", v
 
 

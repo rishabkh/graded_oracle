@@ -167,7 +167,14 @@ def test_big_steps_may_add_a_part_with_an_assertion_of_its_own():
     for move in extend.BIG_MOVES:
         text = " ".join(extend.build_prompt(lines_row(80), "structural",
                                             move).split())
-        assert "beside the existing logic" in text, move
+        # 26 Oct 2026: a PEER step reads PEER_EFFECT_RULE, not the sideways
+        # rule, because its new lane affects the old logic only through
+        # the one thing the lanes share (change 5); it may still bring ONE
+        # new assertion of its own
+        if move == "PEER":
+            assert "through the one thing the lanes share" in text
+        else:
+            assert "beside the existing logic" in text, move
         assert "ONE new assertion" in text, move
     stage = " ".join(extend.build_prompt(lines_row(80), "structural",
                                          "STAGE", k=4).split())
@@ -391,17 +398,35 @@ def test_the_run_puts_the_family_history_in_the_question(monkeypatch):
 
 # --- 4. the second reviewer reads every step -----------------------------------
 
+@pytest.fixture(autouse=True)
+def no_checker_notes(monkeypatch):
+    # 26 Oct 2026: the reviewer now reads the checker's notes
+    # (nothing_lost.reviewer_notes) because change 6 shows it what the
+    # checker's own tools found; these records carry none
+    monkeypatch.setattr(S, "checker_notes", lambda record: [])
+
+
 def reply(**kw):
+    # 26 Oct 2026: three questions added (value_cut_or_padded,
+    # only_a_delayed_copy, item_can_be_dropped) because change 6 asks about
+    # cut or padded values, delayed copies and lost items; a reply without
+    # them is now a failed try
     a = {"parts_connected_sensibly": True,
          "value_used_against_its_meaning": False,
+         "value_cut_or_padded": False,
          "new_logic_only_copies_existing_state": False,
+         "only_a_delayed_copy": False,
          "results_of_parts_used": True,
          "new_part_has_its_own_job": True,
+         "item_can_be_dropped": False,
          "breaks_what_it_did": False,
          "engineer_would_build_this": True,
          "why": "a real feature"}
     a.update(kw)
     return a
+
+
+CLAIMS_OPENING = "You reviewed a hardware design"
 
 
 class Model:
@@ -410,6 +435,11 @@ class Model:
 
     def __call__(self, prompt):
         self.prompts.append(prompt)
+        # 26 Oct 2026: the second call (the builder's claims) is answered
+        # without taking a reply because change 6 added that call; the
+        # replies stay the design call's answers
+        if prompt.startswith(CLAIMS_OPENING):
+            return {"claims_match_design": True, "false_claims": ""}
         return self.replies.pop(0) if self.replies else None
 
 
@@ -428,7 +458,11 @@ def test_every_proved_step_is_reviewed():
                      "replicate"):
         model = Model(reply())
         rec = S.review(proved(ext_type), call=model)
-        assert len(model.prompts) == 1, ext_type
+        # 26 Oct 2026: two calls for the structural step, one for the rest,
+        # because change 6 checks the builder's words in a second call and
+        # only the structural record here has any (its new_state)
+        assert len(model.prompts) == (2 if ext_type == "structural"
+                                      else 1), ext_type
         assert rec["verdict"] == "NECESSARY"
 
 
@@ -444,10 +478,13 @@ def test_the_reviewer_sees_the_change_and_the_earlier_steps():
     model = Model(reply())
     S.review(proved(), call=model,
              history=["STORAGE: a prefetch queue", "SUBUNIT: a retry unit"])
-    [prompt] = model.prompts
+    # 26 Oct 2026: the builder's own words are in the second question, not
+    # the first, because change 6 has the reviewer judge the code first
+    prompt, claims = model.prompts
     assert "+  reg [3:0] q_cnt;" in prompt                  # the change
     assert "module top; endmodule" in prompt                # the design
-    assert "a 4-entry queue in front of the input" in prompt
+    assert "a 4-entry queue in front of the input" not in prompt
+    assert "a 4-entry queue in front of the input" in claims
     assert "1. STORAGE: a prefetch queue" in prompt
     assert "new storage" in prompt                          # what kind
 
@@ -527,7 +564,10 @@ def test_the_review_is_tried_on_both_hand_labelled_trials(tmp_path,
                      "weak": {"kept": 0, "rejected": 1},
                      "wrong": {"kept": 0, "rejected": 1}}
     # each design is shown with the steps before it
-    assert "1. STORAGE: step 1" in model.prompts[1]
+    # 26 Oct 2026: the claims questions are left out because change 6 adds
+    # one after each kept design; the second design question is the one
+    design = [p for p in model.prompts if not p.startswith(CLAIMS_OPENING)]
+    assert "1. STORAGE: step 1" in design[1]
     for d in (a, b):
         assert (d / "sense_check_every_step.jsonl").exists()
 

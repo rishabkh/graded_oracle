@@ -52,11 +52,12 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
 from extend import (MOVE_WEIGHTS, SECOND_PROPERTY_RATE,          # noqa: E402
-                    REPLICATE_SCHEMA, SECOND_SCHEMA, STRUCTURAL_SCHEMA,
+                    REPLICATE_SCHEMA, SECOND_SCHEMA,
                     COMPOSE_SCHEMA, PARTNER_SCHEMA, SYSTEM_PROMPT,
                     build_prompt, call_model, compose_prompt, expand_facts,
                     expose_for_wrapper, grade_compose, grade_replicate,
-                    grade_step4, keep_reasoning, partner_prompt, wrappable)
+                    grade_step4, keep_reasoning, partner_prompt,
+                    structural_schema, wrappable)
 import distill_log                                                # noqa: E402
 import llm_client                                                 # noqa: E402
 from build_corpus import (engine_alone_share, extract_asserts,    # noqa: E402
@@ -133,7 +134,11 @@ PARTNER_MAX_LINES = 200
 REJECTED = defaultdict(list)
 _rejected_lock = threading.Lock()
 # turned down for what the step does, not for how the answer was written
-REMEMBERED = ("NONSENSE",) + gates.VERDICTS
+# 26 Oct 2026, Rishab approved (change 3): a step whose items the checker's
+# own search found lost (ITEMS_LOST) is remembered too, with its one-line
+# reason; a broken declaration (STREAM_INVALID) or a new input (NEW_INPUT)
+# is how the answer was written, retried with its lesson instead
+REMEMBERED = ("NONSENSE", "ITEMS_LOST") + gates.VERDICTS
 
 
 def rejection_note(record):
@@ -877,9 +882,12 @@ def _real_executor(task, corpus_rows):
                                   history=history(parent, by_id),
                                   siblings=children(parent, by_id),
                                   rejected=rejected) + section
-            schema = {"structural": STRUCTURAL_SCHEMA,
-                      "second": SECOND_SCHEMA,
-                      "replicate": REPLICATE_SCHEMA}[task["ext_type"]]
+            # a big move's schema asks for its streams (26 Oct 2026, Rishab
+            # approved, change 3)
+            schema = (structural_schema(task.get("move"))
+                      if task["ext_type"] == "structural" else
+                      {"second": SECOND_SCHEMA,
+                       "replicate": REPLICATE_SCHEMA}[task["ext_type"]])
             label = (f"task {task['task_id']}.{task['attempt']} "
                      f"{task['ext_type']} {task.get('move') or ''} "
                      f"on {task['parent_id']}")

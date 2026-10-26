@@ -397,15 +397,18 @@ def test_every_kind_of_step_is_checked_once_when_it_finished(checker, kind):
 
 
 def test_a_combination_saved_by_the_second_check_is_judged_on_it(checker):
-    """A combination that proves without its facts is told its glue is
-    not stateful enough; that is read off the second verdict."""
+    """A combination that proves without its facts is told its combined
+    assertion needs no facts; that is read off the second verdict."""
     decorative = TripleResult(NecessityVerdict.DECORATIVE, "decorative",
                               with_invariants=leg(Tier.PROVEN),
                               without_invariants=leg(Tier.PROVEN))
     checker(without_proof_ran_out(), decorative)
     record = compose_step({})
     assert record["verdict"] == "DECORATIVE"
-    assert "glue not stateful enough" in record["error"]
+    # 26 Oct 2026: "glue not stateful enough" became "proves without any
+    # facts", because the part between the designs no longer has to hold
+    # registers (change 4)
+    assert "proves without any facts" in record["error"]
 
 
 # --- the batch run ------------------------------------------------------------

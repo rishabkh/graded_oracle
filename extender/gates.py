@@ -9,7 +9,9 @@ good ones (notes_2026-10-18/strict_checks):
   SHADOW_REGISTER  a fact says a new register equals an existing signal: the
                    new state only copies state the design already has
   IDLE_GLUE        a wrapper's own registers drive no input of the designs it
-                   wraps, so its logic only watches them
+                   wraps, so its logic only watches them; for a combination,
+                   an input of one design computed from the other's outputs
+                   also counts (26 Oct 2026), a plain wire does not
   XOR_OUTPUTS      results of separate copies XOR-ed into one output, which
                    keeps them alive for the tools and means nothing
   UNUSED_COPIES    under 70% of the copied designs' flip-flops still do any
@@ -187,6 +189,48 @@ def glue_controls(wrapper, child, top):
     return False
 
 
+# 26 Oct 2026, Rishab approved (change 4): a combination's part between the
+# designs may be a conversion or an arbiter with no register, so IDLE_GLUE
+# also accepts an input of one design computed from another's outputs; a
+# plain wire, even through renaming wires, still fails.
+def parts_linked(wrapper, child, top):
+    """Does an input of one wrapped design take its value from another
+    design's outputs through logic of the wrapper's own (a slice, an
+    extension, a comparison, a mux), not only through wires that rename
+    it?"""
+    w = _mask_comments(wrapper)
+    driven = dict(_DRIVEN.findall(w))
+    parts = []
+    for mod, name, body in instances(wrapper, child, top):
+        dirs = port_directions(child, mod)
+        conns = _CONNECTION.findall(body)
+        outs = {i for p, e in conns if dirs.get(p) == "output"
+                for i in identifiers(e)}
+        parts.append((name, outs, [e for p, e in conns
+                                   if dirs.get(p) == "input"]))
+    return any(_computed_from(e, outs, driven)
+               for name, outs, _ in parts
+               for other, _, ins in parts if other != name for e in ins)
+
+
+def _computed_from(expr, sources, driven, seen=()):
+    """Does `expr` read a name in `sources` through an operation? A bare
+    name is followed through its assign or wire line; a bare name that is
+    a source is a plain wire."""
+    e = expr.strip()
+    if re.fullmatch(r"[A-Za-z_]\w*", e):
+        if e in driven and e not in seen:
+            return _computed_from(driven[e], sources, driven, seen + (e,))
+        return False
+    reached, todo = set(), set(identifiers(e))
+    while todo:
+        n = todo.pop()
+        if n not in reached:
+            reached.add(n)
+            todo |= identifiers(driven.get(n, ""))
+    return bool(reached & sources)
+
+
 def xor_of_copies(wrapper, child, top):
     """`assign x = a ^ b ...` lines whose operands are outputs of two or
     more different wrapped designs."""
@@ -302,8 +346,18 @@ def apply(record, parents, use_yosys=True):
     if record.get("ext_type") in WRAPPERS and record.get("wrapper"):
         child, wrapper = record["child_verilog"], record["wrapper"]
         top = _modules(child)[-1]
-        if not glue_controls(wrapper, child, top):
+        # a combination may link its parts by a conversion or an arbiter
+        # with no register (26 Oct 2026, Rishab approved, change 4); copies
+        # keep the old rule and reason
+        compose = record.get("ext_type") == "compose"
+        if not glue_controls(wrapper, child, top) and not (
+                compose and parts_linked(wrapper, child, top)):
             return _fail(record, "IDLE_GLUE",
+                         "the wrapper's registers drive no input of the "
+                         "designs it wraps, and no input of one design is "
+                         "computed from the other's outputs: the parts sit "
+                         "side by side, or are joined by a plain wire"
+                         if compose else
                          "the wrapper's registers drive no input of the "
                          "designs it wraps")
         mixed = xor_of_copies(wrapper, child, top)

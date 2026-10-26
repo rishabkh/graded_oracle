@@ -341,16 +341,22 @@ endmodule
 """
 
 
-def test_compose_plain_wire_caught_before_grading():
-    # no invariant clause about glue state (there IS no glue state):
-    # rejected structurally, before any sby run or API money
+# 26 Oct 2026: renamed from test_compose_plain_wire_caught_before_grading;
+# a wrapper with no register is no longer NO_GLUE_CLAUSE (that rule never
+# caught a plain wire and forced one-cycle-late copies, change 4). It is
+# still stopped before any tool: a combination must declare the stream
+# from one design into the other, and "streams": [] declares none
+def test_a_combination_without_registers_is_no_longer_sent_back_for_that():
     from extend import grade_compose
     pa, pb = make_compose_parents()
     out = {"wrapper": WIRE_WRAPPER, "top_module": "hot_link",
            "antecedents": ["in_valid"], "sanity_covers": [],
-           "invariants": ["held_o != 4'b0000"]}
+           "invariants": ["held_o != 4'b0000"], "streams": []}
     rec = grade_compose(pa, pb, out, {})
-    assert rec["verdict"] == "NO_GLUE_CLAUSE"
+    assert rec["verdict"] == "STREAM_INVALID"
+    assert rec["error"].startswith("A combination must declare at least one "
+                                   "stream from one design into the other")
+    assert rec["glue_identifiers"] == []
     assert "result" not in rec     # oracle never ran
 
 

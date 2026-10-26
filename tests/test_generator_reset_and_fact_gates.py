@@ -60,8 +60,8 @@ LEAVES_RESET = "b <= 3'd4"
 
 
 def pair(prop=LEAVES_RESET, **fields):
-    triple = {"cti_reasoning": "a=5, b=4 holds P, breaks a == b, steps to "
-                               "b=6",
+    triple = {"cti_explanation": "a=5, b=4 holds P, breaks a == b, steps to "
+                                 "b=6",
               "cti_state": [{"signal": "a", "value": "3'd5"},
                             {"signal": "b", "value": "3'd4"}],
               "invariants": ["a == b", "a <= 3'd4"],
@@ -403,7 +403,8 @@ def test_every_asynchronous_reset_trait_line_says_the_same():
 
 def test_the_stamp_names_each_rule_the_prompt_holds():
     assert P.prompt_version() == \
-        "nocap+size-params+plain-facts+no-async-reset-reads"
+        "nocap+size-params+plain-facts+no-async-reset-reads" \
+        "+explanation-after-design"
     size = "- Declare the design's sizes as parameters, as real hardware does"
     plain = ("Each clause is a same-cycle\n  boolean expression over the "
              "design's signals, with no system function")
@@ -428,7 +429,8 @@ def test_rows_carry_the_new_stamp(monkeypatch):
                                   constructs_path=None, scales_path=None,
                                   even_seeds=False)
     assert {r["prompt_version"] for r, *_ in plans} == \
-        {"nocap+size-params+plain-facts+no-async-reset-reads"}
+        {"nocap+size-params+plain-facts+no-async-reset-reads"
+         "+explanation-after-design"}
 
 
 # --- the two checkers on asynchronous-reset designs (sby and EBMC) ----------
@@ -470,8 +472,8 @@ LOADED = """module loaded_limit (input wire clk, input wire rst_n, input wire en
     always @(posedge clk) assert (cnt <= limit);
 endmodule
 """
-LOADED_TRIPLE = {"cti_reasoning": "cnt 3, limit 3, left 2 holds P, breaks "
-                                  "the sum, and one step makes cnt 4",
+LOADED_TRIPLE = {"cti_explanation": "cnt 3, limit 3, left 2 holds P, breaks "
+                                    "the sum, and one step makes cnt 4",
                  "cti_state": [{"signal": "cnt", "value": "4'd3"},
                                {"signal": "limit", "value": "4'd3"},
                                {"signal": "left", "value": "4'd2"}],

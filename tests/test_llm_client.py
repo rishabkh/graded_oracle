@@ -204,6 +204,41 @@ def test_batch_results_cover_every_outcome(monkeypatch):
     assert got["d"][0] == "error:expired"
 
 
+# --- Anthropic's stated reason for a refusal (26 Oct 2026) -----------------
+# A refusal carries stop_details (category, explanation). The call log threw
+# it away, so the 7 refusals of the 25 Oct initiator run had to be read back
+# from the batches by hand. It may be missing or null even on a refusal.
+
+def _refused(category="reasoning_extraction", explanation="asks for it"):
+    msg = _msg("", stop="refusal")
+    msg.stop_details = types.SimpleNamespace(
+        type="refusal", category=category, explanation=explanation)
+    return msg
+
+
+REASON = {"category": "reasoning_extraction", "explanation": "asks for it"}
+
+
+def test_the_refusal_reason_is_read_off_the_reply():
+    assert llm_client.refusal_reason(_refused()) == REASON
+    assert llm_client.refusal_reason(_msg("", stop="refusal")) == {
+        "category": None, "explanation": None}
+    assert llm_client.refusal_reason(_msg('{"a": 1}')) is None
+
+
+def test_batch_results_carry_the_refusal_reason(monkeypatch):
+    def res(cid, message):
+        return types.SimpleNamespace(custom_id=cid, result=types.SimpleNamespace(
+            type="succeeded", message=message))
+    out = [res("a", _msg('{"x": 1}')), res("b", _refused())]
+    batches = types.SimpleNamespace(results=lambda bid: iter(out))
+    monkeypatch.setattr(llm_client, "_an_client", types.SimpleNamespace(
+        messages=types.SimpleNamespace(batches=batches)))
+    got = dict(llm_client.batch_results("b1"))
+    assert got["a"][0] == "ok" and got["a"][4] is None
+    assert got["b"][0] == "refusal" and got["b"][4] == REASON
+
+
 def test_batch_tokens_cost_half():
     assert llm_client.dollars("claude-opus-5-5", 1_000_000, 1_000_000,
                               batch=True) == 12.0
@@ -387,6 +422,41 @@ def test_a_batch_call_is_logged_with_its_batch_and_custom_id(monkeypatch, tmp_pa
     assert all(l["batch_id"] == "batch_1" and l["custom_id"].startswith("r")
                and l["batch"] is True for l in lines)
     assert {l["raw"] for l in lines} == {'{"echo": "q0"}', '{"echo": "q1"}'}
+
+
+def test_a_refused_direct_call_logs_anthropics_reason(monkeypatch, tmp_path):
+    log = tmp_path / "calls.jsonl"
+    _stream_returning(monkeypatch, _msg('{"a": 1}'), _refused())
+    with llm_client.call_log(log):
+        llm_client.call_claude(model="m", max_tokens=9, user="U1")
+        assert llm_client.call_claude(model="m", max_tokens=9,
+                                      user="U2")[2] == "refusal"
+    a, b = [json.loads(l) for l in log.read_text().splitlines()]
+    assert a["refusal"] is None and b["refusal"] == REASON
+
+
+def test_a_refused_batch_call_logs_anthropics_reason(monkeypatch, tmp_path):
+    sent = []
+
+    def submit(items):
+        sent.extend(items)
+        return "batch_1"
+
+    def results(bid):
+        for cid, kw in sent:
+            yield cid, ("refusal", None, {"input": 3, "output": 0}, None,
+                        REASON)
+    monkeypatch.setattr(llm_client, "batch_submit", submit)
+    monkeypatch.setattr(llm_client, "batch_status", lambda bid: ("ended", {}))
+    monkeypatch.setattr(llm_client, "batch_results", results)
+    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    log = tmp_path / "calls.jsonl"
+    with llm_client.call_log(log), llm_client.batch_gate(
+            flush_after_s=0.2, poll_s=0, manifest_dir=tmp_path / "batches"):
+        stop = llm_client.call_claude(model="m", max_tokens=1, user="q")[2]
+    assert stop == "refusal"
+    [line] = [json.loads(l) for l in log.read_text().splitlines()]
+    assert line["refusal"] == REASON
 
 
 def test_a_failed_batch_entry_is_logged_before_it_raises(monkeypatch, tmp_path):

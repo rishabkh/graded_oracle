@@ -38,13 +38,19 @@ def sby_available() -> bool:
     return shutil.which("sby") is not None
 
 
+# 26 Oct 2026, Rishab approved (change 3): extra [options] lines; the
+# nothing-lost search turns traces off ("vcd off"), because abc found each
+# loss in 0.01 s but rebuilding its trace ran past the 120 s limit on the
+# real designs. The default writes exactly the text it wrote before.
 def make_sby_text(sv_name: str, top_module: str, mode: str, depth: int,
-                  timeout_s: int, engine: str = DEFAULT_ENGINE) -> str:
+                  timeout_s: int, engine: str = DEFAULT_ENGINE,
+                  options: tuple[str, ...] = ()) -> str:
     return "\n".join([
         "[options]",
         f"mode {mode}",
         f"depth {depth}",
         f"timeout {timeout_s}",
+        *options,
         "",
         "[engines]",
         engine,
@@ -61,13 +67,15 @@ def make_sby_text(sv_name: str, top_module: str, mode: str, depth: int,
 
 def run_sby(name: str, sv_path: Path, top_module: str, mode: str, depth: int,
             timeout_s: int, workdir_root: Path,
-            engine: str = DEFAULT_ENGINE) -> SbyOutcome:
+            engine: str = DEFAULT_ENGINE,
+            options: tuple[str, ...] = ()) -> SbyOutcome:
     rundir = Path(workdir_root) / f"{name}_{mode}_{uuid.uuid4().hex[:8]}"
     rundir.mkdir(parents=True)
     shutil.copy(sv_path, rundir / sv_path.name)
     sby_file = rundir / "job.sby"
     sby_file.write_text(
-        make_sby_text(sv_path.name, top_module, mode, depth, timeout_s, engine))
+        make_sby_text(sv_path.name, top_module, mode, depth, timeout_s, engine,
+                      options))
     workdir = rundir / "job"
 
     start = time.monotonic()

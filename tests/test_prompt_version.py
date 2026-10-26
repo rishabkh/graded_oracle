@@ -24,7 +24,8 @@ def test_the_current_prompt_has_no_line_cap_and_says_so():
     import re
     assert not re.search(r"under\s+(\d+)\s+lines", SYSTEM_PROMPT)
     assert prompt_version(SYSTEM_PROMPT) == \
-        "nocap+size-params+plain-facts+no-async-reset-reads"
+        "nocap+size-params+plain-facts+no-async-reset-reads" \
+        "+explanation-after-design"
 
 
 def test_a_prompt_with_no_cap_says_so():

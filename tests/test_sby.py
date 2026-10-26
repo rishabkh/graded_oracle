@@ -30,6 +30,32 @@ def test_make_sby_text_golden():
     )
 
 
+# 26 Oct 2026, Rishab approved (change 3): the nothing-lost search turns
+# traces off, since rebuilding abc's trace ran past the time limit
+def test_extra_options_go_in_the_options_section(monkeypatch, tmp_path):
+    text = make_sby_text("m.sv", "m", "bmc", 48, 120,
+                         engine="smtbmc yices\nabc bmc3",
+                         options=("vcd off",))
+    lines = text.splitlines()
+    assert lines[:6] == ["[options]", "mode bmc", "depth 48", "timeout 120",
+                         "vcd off", ""]
+    assert lines[6:9] == ["[engines]", "smtbmc yices", "abc bmc3"]
+    # no options writes exactly the text it wrote before
+    assert make_sby_text("m.sv", "m", "prove", 20, 300, options=()) == \
+        make_sby_text("m.sv", "m", "prove", 20, 300)
+    # and run_sby passes them on to the job file
+    monkeypatch.setattr(
+        "oracle.sby.subprocess.run",
+        lambda *a, **k: subprocess.CompletedProcess(args=a, returncode=0,
+                                                    stdout="", stderr=""))
+    sv = tmp_path / "m.sv"
+    sv.write_text("module m; endmodule\n")
+    out = run_sby("m", sv, "m", "bmc", 48, 120, tmp_path / "runs",
+                  options=("vcd off",))
+    job = (out.workdir.parent / "job.sby").read_text()
+    assert "timeout 120\nvcd off\n" in job
+
+
 def test_outer_guard_returns_rc_none(monkeypatch, tmp_path):
     def fake_run(*args, **kwargs):
         raise subprocess.TimeoutExpired(cmd="sby", timeout=kwargs.get("timeout", 0))

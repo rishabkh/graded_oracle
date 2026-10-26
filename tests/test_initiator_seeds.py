@@ -412,6 +412,20 @@ def test_a_failed_request_is_logged_as_an_error_not_dropped(monkeypatch,
     assert rows["a0002"]["verdict"] == "REFUSED"
 
 
+def test_collecting_a_refusal_logs_anthropics_reason(monkeypatch, tmp_path):
+    """26 Oct 2026: the call line keeps the stop's category and explanation,
+    which until then had to be read back from the batch by hand."""
+    reason = {"category": "reasoning_extraction", "explanation": "e"}
+    R = _fake_run(monkeypatch, tmp_path)
+    _fake_batch(monkeypatch, R, outcome={
+        "a0001": ("refusal", None, {"input": 5, "output": 0}, None, reason)})
+    R.run_batch(3, cmd="pilot", log_path=tmp_path / "log.jsonl", poll_s=0)
+    calls = {c["custom_id"]: c for c in map(
+        json.loads, (tmp_path / "calls_log.jsonl").read_text().splitlines())}
+    assert calls["a0001"]["refusal"] == reason
+    assert calls["a0000"]["refusal"] is None
+
+
 def test_pilot_batch_and_collect_options(monkeypatch):
     import run as R
     seen = {}

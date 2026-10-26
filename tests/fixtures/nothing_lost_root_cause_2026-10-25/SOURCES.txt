@@ -1,0 +1,61 @@
+Designs from the root-cause study of 25 Oct 2026 (8 of 14 combined and
+second-lane designs lost data). Copied here on 26 Oct 2026 for the tests of
+extender/nothing_lost.py (Rishab approved, changes 2 and 3), because the
+study's scratch folder is temporary. Each file is the whole design as the
+checker read it: both parents and the wrapper, the wrapper last. All use
+clock clk and a synchronous, active-high reset rst.
+
+sys_c1_003_kept.sv
+  from: rootcause/systems_combining_and_controls_verify/sys_c1_003/grown.sv
+  design c1_003 of the 21 Oct real-systems trial (extension
+  2026-10-21_07h28m39s_t004; parents c0_008 and c0_137), top
+  benes_perfmon_top. Kept, though its one-entry holding register drops a
+  shuffler beat whenever it is full and only counts it (drop_cnt).
+  Shows: the search finds the loss at step 8, declared with offer
+  "en && a_out_valid" and ready "".
+
+sys_c1_003_skeptic_rebuild.sv
+  from: rootcause/systems_combining_and_controls_verify/sys_c1_003/
+        freeze_with_ready/variant_freeze_ready.sv
+  the study skeptic's rebuild of the same design: the shuffler's enable is
+  held low while the holding register is full (.en(en && slot_free_w)),
+  shown on o_in_ready. Top benes_perfmon_top.
+  Shows: the stream loses nothing (offer "a_out_valid", ready
+  "en && slot_free_w"), but the frozen-enable rule fires, because the
+  shuffler's settings input cfg_we comes straight from outside (spec
+  Decision 3).
+
+sys_c1_007_kept.sv
+  from: rootcause/systems_combining_and_controls_verify/sys_c1_007/grown.sv
+  design c1_007 of the 21 Oct real-systems trial (extension
+  2026-10-21_08h16m51s_t017; parents c0_001 and c0_056), top ec_fold_top.
+  Kept, though its two-entry queue drops a result when full and only
+  flags it (q_ovf).
+  Shows: the loss appears only at step 39: found at depth 48, missed at
+  depth 30 (why the search depth is at least 48). Offer "a_done && !done_q"
+  (one pulse per result), delivered "q_pop", held "q_cnt".
+
+t033_child.sv
+  from: rootcause/engine_stuck_combining_rejected/t033/child.sv
+  combination t033 of the 25 Oct engine-stuck trial (extension
+  2026-10-25_06h38m57s_t033; parents c0_233 and c0_200), top
+  flow_mcast_top. The reviewer turned it away.
+  Shows: the frozen-enable rule fires: u_fmt's i_ce is driven by
+  ce & !b_busy & !g_valid while its req and wr_en come straight from the
+  wrapper's inputs, so route-table writes sent during a pause are lost.
+
+c1_007_grown.sv
+  from: rootcause/engine_stuck_combining_kept/c1_007/grown.sv
+  design c1_007 of the 25 Oct engine-stuck trial (extension
+  2026-10-25_05h56m33s_t023; parents c0_233 and c0_098), top
+  flow_route_pipe. Kept.
+  Shows: the frozen-enable rule fires (u_fmt's i_ce driven by logic, its
+  req and wr_en straight from outside).
+
+c1_001_grown.sv
+  from: rootcause/engine_stuck_combining_kept/c1_001/grown.sv
+  design c1_001 of the 25 Oct engine-stuck trial (extension
+  2026-10-25_00h56m13s_t003; parents c0_233 and c0_100), top flow_mpu_top.
+  Kept.
+  Shows: both designs' enables are wired straight to the wrapper's i_ce,
+  so the frozen-enable rule passes it.

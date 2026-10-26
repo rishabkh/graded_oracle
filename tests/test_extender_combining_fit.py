@@ -63,8 +63,13 @@ def test_the_partner_question_asks_for_widths_that_fit():
 def test_the_partner_question_asks_for_a_sender_that_can_wait():
     text = squash(extend.PARTNER_TEMPLATE)
     assert "can refuse or stall" in text
-    assert ("a ready or busy input of its own or an enable that holds "
-            "it") in text
+    # 26 Oct 2026: "an enable that holds it" is no longer a way to wait,
+    # and refusal is decided from what the receiver does, because an
+    # enable held low froze whole designs (t033 and c2_004 lost
+    # route-table writes) and 8 of 12 partner answers wrongly said "never
+    # refuses" (change 2 and 7)
+    assert "an enable that holds it" not in text
+    assert "decide from what the receiving design does" in text
     assert "no data is ever dropped" in text
     assert ("A sender that cannot be made to wait cannot feed a receiver "
             "that can refuse") in text
@@ -75,6 +80,10 @@ def test_the_partner_answer_names_widths_and_waiting():
     assert "the width on each side and how a difference is converted" in text
     assert "how the sender waits when the receiver cannot take more" in text
     assert '"none"' in text                 # still a good answer
+    # 26 Oct 2026: the answer also says when the receiver ignores or loses
+    # an input, because refusal is judged from behaviour (change 7)
+    assert "in which states the receiver ignores or loses what arrives" \
+        in text
 
 
 def test_the_partner_question_as_sent_holds_the_rules_and_the_ports():
@@ -100,21 +109,35 @@ def test_the_combine_question_asks_for_widths_that_fit():
     assert "never changes and does no work" in text
 
 
-def test_the_combine_question_asks_the_glue_to_hold_and_make_a_wait():
+# 26 Oct 2026: renamed from
+# test_the_combine_question_asks_the_glue_to_hold_and_make_a_wait, and
+# the sender now waits on the stream's own path, never through its enable,
+# and a counted or flagged drop is still a drop, because the advice to hold
+# A's enable low froze whole designs and 5 kept designs counted or flagged
+# their drops (changes 1 and 2)
+def test_the_combine_question_asks_the_sender_to_wait_on_its_own_path():
     text = squash(extend.COMPOSE_TEMPLATE)
-    assert "if B can refuse or stall" in text
-    assert "the glue holds the data and tells A to wait" in text
-    assert "by holding A's enable low until B can take more" in text
-    assert "Never drop data" in text
+    assert "decide from what the receiver does whether it can refuse work" \
+        in text
+    assert ("the part between them holds the item and makes the sender wait "
+            "on the stream's own path") in text
+    assert "by holding A's enable low until B can take more" not in text
+    assert "Never drop data, counted or not" in text
     # the trial's glue counted what it dropped (gb_drop, q_ovf)
-    assert "counting dropped data does not make dropping it acceptable" in text
+    assert ("counting, flagging or raising an error bit for dropped data "
+            "does not make dropping it acceptable") in text
 
 
 def test_the_combine_question_keeps_its_earlier_rules():
     text = squash(extend.COMPOSE_TEMPLATE)
-    assert "must mean something to B" in text
+    # 26 Oct 2026: "to B" became "to the receiver" and the plain-wire rule
+    # became "a real job", because the plan may send from B to A (9 of 21
+    # plans) and the forced register only made one-cycle-late copies
+    # (changes 4 and 7)
+    assert "must mean something to the receiver" in text
     assert "parents' widths" in text
-    assert "NEVER through a plain wire" in text
+    assert "NEVER through a plain wire" not in text
+    assert "A plain wire does no job" in text
     assert "narrow" not in text.lower()
 
 
@@ -126,7 +149,9 @@ def test_the_combine_question_as_sent_holds_the_rules_and_the_plan():
     text = squash(extend.compose_prompt(a, b, plan))
     assert "Planned connection: rdata[63:0] into push_data[63:0]" in text
     assert "fit at the wires" in text
-    assert "tells A to wait" in text
+    # 26 Oct 2026: "tells A to wait" became "makes the sender wait", because
+    # either design may send (change 2)
+    assert "makes the sender wait" in text
 
 
 # --- 6b. the 70% line, and what its reason says ------------------------------

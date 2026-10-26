@@ -241,11 +241,18 @@ def test_the_reviewers_call_is_not_saved(saved, api, monkeypatch):
     step's answer is an example, and the reviewer's rejection is its
     final verdict."""
     sent, replies = api
+    # 26 Oct 2026: the review gained value_cut_or_padded,
+    # only_a_delayed_copy and item_can_be_dropped because change 6 asks
+    # about them (an answer without them is a failed try); it still rejects
+    # in the first call, so no claims call follows
     review = {"parts_connected_sensibly": True,
               "value_used_against_its_meaning": False,
+              "value_cut_or_padded": False,
               "new_logic_only_copies_existing_state": False,
+              "only_a_delayed_copy": False,
               "results_of_parts_used": True,
-              "new_part_has_its_own_job": True, "breaks_what_it_did": True,
+              "new_part_has_its_own_job": True,
+              "item_can_be_dropped": True, "breaks_what_it_did": True,
               "engineer_would_build_this": False,
               "why": "it drops valid input data"}
     replies.extend([(json.dumps(STRUCTURAL), "ok"),
@@ -253,6 +260,11 @@ def test_the_reviewers_call_is_not_saved(saved, api, monkeypatch):
     monkeypatch.setattr(batch, "grade_step4", checked(
         verdict="NECESSARY", invariants=STRUCTURAL["invariants"]))
     monkeypatch.setattr(batch, "SENSE_CHECK", True)
+    # 26 Oct 2026: the reviewer reads the checker's notes
+    # (nothing_lost.reviewer_notes) because change 6 shows it what the
+    # checker's tools found; this record carries none
+    monkeypatch.setattr(batch.sense_check, "checker_notes",
+                        lambda record: [])
     rec = batch._real_executor(task("structural"), [PARENT])
     assert len(sent) == 2                       # the step, then the review
     [ex] = saved()

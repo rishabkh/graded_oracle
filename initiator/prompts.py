@@ -29,6 +29,18 @@ import re
 #   `occ == $countones(valid)`, which EBMC cannot read. The wording follows
 #   the extender's (extender/extend.py INVARIANT_RULES); run.py's
 #   facts_gate turns such designs away.
+# The answer form since 26 Oct 2026 (Rishab approved): the design first,
+# then the fake state and a short explanation of the finished answer. Until
+# then the output format said "the reasoning fields come FIRST. Work out the
+# state S that breaks induction BEFORE writing the design", and the first
+# field was `cti_reasoning`. Opus 5.5 stopped 7 of the 41 calls of the 25 Oct
+# run, all with stop category "reasoning_extraction" (as were 23 of the 26
+# stops of 9 Oct that recorded one). Anthropic's refusals page says that
+# category means a request that "asks the model to reproduce its internal
+# reasoning in the response text", names a scratchpad filled in before the
+# answer and a `reasoning` field in JSON output as its usual causes, allows
+# "a short explanation", and says to change the prompt rather than retry.
+# Opus 5.5 thinks before it answers anyway.
 SYSTEM_PROMPT = """\
 You write SystemVerilog modules for a formal verification dataset.
 
@@ -122,24 +134,12 @@ Three conditions, all required.
 ## Output format
 
 Your output is emitted through the API's structured-output mode — the schema is
-enforced. Field order is deliberate: the reasoning fields come FIRST. Work out the
-state S that breaks induction BEFORE writing the design, then write a design in
-which that state is reachable-under-induction and the transition is real.
+enforced. Decide on the state S that breaks induction before you write the
+design, then write a design in which that state is reachable-under-induction
+and the transition is real. The answer gives the design first, then the state
+S and a short explanation.
 
 Field notes:
-
-- `cti_reasoning`: one or two sentences: why this state satisfies P, why it
-  violates R, and what its successor does that breaks P.
-
-- `cti_state`: the state S from condition (2), as a list of {signal, value}
-  pairs with concrete values. Every signal needed to evaluate both P and R must
-  appear. Vague answers are rejected: "pointers disagree" is not acceptable;
-  [{"signal": "count", "value": "3'd1"}, {"signal": "wptr", "value": "2'd2"},
-  {"signal": "rptr", "value": "2'd0"}] is.
-
-  Self-check before you answer: evaluate R at cti_state. It MUST come out false.
-  If your named state does not violate your own invariant, you have contradicted
-  yourself — fix one or the other.
 
 - `invariants` is R. Supplied SEPARATELY from the Verilog — it must NOT appear as
   an assertion in the source. One string per clause. Each clause is a same-cycle
@@ -161,6 +161,20 @@ Field notes:
 
 - `sanity_covers` must be genuinely reachable, e.g. `"count == 3'd2"` for a counter
   that gets there. Only checked when the property has an antecedent.
+
+- `cti_state`: the state S from condition (2), as a list of {signal, value}
+  pairs with concrete values. Every signal needed to evaluate both P and R must
+  appear. Vague answers are rejected: "pointers disagree" is not acceptable;
+  [{"signal": "count", "value": "3'd1"}, {"signal": "wptr", "value": "2'd2"},
+  {"signal": "rptr", "value": "2'd0"}] is.
+
+  Self-check before you answer: evaluate R at cti_state. It MUST come out false.
+  If your named state does not violate your own invariant, you have contradicted
+  yourself — fix one or the other.
+
+- `cti_explanation`: a short explanation of the finished answer, in one or two
+  sentences: why this state satisfies P, why it violates R, and what its
+  successor does that breaks P.
 """
 
 USER_TEMPLATE = """\
@@ -278,12 +292,14 @@ _CAP = re.compile(r"Keep the module under\s+(\d+)\s+lines")
 # it uses, so a stamp still cannot claim a rule its prompt lacks. The reset
 # rule's first wording (22 Oct 2026, every reset, stamped "no-reset-reads")
 # wrote no rows before it narrowed to asynchronous resets on 23 Oct 2026,
-# so only the narrow one has a stamp.
+# so only the narrow one has a stamp. The answer form of 26 Oct 2026 (the
+# explanation after the design) is the last.
 STAMPED_RULES = (
     ("size-params", "Declare the design's sizes as parameters"),
     ("plain-facts", "boolean expression over the design's signals, with no "
                     "system function"),
     ("no-async-reset-reads", "never read an asynchronous reset"),
+    ("explanation-after-design", "a short explanation of the finished answer"),
 )
 
 

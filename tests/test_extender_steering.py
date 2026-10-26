@@ -142,7 +142,9 @@ def test_copies_must_use_their_results_and_return_credits_when_work_ends():
 
 def test_a_combination_must_connect_what_means_something():
     t = " ".join(extend.COMPOSE_TEMPLATE.split())
-    assert "must mean something to B" in t
+    # 26 Oct 2026: "to B" became "to the receiver", because the plan may
+    # send from B to A (9 of 21 plans; change 7)
+    assert "must mean something to the receiver" in t
 
 
 def test_new_output_ports_are_allowed_so_ledger_no_longer_contradicts():

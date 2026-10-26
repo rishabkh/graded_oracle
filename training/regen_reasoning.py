@@ -57,11 +57,16 @@ MODEL = "claude-opus-5-5"
 # log lines written before the model was recorded came from Opus 5
 OLD_MODEL = "claude-opus-5"
 
-# the generator's own two reasoning fields, same definitions, nothing else
+# the generator's own two reasoning fields, same definitions, nothing else.
+# The initiator's answer form dropped cti_reasoning on 26 Oct 2026 (Opus 5.5
+# stops questions that ask for reasoning in the answer; initiator/prompts.py
+# has the details), so its plain-string definition is kept here. This tool
+# still asks for it and needs the same change before it runs again.
 FIELDS = ("cti_reasoning", "cti_state")
 SCHEMA = {
     "type": "object",
-    "properties": {k: TRIPLE_SCHEMA["properties"][k] for k in FIELDS},
+    "properties": {"cti_reasoning": {"type": "string"},
+                   "cti_state": TRIPLE_SCHEMA["properties"]["cti_state"]},
     "required": list(FIELDS),
     "additionalProperties": False,
 }

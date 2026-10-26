@@ -359,9 +359,10 @@ endmodule
 def test_the_checker_handles_a_design_with_every_new_trait(tmp_path,
                                                            reset_len):
     triple = {
-        "cti_reasoning": "BUSY with burst_len 1, beats_sent 0 and beats_left "
-                         "2 holds the property but breaks the fact; held with "
-                         "out_ready low, one beat makes beats_sent 1.",
+        "cti_explanation": "BUSY with burst_len 1, beats_sent 0 and "
+                           "beats_left 2 holds the property but breaks the "
+                           "fact; held with out_ready low, one beat makes "
+                           "beats_sent 1.",
         "cti_state": [{"signal": "state", "value": "BUSY"},
                       {"signal": "burst_len", "value": "3'd1"},
                       {"signal": "beats_left", "value": "3'd2"},

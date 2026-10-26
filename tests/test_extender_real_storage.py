@@ -53,7 +53,11 @@ def design(n=40):
 def test_storage_is_built_like_real_storage():
     text = squash(extend.MOVES["STORAGE"])
     assert "wrap around" in text
-    assert "ready output" in text and "never drops data silently" in text
+    # 26 Oct 2026: "never drops data silently" became "never drops or
+    # overwrites data, counted or not", because five kept designs of the 25
+    # Oct study dropped data and counted or flagged it (change 1)
+    assert "ready output" in text and \
+        "never drops or overwrites data, counted or not" in text
     assert "output register stage" in text
     # at least one fact about the stored values themselves
     assert "stored values themselves" in text
@@ -74,8 +78,14 @@ def test_the_questions_ask_for_word_and_cycle_to_cycle_facts():
     assert "where k != m" in text
 
 
-def test_the_reviewer_asks_about_data_dropped_silently():
-    assert "drop data silently" in squash(sense_check.PROMPT)
+# 26 Oct 2026: renamed from test_the_reviewer_asks_about_data_dropped_silently
+# and now pins "counted, flagged or raised as an error bit", because change 6
+# asks about any lost item, counted or not: a flagged drop was kept 5 times
+# in the 25 Oct study
+def test_the_reviewer_asks_about_any_lost_item_counted_or_not():
+    text = squash(sense_check.PROMPT)
+    assert "counted, flagged or raised as an error bit" in text
+    assert "drop data silently" not in text
 
 
 # --- compact facts: one fact for every entry ------------------------------------

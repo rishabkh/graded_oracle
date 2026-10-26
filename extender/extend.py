@@ -22,7 +22,10 @@ New machinery beyond the distractor:
                  loop, 23 Oct 2026); a deeper one is sent back before
                  grading (21 Oct 2026; 22 Oct 2026).
 
-Inputs stay fixed; new state may get new OUTPUT ports (18 Oct 2026).
+Inputs stay fixed, except the new lane of a PEER step (26 Oct 2026); new
+state may get new OUTPUT ports (18 Oct 2026). Big steps and combinations
+declare the streams of items they carry, and the checker searches for a
+lost item before the proof (nothing_lost.py, 26 Oct 2026).
 
   venv/bin/python extender/extend.py --plan                      # the 5-seed plan
   venv/bin/python extender/extend.py --parent g0_014 --type structural --move GUARD --dry
@@ -82,8 +85,11 @@ HARD RULES
    delete the existing assertion. Do not add assume or cover statements.
 2. Emit a PATCH in the diff format given below. Never a rewritten module.
 3. Keep every existing port as it is: do not remove, rename or retype one,
-   and add no inputs. You may add OUTPUT ports for new state. New state must
-   be observable through an output, directly or through existing logic.
+   and add no inputs. The one exception is a PEER step: its new lane gets
+   an input stream of its own (its valid, its data and the like).
+   You may add OUTPUT ports for new state, and a ready or busy output that
+   tells a sender to wait. New state must be observable through an output,
+   directly or through existing logic.
 4. Match the module's own reset: every new register resets the same way,
    in the same kind of block, as the module's existing registers, and
    gets an initial value, matching the style already in the module.
@@ -133,6 +139,11 @@ HARD RULES
    An assertion that must skip the cycles of a reset can be guarded by a
    register the reset clears."""
 
+# 26 Oct 2026, Rishab approved (change 5): rule 3 allowed no inputs, so
+# every PEER step of the 21 and 23 Oct trials split an existing input;
+# nothing in code checked the rule. new_input_error now does, with PEER as
+# the one exception.
+
 # 23 Oct 2026, review finding F4: rule 12. The generator's prompt has said
 # the same since 22 Oct (initiator/prompts.py); a step on a design with an
 # asynchronous reset could read it, and step_reads_reset now turns such a
@@ -175,17 +186,38 @@ MOVES = {
               "existing transition fires only when the new enable is set."),
     # 22 Oct 2026, review finding F8: an array per channel counts every
     # channel's entries together, which this text did not say
-    "PEER": ("Add a second instance of similar logic that shares a "
-             "resource with the existing logic. Declare how many channels "
-             "there are as a parameter or localparam (localparam "
-             "CHANNELS = 2), and give any storage it adds a parameter "
-             "depth with a small value for the proof: 4 to 8 entries, "
-             "never more than 16. All the entries of one array count "
-             "together: an array with one row per channel "
-             "(reg [7:0] buf_q [0:CHANNELS-1][0:DEPTH-1]) holds CHANNELS "
-             "times DEPTH entries, and that product is what may not pass "
-             "16 (or the size of the module's own biggest array, when "
-             "the new one holds an entry for each of the same things)."),
+    # 26 Oct 2026, Rishab approved (change 5): every PEER step of the 21 and
+    # 23 Oct trials split the existing input (by a data bit, an ID range or
+    # a command type), and "shares a resource" was met with a counter over
+    # two separate queues. The new lane now has its own input stream (the
+    # one exception to SYSTEM_PROMPT rule 3), shares one real thing through
+    # an arbiter, and the lane that loses waits.
+    "PEER": ("Add a second lane beside the existing one: similar logic with "
+             "an input stream of its OWN (new input ports for its valid, its "
+             "data and the like; this is the one step that may add inputs) "
+             "and its own ready output. Never feed the new lane by "
+             "splitting an existing input (by a data bit, an ID range or a "
+             "command type): every existing input keeps doing exactly what "
+             "it did. The two lanes share ONE real thing: the same storage "
+             "array, the same output port or the same data path (one adder, "
+             "one memory port, one bus), and an arbiter written as real "
+             "logic (round robin or fixed priority) decides each cycle "
+             "which lane uses it. The lane that loses waits: it keeps its "
+             "item, its sender is told to wait through a ready or busy "
+             "output, and the item is never dropped or overwritten, counted "
+             "or not. If the existing lane has no way to make its sender "
+             "wait, it wins every conflict, or you give it a ready output. "
+             "Two separate queues joined only by a counter or a credit "
+             "count do not share a real thing. Declare how many lanes there "
+             "are as a parameter or localparam (localparam CHANNELS = 2), "
+             "and give any storage it adds a parameter depth with a small "
+             "value for the proof: 4 to 8 entries, never more than 16. All "
+             "the entries of one array count together: an array with one "
+             "row per channel (reg [7:0] buf_q [0:CHANNELS-1][0:DEPTH-1]) "
+             "holds CHANNELS times DEPTH entries, and that product is what "
+             "may not pass 16 (or the size of the module's own biggest "
+             "array, when the new one holds an entry for each of the same "
+             "things)."),
     "BOUND": ("Replace a constant limit with a register that can change, "
               "so the existing comparison is against state rather than a "
               "literal."),
@@ -209,6 +241,8 @@ MOVES = {
     # about 1,900. These two grow a design by half or more in one step.
     # 18 Oct 2026: real blocks are about 5 modules and ours were 1, so the
     # new unit is now a module of its own (Rishab: "do all 6 changes").
+    # 26 Oct 2026, Rishab approved (change 1): five kept designs dropped
+    # work and counted or flagged it; dropping is refused counted or not.
     "SUBUNIT": ("Add a complete new functional unit that works with the "
                 "existing logic, the way the next feature of a real block "
                 "is added: for example a request queue in front of an "
@@ -231,16 +265,23 @@ MOVES = {
                 "wire in the existing module, and name the wire. Never "
                 "write instance.signal. If the design already has "
                 "sub-modules, the new one may work with them directly "
-                "(see the list below). If the unit can refuse work (full, "
-                "busy, out of credits), it must tell the sender to wait "
-                "through a ready or busy output, never drop work "
-                "silently."),
+                "(see the list below). If the unit can refuse work in "
+                "some state (it is full, busy or out of credits, or it "
+                "takes a request only when it is idle), it must tell the "
+                "sender to wait, through a ready or busy output the sender "
+                "reads or by holding only the path that feeds the unit "
+                "(see WAITING below), and never drop or overwrite work, "
+                "counted or not: counting, flagging or raising an error "
+                "bit for lost work does not make losing it acceptable."),
     # 18 Oct 2026: "on the path the property depends on" piled every
     # storage step onto one path (five buffers in a row in front of a
     # fixed table in the 18 Oct trial, all weak)
     # 21 Oct 2026, Gary's suggestion taken as general rules: storage built
     # the way real storage is built, and facts about what it holds (6% of
     # the 1,277 facts of the three growth trials were about stored entries)
+    # 26 Oct 2026, Rishab approved (change 1): five kept designs of the 25
+    # Oct study dropped data and counted or flagged it; dropping or
+    # overwriting is refused counted or not (WAITING_RULE)
     "STORAGE": ("Add storage the design needs: a register file, FIFO or "
                 "lookup table (an array with a write side and a read "
                 "side), sized with the module's own widths, that holds "
@@ -254,7 +295,8 @@ MOVES = {
                 "that wrap around, with full and empty worked out from the "
                 "pointers (one extra wrap bit), not only from a separate "
                 "count. When it is full or busy it tells the sender to wait "
-                "through a ready output, and it never drops data silently. "
+                "through a ready output, and it never drops or overwrites "
+                "data, counted or not (see WAITING below). "
                 "An output register stage is welcome. The invariant list "
                 "must relate the stored entries, or how many of them are "
                 "in use, to the state around them, and at least one fact "
@@ -483,6 +525,133 @@ New logic that only reads existing state, with no assertion of its own and
 no effect on what the property reads, is a distractor, not a structural
 extension."""
 
+# 26 Oct 2026, Rishab approved (changes 1 and 2): the root-cause study of
+# 25 Oct found 8 of 14 combined and second-lane designs losing data, 5 of
+# them kept because the loss was counted or flagged; and the advice to hold
+# the sender's enable low froze whole designs (run c2_004, step t033, lost
+# route-table writes). Big moves get this block; COMPOSE and the partner
+# question say the same in their own words.
+WAITING_RULE = """\
+WAITING. Never drop work, counted or not. When a part is full or busy, or
+takes an item only in some states, the item waits and its sender is made
+to wait; nothing is dropped, overwritten or ignored. Counting, flagging or
+raising an error bit for a lost item does not make losing it acceptable.
+Make the sender wait on the stream's own path only:
+- a sender outside the module waits on a ready or busy OUTPUT (one you add
+  or one the module has), low exactly in the cycles its item would not be
+  taken;
+- logic inside the module waits by holding only the registers that carry
+  the stream (its valid, its data, its pointers), never by gating the
+  module's enable for everything: that also stops the settings, table
+  writes and other inputs that arrive meanwhile;
+- whatever pause you add shows on an output, so whoever drives an input
+  that is not taken while paused knows to wait.
+
+"""
+
+# 26 Oct 2026, Rishab approved (change 5): with SIDEWAYS_EFFECT_RULE's "must
+# write, or gate the write of, something the property reads", the PEER
+# steps of the 21 and 23 Oct trials pulled the new lane into the existing
+# path and the existing lane stopped working as before. A second lane
+# affects the existing logic only through the thing it shares.
+PEER_EFFECT_RULE = """\
+The second lane affects the existing logic in one way only: through the
+one thing the lanes share and the arbiter that decides who uses it. While
+the arbiter gives the shared thing to the second lane, the existing lane
+waits; that wait is how the new state gates what the property or the
+parent invariants read. Beyond the shared thing, leave the existing lane
+as it was: do not route the second lane's items through the existing
+lane's input, counters or state machine, and do not change anything the
+existing lane does while the second lane is idle.
+The second lane may also come with ONE new assertion of its own about the
+arbiter or the shared thing:
+- put the assertion in the existing (top) module, in its own always block
+  in the same style as the existing one;
+- it must not prove without facts;
+- it must read at least one register no existing assertion reads;
+- at least one fact must name both new state and state the existing facts
+  describe;
+- never change or remove an existing assertion;
+- in new_state below, say what the assertion says; the induction_gap may
+  break that assertion instead of the existing property."""
+
+# 26 Oct 2026, Rishab approved (change 3): the checker, not the model,
+# counts what is lost; the model only says where the items go. It counts
+# what the SENDER hands over: counting only the items the design chose to
+# take missed every drop in the 25 Oct study.
+STREAMS_TEXT = """\
+STREAMS. The checker counts, by itself, every item handed over to the part
+your step adds or changes (an item is one request, data word, command or
+event), and searches every input sequence for many cycles from the start
+for an item that is neither delivered nor still held. A step it finds
+losing an item is sent back. In "streams", declare each stream of items
+the step adds or changes:
+- name: a few words, for example "requests into the new queue";
+- inputs: one entry for each place items enter (two lanes that share one
+  thing are one stream with two inputs), each with:
+  offer: true in a cycle when the sender has an item for the stream. For a
+    sender outside the design (its items arrive on input ports): its valid
+    input, and the design's enable if it has one ("en && in_valid"), only
+    input ports. For a sender inside the design (logic it already has,
+    logic you add, or in a combination the sending design): that sender's
+    own valid signal ("st_v", "a_out_valid"), which stays true while it
+    waits. Never fold in whether the item will be taken (full, busy, a
+    grant, your new state): that belongs in ready.
+  ready: what tells the sender its item is taken this cycle. For a sender
+    outside the design: the ready or busy output it reads ("in_ready" or
+    "!busy_o"). For a sender inside: the condition under which its item is
+    taken, with the design's enable if it has one ("en && !q_full").
+    Write "" when the sender cannot be made to wait: then every cycle its
+    offer is true counts as one item handed over, so the offer must be
+    true for exactly one cycle per item;
+- delivered: how many items leave the stream this cycle, taken by the part
+  they are sent to ("q_pop", "out_valid && out_ready"; a true/false
+  condition counts one, a sum counts several). An item thrown away on
+  purpose because of what it is (a bad checksum, an address a setting
+  filters out) may be counted here; one lost because a part was full or
+  busy never may;
+- held: how many items the stream holds now, counting every place an item
+  can wait (queue entries, holding registers, an output stage): the name
+  of a count the design keeps, a sum of 1-bit flags ("q_count",
+  "slot_v[0] + slot_v[1]") or "0";
+- flush: an input that empties the stream on purpose (a clear, abort or
+  flush command), or "" when there is none.
+Write every value as a Verilog expression over the top module's signals:
+no prose, no instance.signal, no $ functions, and no subtraction in
+delivered or held (name a wire of the design that holds a difference of
+pointers at their own width). Never name a signal that counts or flags
+lost items. {rule}
+
+"""
+
+STREAMS_RULES = {
+    "STORAGE": ("This step must declare at least one stream through its "
+                "storage. For a register file or lookup table the stream "
+                "is its writes: an item is delivered when it is written."),
+    "PEER": ("This step must declare the stream through the thing its two "
+             "lanes share, with at least two inputs: the new lane's, whose "
+             "offer reads its own new inputs, and the existing lane's, "
+             "whose offer reads the inputs it had before."),
+    "SUBUNIT": ("When the new unit holds or queues work (a queue, a buffer, "
+                "holding registers), declare at least one stream through "
+                "it, and a unit that adds an array must. Write [] only when "
+                "it carries no items and adds no array (a timer, a "
+                "controller); a register bank declares its writes."),
+    "compose": ("This combination must declare at least one stream from "
+                "the sending design through the part between them into the "
+                "receiving one: its offer reads the sender's output wires, "
+                "its ready, if any, is what drives the sender's ready, busy, "
+                "request or valid input, and delivered counts the receiver "
+                "taking the item, judged from what the receiver does: if it "
+                "takes an item only in some states (only when idle, not "
+                "while busy), delivered includes that condition."),
+}
+
+
+def streams_text(kind):
+    """The STREAMS block for a big move or "compose" (26 Oct 2026)."""
+    return STREAMS_TEXT.format(rule=STREAMS_RULES[kind])
+
 # 18 Oct 2026: on a long chain the model could not see what earlier steps
 # had added, and added the same kind of part again (a third, fourth and
 # fifth buffer in a row). batch.py passes the family's steps in.
@@ -559,6 +728,10 @@ def modules_text(verilog, top):
     return MODULES_TEXT.format(lines="\n".join(lines)) if lines else ""
 
 
+# 26 Oct 2026, Rishab approved (changes 1-3): {waiting}, {streams},
+# {streams_step} and {streams_reply} carry the waiting rule and the
+# STREAMS block of the big moves (build_prompt); they are empty for the
+# other moves, whose question reads exactly as before.
 STRUCTURAL_TEMPLATE = """\
 Extension type: STRUCTURAL.
 
@@ -583,7 +756,7 @@ The parent's strengthening invariants:
 
 {effect_rule}
 
-Your new invariant list must contain at least one clause mentioning both a
+{waiting}{streams}Your new invariant list must contain at least one clause mentioning both a
 new identifier and an existing one. That coupling clause is the point of
 the extension. A clause about only new state is a fact bolted on the side.
 
@@ -607,7 +780,7 @@ Answer these in order. The patch comes last, after you know what breaks.
 4. why_parent_insufficient: which parent invariant clauses fail to exclude
    that state, and why.
 
-5. Then write the patch, then the full new invariant list.
+5. Then write the patch, {streams_step}then the full new invariant list.
 
 {invariant_rules}
 
@@ -618,7 +791,7 @@ Diff format:
 
 Reply with JSON:
 {{"new_state": "...", "coupling": "...", "induction_gap": "...",
-  "why_parent_insufficient": "...", "patch": "...",
+  "why_parent_insufficient": "...", "patch": "...",{streams_reply}
   "invariants": ["..."], "dispositions": [...]}}"""
 
 # 21 Oct 2026: this said new state is observed "through existing outputs",
@@ -713,10 +886,42 @@ _DISPOSITION_ITEMS = {
     },
 }
 
+# 26 Oct 2026, Rishab approved (change 3): the streams a step declares for
+# the checker's own nothing-lost search (nothing_lost.py). Strict
+# structured output needs fixed keys: a stream with no ready, or no flush,
+# writes "", a step with no stream writes [].
+_STREAM_ITEMS = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "inputs": {"type": "array", "items": {
+                "type": "object",
+                "properties": {"offer": {"type": "string"},
+                               "ready": {"type": "string"}},
+                "required": ["offer", "ready"],
+                "additionalProperties": False}},
+            "delivered": {"type": "string"},
+            "held": {"type": "string"},
+            "flush": {"type": "string"},
+        },
+        "required": ["name", "inputs", "delivered", "held", "flush"],
+        "additionalProperties": False,
+    },
+}
+# the moves that declare streams: the ones that add a whole piece of design
+STREAM_MOVES = BIG_MOVES
 
-def _schema(reasoning_fields):
+
+def _schema(reasoning_fields, streams=False):
+    """`streams`: the answer declares its streams right after the patch,
+    before the facts, so the model names the signals of the code it has
+    just written (26 Oct 2026, change 3)."""
     props = {f: {"type": "string"} for f in reasoning_fields}
     props["patch"] = {"type": "string"}
+    if streams:
+        props["streams"] = _STREAM_ITEMS
     props["invariants"] = {"type": "array", "items": {"type": "string"}}
     props["dispositions"] = _DISPOSITION_ITEMS
     return {"type": "object", "properties": props,
@@ -734,13 +939,22 @@ def _schema(reasoning_fields):
 # wires: widths that match or a conversion that keeps the meaning, and a
 # sender that waits instead of losing data (Rishab: "make all 1-8
 # changes", item 6).
+# 26 Oct 2026, Rishab approved (changes 1, 2, 4 and 7): the forced register
+# stage produced one-cycle-late copies (proven in 5 designs of the 25 Oct
+# study) while the DECORATIVE guard it was for never fired (0 of 36
+# combinations); the advice to hold A's enable low froze whole designs
+# (t033 and c2_004 lost route-table writes); 8 of 12 partner answers called
+# a receiver that refuses "never refuses". The part between the designs now
+# does a real job, waiting holds back only the stream's own path, refusal
+# is judged from what the receiver does, and either design may send.
 COMPOSE_TEMPLATE = """\
 Extension type: COMPOSE.
 
-Wire the two verified modules below together: module A's behaviour feeds
-module B, THROUGH STATEFUL GLUE. You write ONLY the glue wrapper; both
-parent modules are appended verbatim by the harness — do not repeat or
-modify them.
+Wire the two verified modules below together into one system: one
+design's results feed the other's inputs, in your plan's direction when
+you have a plan (A to B, or B to A), through a part that does a real job
+between them. You write ONLY the wrapper; both parent modules are
+appended verbatim by the harness — do not repeat or modify them.
 
 Module A:
 
@@ -758,29 +972,46 @@ B's invariants: {invariants_b}
 
 {plan}REQUIREMENTS
 
-1. The wrapper instantiates A once and B once, and connects a value A
-   produces to an input B consumes — NEVER through a plain wire. Connect
-   them the way a real design would: what A sends must mean something to B
-   (data into a data input, an event into a trigger or enable), never a
-   value forced into an input that expects something else. Put a
-   register stage, a valid/data handshake pair, or a small buffer between
-   them, and the glue must HOLD its contents while its enable is low. A
-   plain wire makes B's proof trivial and the extension worthless; glue
-   that refills itself every cycle unconditionally is a plain wire with
-   extra steps. The two must also fit at the wires:
+1. The wrapper instantiates A once and B once, and connects a value one of
+   them produces to an input the other consumes. Below, the sender is the
+   design that produces the value and the receiver the one that takes it.
+   Connect them the way a real design would: what the sender sends must
+   mean something to the receiver (data into a data input, an event into
+   a start or trigger input, a request into a request input), never a
+   value forced into an input that expects something else. The part
+   between them must do a real job: a buffer that holds items and makes
+   the sender wait when the receiver cannot take them, a conversion that
+   keeps the meaning (a width, format or encoding change), or an arbiter
+   that shares one input of the receiver between sources. A plain wire
+   does no job, and neither does a register that only passes the value on
+   one cycle later: never add a register just to have one. The two must
+   also fit at the wires:
    - Widths: connect signals of the same width, or convert the value in a
      way that keeps its meaning and say how in glue_scheme. A number (a
      count, an address, a sample) may be zero- or sign-extended into a
      wider input, since it is still the same number, and a wider value
      may be cut down to the field the input expects. Eight 1-bit font
      pixels packed in a byte are not a 32-bit brightness sample. Do not
-     pad a data word with zeros to fill a wider data input: the part of B
-     that stores the padding never changes and does no work.
-   - Waiting: if B can refuse or stall (it is full or busy, or its ready
-     is low), the glue holds the data and tells A to wait, through A's
-     ready or busy input or by holding A's enable low until B can take
-     more. Never drop data: counting dropped data does not make dropping
-     it acceptable.
+     pad a data word with zeros to fill a wider data input: the part of the
+     receiver that stores the padding never changes and does no work.
+   - Waiting: decide from what the receiver does whether it can refuse
+     work, not from its signal names: it can when, in some state, it
+     ignores or loses what arrives at an input (it takes a request only
+     when it is idle, it is busy for several cycles after a start, it
+     overwrites a value not yet used, or its full, busy or ready signal
+     goes low). Then the part between them holds the item and makes the
+     sender wait on the stream's own path: through the sender's ready or
+     busy input, or by holding back the request, start or valid input that
+     begins its next item; when the items come from outside the wrapper,
+     show the wait on a ready output of the wrapper. Never drop data,
+     counted or not: counting, flagging or raising an error bit for dropped
+     data does not make dropping it acceptable.
+   - Enables: connect each design's enable (the input that, when low,
+     leaves all its state unchanged) straight to the wrapper's own enable
+     input. Never hold it low to make the design wait, and never use it as
+     the stream's valid, while that design's other control inputs come from
+     outside: while it is low the design ignores them, so settings, table
+     writes and requests that have nothing to do with the stream are lost.
 2. Expose any per-parent signal your invariants mention as a named
    top-level wire. NEVER write inst.signal — hierarchical references are
    rejected (the toolchain silently turns them into dangling wires).
@@ -789,30 +1020,37 @@ B's invariants: {invariants_b}
    connect that port to a wrapper wire and state the fact through it.
 3. The wrapper contains exactly ONE new assertion about the composed
    behaviour, guarded by an antecedent where natural.
-4. The invariant list must contain: every parent clause renamed to the
-   wrapper's wires (one copy each), PLUS at least one clause about the
-   glue state itself. The glue clause is the point — it is the state
-   neither parent's invariants describe.
+4. The invariant list must contain every parent clause renamed to the
+   wrapper's wires (one copy each), plus the facts your new assertion
+   needs that neither parent's list has: usually a fact linking the two
+   designs across the connection (what the sender has produced and what
+   the receiver or the part between them holds), or one about the part
+   between them when it holds state.
 5. Same clock and reset names as the parents. Every new register resets
    the way the parents' registers do, in the same kind of block, and gets
-   an initial value. Glue registers that carry data match the
-   parents' widths; counters are sized to their range. Do not add a glue
-   register that only copies a register a parent already has.
+   an initial value. Registers that carry data match the parents' widths;
+   counters are sized to their range. Do not add a register that
+   only copies a register a parent already has, or one that only passes
+   a value on one cycle later.
 6. No assume, no cover, no -> implication, no system tasks. Each fact is
    a same-cycle expression with no system function ($past, $stable,
    $countones, $onehot, ...): the checker that scores the facts cannot
    read them.
 
-WORK IT OUT BEFORE YOU WRITE THE WRAPPER
+{streams}WORK IT OUT BEFORE YOU WRITE THE WRAPPER
 
-1. glue_scheme: what the glue holds and when it moves, two sentences.
-2. induction_gap: a state with garbage in the glue that satisfies your
+1. glue_scheme: which design sends what to which, the job of the part
+   between them (a buffer that makes the sender wait, a conversion that
+   keeps the meaning, or an arbiter), what it holds if anything, and when
+   it moves; two sentences.
+2. induction_gap: a state of the combined design that satisfies your
    property, can be held indefinitely with enables low, and steps to a
-   property violation.
+   property violation; it is unreachable only because of how the two
+   designs are connected.
 3. why_parents_insufficient: why neither parent's invariants exclude it.
-4. Then the wrapper module, then the complete invariant list. The wrapper
-   field is PLAIN Verilog module source — not a diff, no +/- line
-   prefixes, no ---/+++/@@ headers.
+4. Then the wrapper module, then streams (see STREAMS above), then the
+   complete invariant list. The wrapper field is PLAIN Verilog module
+   source — not a diff, no +/- line prefixes, no ---/+++/@@ headers.
 
 FIELD NOTES for the JSON reply — antecedents and sanity_covers are
 VERILOG BOOLEAN EXPRESSIONS over top-level signals, never descriptions:
@@ -825,20 +1063,30 @@ VERILOG BOOLEAN EXPRESSIONS over top-level signals, never descriptions:
 
 Reply with JSON: {{"glue_scheme": "...", "induction_gap": "...",
  "why_parents_insufficient": "...", "top_module": "...", "wrapper": "...",
- "antecedents": [...], "sanity_covers": [...], "invariants": ["..."]}}"""
+ "streams": [...], "antecedents": [...], "sanity_covers": [...],
+ "invariants": ["..."]}}"""
 
 
+# 26 Oct 2026, Rishab approved (change 7): the plan is made from ports and
+# purposes alone, and 8 of 12 partner answers of the 25 Oct study said the
+# receiver never refuses, at least twice falsely; the plan's direction is
+# kept (9 of 21 plans send from B to A) and checked against the code.
 PLAN_TEXT = """\
 You picked B to work with A. The combined system: {system}
 Planned connection: {connection}
-Build the wrapper the way you planned.
+The plan was made from the two designs' ports and purposes alone. Build
+the wrapper the way you planned, in the plan's direction, but check it
+against the code above first: decide from what the receiver does whether
+it can refuse work (it ignores or loses an input in some state, for
+example it takes a request only when it is idle), whatever the plan says.
 
 """
 
 
 def compose_prompt(pa, pb, plan=None):
     """The COMPOSE question for A and B; `plan` is the model's own partner
-    choice ({"system", "connection"}), when it chose B (19 Oct 2026)."""
+    choice ({"system", "connection"}), when it chose B (19 Oct 2026). It
+    asks for the stream from one design into the other (26 Oct 2026)."""
     return COMPOSE_TEMPLATE.format(
         verilog_a=pa["verilog"], verilog_b=pb["verilog"],
         property_a="; ".join(pa["property"]),
@@ -847,7 +1095,8 @@ def compose_prompt(pa, pb, plan=None):
         invariants_b="; ".join(shown_facts(pb)) or "(none)",
         plan=PLAN_TEXT.format(system=plan.get("system", ""),
                               connection=plan.get("connection", ""))
-        if plan else "")
+        if plan else "",
+        streams=streams_text("compose"))
 
 
 # --- the partner for a combination (19 Oct 2026) ---
@@ -858,6 +1107,10 @@ def compose_prompt(pa, pb, plan=None):
 # a real chip would wire to A, or says none fits. 21 Oct 2026: the pick must
 # also fit at the wires, widths and waiting (see COMPOSE_TEMPLATE).
 
+# 26 Oct 2026, Rishab approved (changes 2 and 7): "can refuse" was defined
+# by signal names, and 8 of 12 partner answers said the receiver never
+# refuses, at least twice falsely; 9 of 21 plans send from B to A; an
+# enable held low is not a way to wait.
 PARTNER_TEMPLATE = """\
 Design A, a formally verified SystemVerilog module:
 
@@ -869,6 +1122,7 @@ Candidate partners, each a verified module of its own:
 
 Pick the ONE candidate that a real chip would wire to design A, so that
 together they form one system that does something neither does alone.
+Either may send to the other.
 What one sends must mean something to the other: data into a data input,
 an event into a trigger or enable, a request into a request input. Never
 force a value into an input that expects something else: pixels are not
@@ -883,11 +1137,19 @@ The connection must also fit at the wires:
   a byte are not a 32-bit brightness sample. A data word padded with
   zeros to fill a wider data input does not fit: the part of the receiver
   that stores the padding never changes and does no work.
-- Waiting: if the receiving design can refuse or stall (it has a full,
-  busy or ready signal), the sending design must be able to wait, through
-  a ready or busy input of its own or an enable that holds it, so that no
-  data is ever dropped. A sender that cannot be made to wait cannot feed
-  a receiver that can refuse.
+- Waiting: decide from what the receiving design does whether it can
+  refuse or stall, not from its signal names. It can when, in some state,
+  it ignores or loses what arrives at an input: it takes a request only
+  when it is idle, it is busy for several cycles after a start, it
+  overwrites a value not yet used, or its full, busy or ready signal goes
+  low. A design with no full, busy or ready signal can still refuse. If
+  it can, the sending design must be able to wait on its own path,
+  through a ready or busy input of its own, or a request, start or valid
+  input that can be held back while the rest of it keeps running, so that
+  no data is ever dropped, counted or not. Holding a design's enable low
+  does not count as waiting: it also stops that design's settings, table
+  writes and other inputs. A sender that cannot be made to wait cannot
+  feed a receiver that can refuse.
 
 If no candidate would really be wired to A this way, answer "none"; that
 is a good answer when nothing fits.
@@ -895,10 +1157,12 @@ is a good answer when nothing fits.
 Reply with JSON:
 - choice: the candidate's id, or "none";
 - system: one sentence on what the combined design does (or why none fits);
-- connection: which output drives which input, in which direction, the
-  width on each side and how a difference is converted, what the value
-  means at that input, and how the sender waits when the receiver cannot
-  take more (or why the receiver never refuses)."""
+- connection: which output drives which input, in which direction (A to
+  B or B to A), the width on each side and how a difference is
+  converted, what the value means at that input, in which states the
+  receiver ignores or loses what arrives, and how the sender waits when
+  the receiver cannot take more (only if the receiver takes every input
+  in every state, say so and why)."""
 
 PARTNER_SCHEMA = {"type": "object",
                   "properties": {"choice": {"type": "string"},
@@ -958,6 +1222,9 @@ def _compose_schema():
     props = {f: {"type": "string"} for f in
              ("glue_scheme", "induction_gap", "why_parents_insufficient",
               "top_module", "wrapper")}
+    # the stream from one design into the other, right after the wrapper
+    # (26 Oct 2026, Rishab approved, change 3)
+    props["streams"] = _STREAM_ITEMS
     for f in ("antecedents", "sanity_covers", "invariants"):
         props[f] = {"type": "array", "items": {"type": "string"}}
     return {"type": "object", "properties": props,
@@ -1062,6 +1329,20 @@ REPLICATE_SCHEMA = _replicate_schema()
 
 STRUCTURAL_SCHEMA = _schema(
     ["new_state", "coupling", "induction_gap", "why_parent_insufficient"])
+# 26 Oct 2026, Rishab approved (change 3): the big moves declare their
+# streams; STRUCTURAL_SCHEMA stays as it was for the other moves
+STREAM_STRUCTURAL_SCHEMA = _schema(
+    ["new_state", "coupling", "induction_gap", "why_parent_insufficient"],
+    streams=True)
+
+
+def structural_schema(move):
+    """The structural schema for `move`: with streams for the big moves
+    (26 Oct 2026), as before for the others."""
+    return STREAM_STRUCTURAL_SCHEMA if move in STREAM_MOVES \
+        else STRUCTURAL_SCHEMA
+
+
 SECOND_SCHEMA = _schema(
     ["claim", "shared_state", "new_state", "not_inductive_alone",
      "shared_clause"])
@@ -1687,13 +1968,9 @@ def hierarchical_refs(out):
     return bad
 
 
-def glue_clause(invariants, glue_ids):
-    """COMPOSE's point: at least one clause about the glue registers —
-    the state neither parent's invariants describe. Returns it, or None."""
-    for clause in invariants:
-        if identifiers(clause) & glue_ids:
-            return clause
-    return None
+# 26 Oct 2026, Rishab approved (change 4): glue_clause, which required a
+# fact about the wrapper's registers, is gone with the forced register (see
+# grade_compose).
 
 
 def has_coupling_clause(new_invs, parent_ids, new_ids):
@@ -2325,6 +2602,32 @@ def storage_too_deep(record, parent_verilog, child_verilog, top,
     return True
 
 
+# 26 Oct 2026, Rishab approved (change 5): nothing checked SYSTEM_PROMPT
+# rule 3 before (no step of the five trials added an input), but the rule
+# now has one exception, and the stream rules trust a new input only as a
+# PEER lane's own offer. Ports of a new sub-module do not count: only the
+# top module's port list is compared.
+def new_input_ports(parent_verilog, child, top):
+    """Input ports of `top` in the child that the parent's `top` lacks."""
+    import gates                      # gates imports this module
+
+    def inputs(text):
+        return {p for p, d in gates.port_directions(text, top).items()
+                if d == "input"}
+    return sorted(inputs(child) - inputs(parent_verilog))
+
+
+def new_input_error(move, parent_verilog, child, top):
+    """Why the step's new input ports break rule 3, or None."""
+    new = new_input_ports(parent_verilog, child, top)
+    if not new or move == "PEER":
+        return None
+    return (f"the step adds the input port(s) {', '.join(new)} to module "
+            f"{top}. Only a PEER step may add inputs, for its new lane's own "
+            "input stream. Keep the module's inputs as they are; to make a "
+            "sender wait, add a ready or busy OUTPUT instead.")
+
+
 # 23 Oct 2026, review finding F4, the extender's side: the generator turns
 # away a design whose property, guard or facts read the reset (run.py
 # reset_gate), but a step was never asked. With an asynchronous reset in
@@ -2380,9 +2683,20 @@ def build_prompt(parent, ext_type, move=None, n=6, k=1, history=None,
     if ext_type == "structural":
         fields["modules"] = modules_text(parent["verilog"],
                                          parent.get("top_module", ""))
+        # a second lane affects the old logic only through what it shares
+        # (26 Oct 2026, Rishab approved, change 5)
         fields["effect_rule"] = (LEDGER_EFFECT_RULE if move == "LEDGER"
+                                 else PEER_EFFECT_RULE if move == "PEER"
                                  else SIDEWAYS_EFFECT_RULE if move in BIG_MOVES
                                  else EFFECT_RULE)
+        # 26 Oct 2026, Rishab approved (changes 1-3): big moves get the
+        # waiting rule and declare their streams; the others read as before
+        stream_move = move in STREAM_MOVES
+        fields["waiting"] = WAITING_RULE if stream_move else ""
+        fields["streams"] = streams_text(move) if stream_move else ""
+        fields["streams_step"] = ("then streams (see STREAMS above), "
+                                  if stream_move else "")
+        fields["streams_reply"] = ' "streams": [...],' if stream_move else ""
         fields["move"] = f"{move}   {MOVES[move]}"
         if move == "STAGE" and k > 1:
             fields["move"] += STAGE_K_TEXT.format(k=k)
@@ -2407,13 +2721,18 @@ def call_model(prompt_text, schema):
 
 
 def grade_compose(pa, pb, out, record):
-    """assemble (A verbatim + B verbatim + glue wrapper) -> storage depth
-    -> property discipline -> coverage + glue-clause gates -> yosys ->
-    oracle. A DECORATIVE verdict here means the glue was not stateful
-    enough."""
+    """assemble (A verbatim + B verbatim + wrapper) -> storage depth ->
+    property discipline -> coverage -> frozen enables and stream
+    declaration -> yosys -> nothing-lost search -> oracle. A plain-wire
+    wrapper is turned away by gates.IDLE_GLUE after the proof; DECORATIVE
+    means the combined assertion needs no facts (26 Oct 2026)."""
     wrapper = strip_diff_decoration(out["wrapper"])
     top = out["top_module"]
     record["wrapper"] = wrapper
+    # the stream the combination declares, for the nothing-lost search
+    # (26 Oct 2026, Rishab approved, change 3)
+    if "streams" in out:
+        record["streams"] = out["streams"]
     out = _expanded(out, record)          # compact facts (21 Oct 2026)
     if out is None:
         return record
@@ -2473,21 +2792,32 @@ def grade_compose(pa, pb, out, record):
         record["error"] = f"parent clause family missing from the list: {gaps}"
         return record
 
-    glue_ids = wrapper_regs(wrapper)
-    record["glue_identifiers"] = sorted(glue_ids)
-    if not glue_ids:
-        record["verdict"] = "NO_GLUE_CLAUSE"
-        record["error"] = ("wrapper declares no registers - plain-wire "
-                           "composition, the DECORATIVE trap")
+    # 26 Oct 2026, Rishab approved (change 4): a wrapper with no register,
+    # or with no fact about its registers, is no longer sent back. That
+    # rule never caught a plain wire (DECORATIVE fired for 0 of 36
+    # combinations) and it pushed the model into a register that passes a
+    # value on one cycle later (proven in 5 kept designs). The part between
+    # the designs must do a real job instead (COMPOSE_TEMPLATE); gates.
+    # IDLE_GLUE turns away a plain wire, the reviewer a delayed copy.
+    record["glue_identifiers"] = sorted(wrapper_regs(wrapper))
+    import nothing_lost                  # it imports this module
+    # a design's enable driven by logic while its other inputs come from
+    # outside loses those inputs (26 Oct 2026, change 2; t033, c2_004)
+    err = nothing_lost.frozen_enable_error(wrapper, child, top,
+                                           pa.get("clock") or "clk")
+    if err:
+        record["verdict"] = "PAUSES_WHOLE_DESIGN"
+        record["error"] = err
+        record["reason"] = err.split(".")[0]
         return record
-    glue = glue_clause(out["invariants"], glue_ids)
-    if glue is None:
-        record["verdict"] = "NO_GLUE_CLAUSE"
-        record["error"] = ("no invariant clause mentions the glue "
-                           f"register(s) {sorted(glue_ids)} - glue state "
-                           "left undescribed")
-        return record
-    record["glue_clause"] = glue
+    if "streams" in out:
+        err = nothing_lost.declaration_error(
+            out["streams"], "compose", child, top,
+            pa.get("clock") or "clk", wrapper=wrapper)
+        if err:
+            record["verdict"] = "STREAM_INVALID"
+            record["error"] = err
+            return record
 
     pa_bits = state_bits(pa["verilog"], pa["top_module"])
     pb_bits = state_bits(pb["verilog"], pb["top_module"])
@@ -2499,6 +2829,13 @@ def grade_compose(pa, pb, out, record):
         record["error"] = "child does not read in yosys"
         return record
 
+    # the checker's own nothing-is-lost search: seconds, before the proof
+    # takes minutes (26 Oct 2026, Rishab approved, change 3)
+    if record.get("streams") and nothing_lost.check(
+            record, child, top, pa.get("clock") or "clk", [pa, pb],
+            wrapper=wrapper):
+        return record
+
     payload = {"verilog": child, "top_module": top, "clock": pa["clock"],
                "antecedents": out["antecedents"],
                "sanity_covers": out["sanity_covers"],
@@ -2506,8 +2843,13 @@ def grade_compose(pa, pb, out, record):
     result = necessity_check(grade_triple_generated, payload, record,
                              f"oracle grading composed {top}")
     if result.verdict.name == "DECORATIVE":
-        record["error"] = ("glue not stateful enough: the composition "
-                           "proves without any invariants (wire-equivalent)")
+        # 26 Oct 2026, Rishab approved (change 4): the part between the
+        # designs no longer has to hold registers, so the old "glue not
+        # stateful enough" said the wrong thing
+        record["error"] = ("the combined assertion proves without any "
+                           "facts, so the combination teaches nothing: make "
+                           "the assertion about state that crosses the "
+                           "connection between the two designs")
     return record
 
 
@@ -2628,11 +2970,16 @@ def _expanded(out, record):
 
 
 def grade_step4(parent, ext_type, out, record):
-    """apply -> storage depth -> property discipline -> dispositions ->
-    yosys -> oracle (-> P2-unaided for second property). Fills record in
-    place."""
+    """apply -> storage depth -> new inputs -> stream declaration ->
+    property discipline -> dispositions -> yosys -> nothing-lost search
+    (26 Oct 2026) -> oracle (-> P2-unaided for second property). Fills
+    record in place."""
     record["patch"] = out["patch"]
     record["dispositions"] = out["dispositions"]
+    # the streams a big step declares, for the nothing-lost search (26 Oct
+    # 2026, Rishab approved, change 3)
+    if "streams" in out:
+        record["streams"] = out["streams"]
     compact = list(out["invariants"])
     out = _expanded(out, record)
     if out is None:
@@ -2661,6 +3008,29 @@ def grade_step4(parent, ext_type, out, record):
     if storage_too_deep(record, parent["verilog"], child,
                         parent.get("top_module", "")):
         return record
+    # only a PEER step may add an input port, for its new lane (26 Oct
+    # 2026, Rishab approved, change 5); second-property steps too, since
+    # SYSTEM_PROMPT rule 3 covers them
+    record["new_inputs"] = new_input_ports(parent["verilog"], child,
+                                           parent.get("top_module", ""))
+    err = new_input_error(record.get("move"), parent["verilog"], child,
+                          parent.get("top_module", ""))
+    if err:
+        record["verdict"] = "NEW_INPUT"
+        record["error"] = err
+        return record
+    # the streams the step declares, before any tool runs (26 Oct 2026,
+    # Rishab approved, change 3); an answer written before the rule has none
+    if "streams" in out:
+        import nothing_lost              # it imports this module
+        err = nothing_lost.declaration_error(
+            out["streams"], record.get("move"), child,
+            parent.get("top_module", ""), parent.get("clock") or "clk",
+            parent=parent)
+        if err:
+            record["verdict"] = "STREAM_INVALID"
+            record["error"] = err
+            return record
 
     child_asserts = extract_asserts(child)
     sideways = False
@@ -2753,6 +3123,14 @@ def grade_step4(parent, ext_type, out, record):
                            "design bolted on the side")
         return record
 
+    # the checker's own nothing-is-lost search: seconds, before the proofs
+    # take minutes (26 Oct 2026, Rishab approved, change 3)
+    if record.get("streams"):
+        import nothing_lost
+        if nothing_lost.check(record, child, parent["top_module"],
+                              parent.get("clock") or "clk", [parent]):
+            return record
+
     if ext_type == "second" or sideways:
         # P2 alone, no invariants: PROVEN here means it teaches nothing.
         p2_only = remove_asserts(child, parent["property"])
@@ -2785,8 +3163,6 @@ def report(record, ext_type):
         print(f"\nwrapper:\n{record.get('wrapper', '<none>')}\n")
         if "aggregate_clause" in record:
             print("aggregate:", record["aggregate_clause"])
-        if "glue_clause" in record:
-            print("glue clause:", record["glue_clause"])
         if "child_state_bits" in record:
             print(f"state bits: {record.get('parent_state_bits')} -> "
                   f"{record.get('child_state_bits')}")
@@ -2805,6 +3181,12 @@ def report(record, ext_type):
     if ext_type == "second":
         print(f"second property: {record.get('second_property')}")
         print(f"P2 unaided tier: {record.get('p2_unaided_tier')}")
+    # what the checker's own nothing-is-lost search found (26 Oct 2026,
+    # Rishab approved, change 3); the glue clause it replaced is gone
+    if "nothing_lost" in record:
+        nl = record["nothing_lost"]
+        print(f"nothing lost: {nl['result']} (depth {nl['depth']}, "
+              f"{nl['seconds']} s)")
     print(f"verdict: {record['verdict']} - "
           f"{record.get('reason', record.get('error'))}")
 
@@ -2900,9 +3282,11 @@ def main():
         print("\n=== USER ===\n" + prompt)
         return
 
-    schema = {"structural": STRUCTURAL_SCHEMA, "second": SECOND_SCHEMA,
-              "replicate": REPLICATE_SCHEMA,
-              "compose": COMPOSE_SCHEMA}[args.type]
+    # a big move's schema asks for its streams (26 Oct 2026, Rishab
+    # approved, change 3)
+    schema = (structural_schema(args.move) if args.type == "structural"
+              else {"second": SECOND_SCHEMA, "replicate": REPLICATE_SCHEMA,
+                    "compose": COMPOSE_SCHEMA}[args.type])
     record = {"extension_id": datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss"),
               "ext_type": args.type, "move": args.move, "k": args.k,
               "parent_id": parent["id"],

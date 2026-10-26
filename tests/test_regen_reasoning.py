@@ -94,12 +94,15 @@ def _between(text, start, end):
 
 
 def test_prompt_carries_the_original_field_notes_verbatim():
+    """Since 26 Oct 2026 the generator asks for a short explanation after
+    the design instead of `cti_reasoning` (Opus 5.5 stops questions that ask
+    for reasoning in the answer), so only its fake-state notes are still
+    shared word for word; this tool keeps its own reasoning note."""
     prompt = rr.build_prompt(ROW_A)
-    reasoning_note = _between(SYSTEM_PROMPT, "- `cti_reasoning`:", "breaks P.")
     vague = _between(SYSTEM_PROMPT, "Every signal needed", "{\"signal\": \"rptr\", \"value\": \"2'd0\"}] is.")
     self_check = _between(SYSTEM_PROMPT, "Self-check before you answer",
                           "It MUST come out false.")
-    for passage in (reasoning_note, vague, self_check):
+    for passage in (vague, self_check):
         assert passage in prompt
 
 
@@ -151,11 +154,15 @@ def test_assert_property_form_is_listed_when_property_field_is_empty():
 
 
 def test_schema_mirrors_the_generator_fields_and_is_strict():
+    """cti_state is still the generator's own field. cti_reasoning left the
+    generator's answer form on 26 Oct 2026 and keeps its plain-string
+    definition here."""
     from schema import TRIPLE_SCHEMA
     assert rr.SCHEMA["required"] == ["cti_reasoning", "cti_state"]
     assert rr.SCHEMA["additionalProperties"] is False
-    for k in ("cti_reasoning", "cti_state"):
-        assert rr.SCHEMA["properties"][k] == TRIPLE_SCHEMA["properties"][k]
+    assert rr.SCHEMA["properties"]["cti_state"] == \
+        TRIPLE_SCHEMA["properties"]["cti_state"]
+    assert rr.SCHEMA["properties"]["cti_reasoning"] == {"type": "string"}
 
 
 # --- calling, checking, retrying, logging --------------------------------

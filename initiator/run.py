@@ -336,7 +336,7 @@ def check_contract():
     out = parse_generator_output(
         '{"verilog": "module m (input wire clk); always @(*) assert (1); endmodule",'
         ' "top_module": "m", "cti_state": [{"signal": "x", "value": "1"}],'
-        ' "cti_reasoning": "t"}')
+        ' "cti_explanation": "t"}')
     print(f"contract ok: parsed top_module={out.prop.top_module!r}, "
           "cti_* fields ignored without violation")
 
@@ -755,7 +755,8 @@ def collect(manifest, poll_s=60):
             continue
         record = dict(a["record"], batch=True, batch_id=m["batch_id"],
                       custom_id=cid)
-        stop, text, usage, raw = results.get(
+        # a fifth item, Anthropic's reason for a refusal, since 26 Oct 2026
+        stop, text, usage, raw, *reason = results.get(
             cid, ("error:no_result", None, {"input": 0, "output": 0}, None))
         spent["input"] += usage.get("input", 0)
         spent["output"] += usage.get("output", 0)
@@ -767,7 +768,8 @@ def collect(manifest, poll_s=60):
                 model=m["model"], max_tokens=m["max_tokens"],
                 user=a["user_msg"], system=SYSTEM_PROMPT,
                 schema=TRIPLE_SCHEMA, effort=m["effort"]),
-            "raw": raw, "stop": stop, "usage": usage})
+            "raw": raw, "stop": stop, "usage": usage,
+            "refusal": reason[0] if reason else None})
         if stop.startswith("error"):
             record["usage"] = usage
             record["error"] = f"batch {stop}"
