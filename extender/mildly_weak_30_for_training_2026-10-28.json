@@ -1,0 +1,156 @@
+{
+ "what": "30 mildly weak designs added to the 70 good ones for the next training file (28 Oct 2026, Rishab: 'add 30 more ... if they are mildly weak (preferably extended designs)'). 12 grown designs that are real and correct with one flaw, read by hand; 18 starting designs whose reviewer's closest call was good.",
+ "labels_file": "extender/labels_good_weak_wrong_partial_2026-10-27.jsonl",
+ "designs": [
+  {
+   "key": "ab14daf44ffd",
+   "steps_from_start": 3,
+   "reason": "Converted pixels feed a correct 4-place line into a 4x4 tile reorderer, but the frame-end marker is thrown away at the join, so a frame that is not a multiple of 16 pixels waits inside until the next frame fills the tile (6-pixel frame then silence: 0 of 6 out, parent gives 6); new facts are counts."
+  },
+  {
+   "key": "adea7639e6b9",
+   "steps_from_start": 1,
+   "reason": "The peer queue and turn-taking are correct, but the peer's words go out on the bridge's write-data output with no address and no reply of their own; really a second small buffer feeding the same output."
+  },
+  {
+   "key": "4f37243a3aaf",
+   "steps_from_start": 1,
+   "reason": "Adds a real-sounding 'let the power rail settle' wait, but its retry rule reuses the start request to mean 'the saved state is stale', which makes no physical sense and changes how the old design reacts to a request that stays high."
+  },
+  {
+   "key": "d8bf1ca180a3",
+   "steps_from_start": 1,
+   "reason": "Two lanes take turns a whole frame at a time on one shared compare step without losing anything, but the new lane keeps only the two smallest sizes (no sign, no position), so its result is not a usable check-node answer."
+  },
+  {
+   "key": "efd27d47e7bd",
+   "steps_from_start": 1,
+   "reason": "A properly built 4-entry queue with real facts about stored entries, but it sits in front of a checker that already took one bit per cycle, so it only adds delay, and each entry stores the whole running number instead of the one new bit."
+  },
+  {
+   "key": "7f8c40470fc3",
+   "steps_from_start": 2,
+   "reason": "A second lane takes turns with the first on the shared compare logic and loses nothing, but the one register linking the lanes (shared_min) is just a copy of the last lane's smallest value, so the key new fact is about a copy that does nothing."
+  },
+  {
+   "key": "a0eaf707aace",
+   "steps_from_start": 1,
+   "reason": "The peer lane is a second copy of the divide-by-3 checker sharing only a tiny table, through save-and-swap registers that cost more than a plain copy and halve the main lane's speed when both are busy."
+  },
+  {
+   "key": "10c55eb36551",
+   "steps_from_start": 2,
+   "reason": "Four copies of the bucket share 8 credits through a fair turn-taking picker and one fact is a real 'pool plus all buckets = 8' count, but requesters get no reply saying they got a credit, the per-slot logic is hand-copied, and the old refill counters are left unconnected."
+  },
+  {
+   "key": "f0919a7bd2a4",
+   "steps_from_start": 4,
+   "reason": "It adds a shared limit of 8 run permits over four copies of the earlier six-reader pool, and the permit counting is correct, but the 24 copied readers' results go nowhere and most of the facts are the same few facts repeated for every copy."
+  },
+  {
+   "key": "92c1b064e4c1",
+   "steps_from_start": 3,
+   "reason": "Logging the checker's grant/deny verdicts into a queue is plausible, but sending them through an Ethernet receive interface (split into half-bytes) makes little hardware sense, and words lost when the queue is full are not counted."
+  },
+  {
+   "key": "2e8114ce8683",
+   "steps_from_start": 2,
+   "reason": "Same hardware as its parent, a 4-slot queue that never holds more than one beat while the trigger runs, with only a second property added; the new helper facts are proper queue facts, but the queue does no real work."
+  },
+  {
+   "key": "0bc0b9a0841c",
+   "steps_from_start": 3,
+   "reason": "Correct 4-place line between the converter and a 32-place searchable queue, but searching queued pixels for an exact colour value has no clear use, each search blocks new pixels until it steps through every stored pixel, and it mostly piles more waiting room on the same path; facts are a count balance and bounds."
+  },
+  {
+   "key": "4b8c860d1f79",
+   "steps_from_start": 0,
+   "reason": "A correct colour converter with programmable weights and a proper ready/valid hand-off, but the checked part is a pair of watch-only counters whose difference just equals the single 'output full' flag."
+  },
+  {
+   "key": "f9b24c026de9",
+   "steps_from_start": 0,
+   "reason": "A real block-convolution unit (fill 24 samples, run 27 steps, keep the overlap tail), but the checked countdown is just 27 minus the step index, so the property and most facts are bounds or tie two counters that move together."
+  },
+  {
+   "key": "abff9e0e3793",
+   "steps_from_start": 0,
+   "reason": "A tiny two-channel arbiter where the arbiter itself raises both request and acknowledge and neither leaves the module, so each channel is just a five-step busy timer, and the monitor window exists only for the property."
+  },
+  {
+   "key": "ab5a310bed4f",
+   "steps_from_start": 0,
+   "reason": "A correctly framed management-bus master (32 preamble bits, 14 command bits, 2 turnaround bits, 16 data bits), but the only fact ties the phase to one flag (ta_pending) that exists for the property, and the counters are 64 bits wide for counts up to 31."
+  },
+  {
+   "key": "4c2faa81b970",
+   "steps_from_start": 0,
+   "reason": "A scan over a 4x4 grid of offsets that counts mismatches at each point, but each point's count is wiped in the next step with no stored result or valid signal, and the facts are counter bounds plus 'mismatches never exceed samples'."
+  },
+  {
+   "key": "bcc4b90fbd73",
+   "steps_from_start": 0,
+   "reason": "A real address router with 64 settable ranges that holds the chosen target for 16 cycles, but every fact is about two timer counts that always add up to 16 (cnt and age), and the range table is never mentioned."
+  },
+  {
+   "key": "e9c1953bed76",
+   "steps_from_start": 0,
+   "reason": "A real four-stage correction pipeline with settable gain and phase, but the only fact says the 'inflight' count equals the number of valid bits in the pipeline, and that count and the calibration window flag exist only to be checked."
+  },
+  {
+   "key": "51aec01d914a",
+   "steps_from_start": 0,
+   "reason": "A real kind of block (retry with random waits that double in range, giving up after 3 retries), but the property is only about a budget countdown that no other logic reads, so it just watches the controller's own step counts."
+  },
+  {
+   "key": "08b5b6f9e7dc",
+   "steps_from_start": 0,
+   "reason": "An eight-output clock generator whose settings are saved first and applied once per lap is a real block, but the checked counter 'align_cnt0' only watches output 0 and just says whether the cycle count has passed its offset."
+  },
+  {
+   "key": "b70de890cc43",
+   "steps_from_start": 0,
+   "reason": "A clock-pause handshake (request, grant, finish) is a real idea, but its three event counters only count, the window flag only switches the check on, and the 256-word buffer takes no part in the check or the facts."
+  },
+  {
+   "key": "ab4df1e12e1e",
+   "steps_from_start": 0,
+   "reason": "A bit-pair-to-four-level encoder with optional precoding and bit slip is real hardware, but its three counters (bits, symbols, drops) only count and the check is a parity test of one of them against the waiting-bit flag, so no fact touches the encoded data."
+  },
+  {
+   "key": "474e974c16d5",
+   "steps_from_start": 0,
+   "reason": "A real delay-then-pulse timer with settings copied at the trigger, but the property is about a stopwatch counter kept only for the check, and its facts mostly say the stopwatch equals the working counter (plus the saved delay)."
+  },
+  {
+   "key": "46bfed5ffb72",
+   "steps_from_start": 0,
+   "reason": "A real number-scaling block (multiply, round, shift, clamp to 8 bits), but the check and both helper facts are only about extra counters that count setting writes and outputs, never about the maths."
+  },
+  {
+   "key": "508663959cbf",
+   "steps_from_start": 0,
+   "reason": "A request queue with a credit counter, but the credits are just 8 minus the item count, so the only helper fact says the two add up to 8, and the interrupt flag on the side does not affect the queue."
+  },
+  {
+   "key": "cecdbf22bcbd",
+   "steps_from_start": 0,
+   "reason": "Two adders (ripple and look-ahead) keep the same running sum, the second one exists only to be compared with the first, and the single fact says the two sums are equal."
+  },
+  {
+   "key": "9c5a09987a1a",
+   "steps_from_start": 0,
+   "reason": "A real 32-digit display scanner (digit counter, one-lit-digit pattern, writable digit table), but the check is about a 'first lap' flag and a 'digit 16 seen' flag that only watch, and the stored digits appear in no fact."
+  },
+  {
+   "key": "bff8c595c8b2",
+   "steps_from_start": 0,
+   "reason": "A real pulse-swallowing clock divider (divides by 8 or 9 for a set number of rounds), but the check and both facts are about 'has this happened' flags that never touch the divider, and two of them (q_seen and armed_seen) are exact twins."
+  },
+  {
+   "key": "7fbc2de935ce",
+   "steps_from_start": 0,
+   "reason": "A real frame-lock machine (hunt, pre-sync, in-sync) built soundly, but the checked bad-frame count drives nothing because the drop rule reads the saved recent-results bits instead, so the facts only compare a spare counter with those bits."
+  }
+ ]
+}
