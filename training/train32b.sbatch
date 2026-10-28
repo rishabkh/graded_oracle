@@ -52,7 +52,9 @@ case "$MODEL" in
 esac
 # --- end guard ---
 
-echo "training $MODEL on $PAIRS -> $OUT"
+# SEED (29 Oct 2026): each training set is trained 3 times, seeds 0, 1, 2;
+# with the seed fixed at 0 the three would come out the same
+echo "training $MODEL on $PAIRS -> $OUT (seed ${SEED:-0})"
 nvidia-smi --query-gpu=name,memory.total --format=csv
 
 # 16384 since 8 Oct 2026 (bigger designs); MAXLEN=8192 gives the old limit
@@ -62,6 +64,7 @@ python training/train_lora.py \
     --out "$OUT" \
     --epochs 3 \
     --max-len "${MAXLEN:-16384}" \
+    --seed "${SEED:-0}" \
     --merge
 
 echo "=== loading the adapter back and answering one question ==="

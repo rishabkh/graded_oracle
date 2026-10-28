@@ -25,6 +25,7 @@ go to CORPUS as starting designs like the initiator's.
   venv/bin/python initiator/seed_designs.py                # all seeds (paid), resumable
 """
 import argparse
+import difflib
 import json
 import re
 import subprocess
@@ -215,8 +216,11 @@ def _flat(text, top, name, workdir):
     """The module as yosys builds it, with every assertion and initial value
     taken out, flattened and renamed `name`."""
     Path(workdir, f"{name}.v").write_text(text)
+    # memory and async2sync (28 Oct 2026): yosys's equivalence check has no
+    # model for a memory or a flip-flop with an asynchronous reset, and its
+    # error was reported as a changed design (32 answers in three runs)
     script = (f"read -formal {name}.v; prep -top {top}; chformal -remove; "
-              "setattr -unset init; delete t:$meminit*; flatten; "
+              "delete t:$meminit*; memory; setattr -unset init; async2sync; flatten; "
               f"hierarchy -top {top}; opt_clean; rename {top} {name}; "
               f"write_rtlil {name}.il")
     p = subprocess.run(["yosys", "-q", "-p", script], cwd=workdir,
@@ -306,15 +310,35 @@ def run_seed(seed, proof_dir, repairs=REPAIRS, effort=EFFORT, call=None, grade=T
     return record
 
 
-def write_corpus(log_path=LOG, corpus_path=CORPUS, seeds_path=SEEDS):
-    """Proved seeds as corpus rows, ids os0_NNN in the order they proved.
-    Only seeds still on the list count: the first list had 4 modules that
-    are copies or run on two clocks (28 Oct 2026); 2 of them proved."""
+# the first list's 4 modules that are copies or run on two clocks (28 Oct
+# 2026); 2 of them proved. Only these are left out by name: the later rule
+# that skips modules with no stored state reads the default settings, and
+# axis_adapter, addrdecode and axi3reorder gained state from the settings
+# the model chose, and proved
+DROPPED = {"verilog-axi/arbiter", "verilog-axi/priority_encoder",
+           "verilog-axi/axil_dp_ram", "wb2axip/afifo"}
+
+
+def write_corpus(log_path=LOG, corpus_path=CORPUS, dropped=DROPPED):
+    """Proved seeds as corpus rows, ids os0_NNN in the order they proved,
+    minus the DROPPED modules and near-copies."""
     rows = [json.loads(line) for line in open(log_path)] if Path(log_path).exists() else []
-    listed = {json.loads(line)["name"] for line in open(seeds_path)} \
-        if Path(seeds_path).exists() else None
     good = [r for r in rows if r.get("verdict") == "NECESSARY" and r.get("raw_json")
-            and (listed is None or r["seed"] in listed)]
+            and r["seed"] not in dropped]
+    # near-copies (28 Oct 2026): Ultra-Embedded's two RISC-V repos share their
+    # icache and tcm_mem_pmem (96% and 99% alike), and verilog-pcie writes one
+    # MSI block for two vendors (91%); the first one proved is kept
+    kept, toks = [], []
+    for r in good:
+        t = re.findall(r"[A-Za-z_]\w*|\d+|\S", re.sub(
+            r"//[^\n]*|/\*.*?\*/", "", json.loads(r["raw_json"])["verilog"], flags=re.S))
+        if not any(abs(len(t) - len(u)) <= 0.2 * max(len(t), len(u))
+                   and difflib.SequenceMatcher(None, t, u, autojunk=False).quick_ratio() > 0.9
+                   and difflib.SequenceMatcher(None, t, u, autojunk=False).ratio() > 0.9
+                   for u in toks):
+            kept.append(r)
+            toks.append(t)
+    good = kept
     with open(corpus_path, "w") as fh:
         for i, r in enumerate(good):
             row = flatten_record(r, i, prefix="os0")
@@ -323,8 +347,39 @@ def write_corpus(log_path=LOG, corpus_path=CORPUS, seeds_path=SEEDS):
     return len(good)
 
 
+def recheck(log_path, seeds, workers=4, verdicts=("CHANGED_DESIGN",)):
+    """Check again, with no model call, the last saved answer of every seed
+    the logic check turned away with a yosys error (28 Oct 2026: memories
+    and asynchronous resets, fixed in _flat). The log is rewritten with the
+    new verdicts; the old one is kept as verdict_before_recheck."""
+    rows = [json.loads(line) for line in open(log_path)]
+    by_name = {s["name"]: s for s in seeds}
+    todo = [i for i, r in enumerate(rows) if r.get("verdict") in verdicts
+            and r.get("seed") in by_name and (r.get("history") or [{}])[-1].get("answer")]
+    proofs = Path(log_path).with_name(Path(log_path).stem + "_proofs")
+
+    def one(i):
+        r = rows[i]
+        return i, check(by_name[r["seed"]], r["history"][-1]["answer"],
+                        proofs / (r["seed"].replace("/", "_") + "_recheck"))
+    with ThreadPoolExecutor(workers) as pool:
+        for i, j in pool.map(one, todo):
+            r = rows[i]
+            r.update(verdict_before_recheck=r["verdict"], verdict=j["verdict"],
+                     reason=j["reason"], rechecked="2026-10-28")
+            if "triple" in j:
+                r["raw_json"] = json.dumps(j["triple"])
+            print(f"{r['seed']}: {r['verdict_before_recheck']} -> {r['verdict']}", flush=True)
+    with open(log_path, "w") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
+    return len(todo)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--recheck", action="store_true",
+                    help="check the saved answers turned away as CHANGED_DESIGN again; no model call")
     ap.add_argument("--seeds", default=str(SEEDS))
     ap.add_argument("--log", default=str(LOG))
     ap.add_argument("--names", help="comma-separated seed names (default: all)")
@@ -336,6 +391,11 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     seeds = [json.loads(line) for line in open(args.seeds)]
+    if args.recheck:
+        n = recheck(args.log, seeds, args.workers)
+        print(f"rechecked {n}; {write_corpus(args.log)} proved designs -> "
+              f"{CORPUS.relative_to(HERE.parent)}")
+        return
     if args.names:
         seeds = [s for s in seeds if s["name"] in set(args.names.split(","))]
     log = Path(args.log)

@@ -118,6 +118,8 @@ def test_a_failed_answer_is_repaired_once_and_logged(monkeypatch, tmp_path):
     n = sd.write_corpus(log, tmp_path / "corpus.jsonl")
     row = json.loads((tmp_path / "corpus.jsonl").read_text())
     assert n == 1 and row["id"] == "os0_000" and row["open_source"]["repo"] == "repo"
+    # a module dropped on purpose (a copy, two clocks) stays out
+    assert sd.write_corpus(log, tmp_path / "corpus.jsonl", dropped={"repo/top"}) == 0
 
 
 @pytest.mark.skipif(shutil.which("yosys") is None, reason="yosys not on PATH (run hwtools)")

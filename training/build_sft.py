@@ -818,6 +818,21 @@ def build_preference_pairs(rows, s):
     return out
 
 
+def at_least_trained(pairs, n):
+    """Release held-back pairs, first ones first, until n are trained on
+    (29 Oct 2026, Rishab: "no test should have less than 200 training
+    examples"; the 217-pair sets held back 21 and trained on 196). The
+    held-back slice only watches the loss; scores never come from it."""
+    need = n - sum(not p["holdout"] for p in pairs)
+    for p in pairs:
+        if need <= 0:
+            break
+        if p["holdout"]:
+            p["holdout"] = False
+            need -= 1
+    return pairs
+
+
 def write_one_step_files(args, rows):
     """Build, check that every answer reads back through the scorer, and
     only then write."""
@@ -855,6 +870,7 @@ def write_one_step_files(args, rows):
     if args.clean:
         say_left_out("clean answers", clean_left_out)
         clean = weight_engine_hard(clean, rows, args.engine_hard_copies)
+        clean = at_least_trained(clean, args.min_trained)
         Path(args.clean).write_text("".join(
             json.dumps({"prompt": p["prompt"], "completion": p["completion"],
                         "holdout": p["holdout"]}) + "\n" for p in clean))
@@ -904,6 +920,8 @@ def main(argv=None):
     p.add_argument("--max-len", type=int, default=16384,
                    help="the training length limit, to report records "
                         "that training would drop")
+    p.add_argument("--min-trained", type=int, default=0,
+                   help="with --clean: release held-back pairs until this many are trained on")
     p.add_argument("--engine-hard-copies", type=int, default=1,
                    metavar="K",
                    help="write each solving row the automatic engine "
