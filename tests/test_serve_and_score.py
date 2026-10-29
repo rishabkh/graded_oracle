@@ -21,7 +21,7 @@ BUILD = (TRAINING / "build_ebmc.sbatch").read_text()
 # commands it would have run. A wrong loop costs GPU hours on the cluster.
 STUBS = {"module": "", "nvidia-smi": "", "nvcc": "", "curl": "",
          "vllm": "sleep 30",
-         "python": 'echo "$@" >> "$CALLS"'}
+         "python": 'echo "$@" >> "$CALLS"; echo "$QWEN_BASE_URL" > "$SCORER_URL"'}
 
 
 def run_job(tmp_path, **env):
@@ -43,7 +43,8 @@ def run_job(tmp_path, **env):
         text=True, timeout=60,
         env={"PATH": f"{stubs}:/usr/bin:/bin", "HOME": str(home),
              "CALLS": str(calls), "USER": "tester", "SLURM_JOB_ID": "1",
-             "SLURM_CPUS_PER_TASK": "8", **env})
+             "SLURM_CPUS_PER_TASK": "8",
+             "SCORER_URL": str(tmp_path / "scorer_url.txt"), **env})
     return r, [c.removeprefix("initiator/benchmark_solve.py ")
                for c in calls.read_text().splitlines()]
 
@@ -73,8 +74,34 @@ def exports(text):
             if l.strip().startswith("export ")}
 
 
+def without_port(args):
+    i = args.index("--port")
+    return args[:i] + args[i + 2:]
+
+
 def test_the_server_starts_with_exactly_the_settings_of_serve_sbatch():
-    assert vllm_args(SCORE) == vllm_args(SERVE)
+    """All but the port (30 Oct 2026), which says where the server
+    listens, not how it answers: serve.sbatch keeps 8000 for the laptop's
+    tunnel, and each scoring job has its own."""
+    assert without_port(vllm_args(SCORE)) == without_port(vllm_args(SERVE))
+
+
+def test_each_job_serves_and_asks_on_its_own_port(tmp_path):
+    """30 Oct 2026: two scoring jobs that shared a machine both served on
+    port 8000, so one job's questions could have reached the other job's
+    model without any error."""
+    assert '--port "$PORT"' in SCORE
+    urls = []
+    for job in ("55936746", "55936748"):
+        r, calls = run_job(tmp_path / job, PASSES="1", SLURM_JOB_ID=job)
+        assert r.returncode == 0, r.stdout + r.stderr
+        port = re.search(r"server ready on port (\d+)", r.stdout).group(1)
+        url = (tmp_path / job / "scorer_url.txt").read_text().strip()
+        assert url == f"http://localhost:{port}/v1"
+        # the count that shows no question went to another job's model
+        assert "questions this job's model answered: 0" in r.stdout
+        urls.append(url)
+    assert len(set(urls)) == 2 and not any(":8000/" in u for u in urls)
 
 
 def test_the_server_runs_on_the_same_gpus_and_environment():

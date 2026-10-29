@@ -74,25 +74,29 @@ echo "serving $MODEL on $(hostname); $PASSES pass(es) of $SETS; ROUNDS=$ROUNDS S
 nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
 
 VLOG="runs/score_${SLURM_JOB_ID}_vllm.log"
+# each job its own port (30 Oct 2026): two scoring jobs that shared a
+# machine both served on 8000, so one job's questions could have reached
+# the other job's model without any error
+PORT=$(( 20000 + SLURM_JOB_ID % 20000 ))
 vllm serve "$MODEL" --served-model-name llm \
-    --max-model-len 32768 --tensor-parallel-size 2 --port 8000 > "$VLOG" 2>&1 &
+    --max-model-len 32768 --tensor-parallel-size 2 --port "$PORT" > "$VLOG" 2>&1 &
 VLLM_PID=$!
 trap 'kill $VLLM_PID 2>/dev/null; wait $VLLM_PID 2>/dev/null || true' EXIT
 
 # give the model up to 45 minutes to load; stop early if the server dies
 for _ in $(seq 1 270); do
-    curl -sf http://localhost:8000/v1/models > /dev/null && break
+    curl -sf "http://localhost:$PORT/v1/models" > /dev/null && break
     if ! kill -0 "$VLLM_PID" 2>/dev/null; then
         echo "server died while loading - see $VLOG"; exit 1
     fi
     sleep 10
 done
-if ! curl -sf http://localhost:8000/v1/models > /dev/null; then
+if ! curl -sf "http://localhost:$PORT/v1/models" > /dev/null; then
     echo "server never became ready - see $VLOG"; exit 1
 fi
-echo "server ready"
+echo "server ready on port $PORT"
 
-export QWEN_BASE_URL=http://localhost:8000/v1 QWEN_API_KEY=none QWEN_MODEL=llm
+export QWEN_BASE_URL=http://localhost:$PORT/v1 QWEN_API_KEY=none QWEN_MODEL=llm
 export EBMC_PATH="$EBMC_BIN" EBMC_TIMEOUT_S=300
 REPAIR=""
 if [ "$ROUNDS" != "0" ]; then REPAIR="--rounds $ROUNDS --ebmc-workers $(( ${SLURM_CPUS_PER_TASK:-8} - 2 ))"; fi
@@ -110,3 +114,6 @@ for i in $(seq 1 "$PASSES"); do
     done
 done
 echo "done: $PASSES pass(es) of $SETS scored; stopping the server"
+# every question should have reached this job's own model: 109 a pass
+# (31 + 78) when each design gets one answer
+echo "questions this job's model answered: $(grep -c 'POST /v1' "$VLOG" || true)"
