@@ -44,6 +44,17 @@ def test_unreadable_parent_is_yosys_error(monkeypatch):
     assert "parent" in rec["error"]      # blamed on machinery, not the model
 
 
+def test_an_unreadable_child_carries_yosys_own_error(monkeypatch):
+    parent = make_parent()
+    monkeypatch.setattr(distractor, "state_bits",
+                        lambda v, top: 1 if v == parent["verilog"] else None)
+    monkeypatch.setattr(distractor, "yosys_read_error",
+                        lambda v, top: "line 9: syntax error")
+    rec = grade_extension(parent, SELFTEST_PATCH, {})
+    assert rec["verdict"] == "YOSYS_ERROR"
+    assert rec["error"] == "child does not read in yosys: line 9: syntax error"
+
+
 def test_malformed_patch_is_patch_error():
     rec = grade_extension(make_parent(), "@@ nowhere @@\n+ x", {})
     assert rec["verdict"] == "PATCH_ERROR"

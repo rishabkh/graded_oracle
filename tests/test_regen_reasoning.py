@@ -58,7 +58,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(rr, "LOG", tmp_path / "logs" / "regen.jsonl")
     monkeypatch.setattr(rr, "ORIG_LOG", tmp_path / "logs" / "orig.jsonl")
     monkeypatch.setattr(rr, "ATTEMPTS", tmp_path / "attempts.jsonl")
-    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     monkeypatch.setattr(rr, "preflight", lambda: None)
 
@@ -298,7 +298,7 @@ def test_missing_anthropic_key_exits_before_any_call(env, monkeypatch, capsys):
 
 
 def test_missing_openrouter_key_exits_before_any_call(env, monkeypatch, capsys):
-    monkeypatch.setenv("CLAUDE_PROVIDER", "openrouter")
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     with pytest.raises(SystemExit):
         rr.main(["--n", "1"])

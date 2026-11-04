@@ -1,19 +1,19 @@
-"""One switch for how Claude is reached: the Anthropic API directly
-(default) or through OpenRouter — so the harness runs on whichever key
-the project has.
+"""One switch, LLM_PROVIDER, for which company's model answers: Claude
+through the Anthropic API directly (default), Claude through OpenRouter,
+or OpenAI - so the harness runs on whichever key the project has.
 
   # default: direct Anthropic (exact current behaviour)
   export ANTHROPIC_API_KEY=sk-ant-...
 
   # via OpenRouter:
-  export CLAUDE_PROVIDER=openrouter
+  export LLM_PROVIDER=openrouter
   export OPENROUTER_API_KEY=sk-or-...
   export OPENROUTER_CLAUDE_MODEL=anthropic/claude-opus-5   # optional; check
                                                            # openrouter.ai/models
                                                            # for the exact slug
 
   # OpenAI directly (26 Oct 2026), batches included:
-  export CLAUDE_PROVIDER=openai
+  export LLM_PROVIDER=openai
   export OPENAI_API_KEY=sk-proj-...
   export OPENAI_MODEL=gpt-6.1-sol        # optional; the default
 
@@ -26,6 +26,7 @@ Differences that matter, handled here:
   finish_reason=="content_filter".
 - Usage is normalised to {"input": .., "output": ..} either way.
 """
+import atexit
 import contextlib
 import json
 import os
@@ -43,7 +44,20 @@ LAST_RAW = None
 
 
 def provider():
-    return os.environ.get("CLAUDE_PROVIDER", "anthropic")
+    """anthropic (default), openai or openrouter. Called CLAUDE_PROVIDER
+    until 3 Nov 2026, which read as if every call went to Claude though it
+    picked OpenAI too; a terminal that still sets only the old name stops
+    here, before any call, rather than quietly using the default."""
+    new = os.environ.get("LLM_PROVIDER")
+    if new:
+        return new
+    old = os.environ.get("CLAUDE_PROVIDER")
+    if old:
+        raise RuntimeError(
+            f"CLAUDE_PROVIDER is now called LLM_PROVIDER: run `export "
+            f"LLM_PROVIDER={old}` (and `unset CLAUDE_PROVIDER`); nothing "
+            "was called")
+    return "anthropic"
 
 
 # 26 Oct 2026, Rishab approved: OpenAI as a third route, for extender runs
@@ -91,6 +105,53 @@ def dollars(model, tokens_in, tokens_out, batch=False):
     return cost / 2 if batch else cost
 
 
+# --- what a run spends (3 Nov 2026) -----------------------------------------
+# Every paid call goes through call_claude, so its cost is counted here and
+# the run prints the total when it ends, to set against the estimate made
+# before it started. Rishab chose estimates up front over a limit that
+# could stop a run part-way (3 Nov 2026), so nothing here ever refuses a
+# call.
+
+_spending = {"spent": 0.0, "calls": 0, "unpriced": 0}
+_spending_lock = threading.Lock()
+
+
+def spending():
+    """This run so far: dollars spent, calls paid for, and how many of
+    those had no list price (counted as calls, not in dollars)."""
+    with _spending_lock:
+        return dict(_spending)
+
+
+def _count(model, usage, batch):
+    """One finished call, at its own model's list price. A failed call is
+    never counted: the APIs do not bill a request that comes back as an
+    error."""
+    u = usage or {}
+    with _spending_lock:
+        _spending["calls"] += 1
+        try:
+            _spending["spent"] += dollars(model, u.get("input") or 0,
+                                          u.get("output") or 0, batch=batch)
+        except ValueError:
+            _spending["unpriced"] += 1
+
+
+def spending_report():
+    s = spending()
+    line = f"LLM spending this run: ${s['spent']:.2f} on {s['calls']} calls"
+    if s["unpriced"]:
+        line += (f" ({s['unpriced']} by a model with no list price, not "
+                 "counted in dollars)")
+    return line
+
+
+@atexit.register
+def _report_spending():
+    if _spending["calls"]:
+        print(spending_report(), flush=True)
+
+
 def extract_json(text):
     """First complete JSON object in `text`, or None. Balanced-brace scan,
     string- and escape-aware, so prose or fences around the object are
@@ -129,10 +190,12 @@ def call_claude(*, model, max_tokens, user, system=None, schema=None,
     {"input": int, "output": int}. raw_json_text is None only on refusal
     or (OpenRouter path) unparseable output."""
     global LAST_RAW
+    batch = _gate is not None and provider() in BATCH_PROVIDERS
+    label = model_label(model)
     entry = {"started": datetime.now(timezone.utc).isoformat(),
              "provider": provider(),
-             "model": model_label(model) if provider() == "openai" else model,
-             "batch": _gate is not None and provider() in BATCH_PROVIDERS,
+             "model": label if provider() == "openai" else model,
+             "batch": batch,
              "batch_id": None, "custom_id": None, "request": None,
              "raw": None, "stop": None, "usage": None, "refusal": None}
     t0 = time.monotonic()
@@ -180,6 +243,7 @@ def call_claude(*, model, max_tokens, user, system=None, schema=None,
             entry["stop"] = f"exception: {type(exc).__name__}: {exc}"[:300]
         _record_call(entry, t0)
         raise
+    _count(label, usage, batch)
     entry.update(raw=raw, stop=stop, usage=usage)
     _record_call(entry, t0)
     return text, usage, stop

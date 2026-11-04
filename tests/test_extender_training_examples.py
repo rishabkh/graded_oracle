@@ -428,7 +428,7 @@ def api(monkeypatch):
     Anthropic is faked, so the request is built and noted as in a run.
     Replies are (text, how the call ended) or an exception, in turn; every
     request sent is kept."""
-    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     monkeypatch.setattr(llm_client, "_gate", None)
     monkeypatch.setattr(llm_client, "_call_log_path", None)
     sent, replies = [], []

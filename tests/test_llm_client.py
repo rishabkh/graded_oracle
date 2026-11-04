@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import llm_client                      # noqa: E402
@@ -12,20 +14,42 @@ from llm_client import extract_json, provider, model_label   # noqa: E402
 
 
 def test_provider_defaults_to_anthropic(monkeypatch):
-    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     assert provider() == "anthropic"
 
 
 def test_provider_openrouter(monkeypatch):
-    monkeypatch.setenv("CLAUDE_PROVIDER", "openrouter")
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
     assert provider() == "openrouter"
 
 
+def test_the_switch_picks_openai_by_its_new_name(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    assert provider() == "openai"
+
+
+def test_the_old_name_alone_stops_before_any_call_and_names_the_new_one(
+        monkeypatch):
+    """Renamed 3 Nov 2026: CLAUDE_PROVIDER also picked OpenAI, which read
+    as if every call went to Claude. A terminal that still sets only the
+    old name must not quietly fall back to the default company."""
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.setenv("CLAUDE_PROVIDER", "openai")
+    with pytest.raises(RuntimeError, match="LLM_PROVIDER=openai"):
+        provider()
+
+
+def test_the_new_name_wins_over_a_leftover_old_one(monkeypatch):
+    monkeypatch.setenv("CLAUDE_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    assert provider() == "anthropic"
+
+
 def test_model_label_names_the_provider(monkeypatch):
-    monkeypatch.setenv("CLAUDE_PROVIDER", "openrouter")
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
     monkeypatch.delenv("OPENROUTER_CLAUDE_MODEL", raising=False)
     assert model_label("claude-opus-5").startswith("openrouter:")
-    monkeypatch.setenv("CLAUDE_PROVIDER", "anthropic")
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
     assert model_label("claude-opus-5") == "claude-opus-5"
 
 
@@ -83,7 +107,7 @@ def test_anthropic_call_streams_so_a_long_generation_is_allowed(monkeypatch):
 
     monkeypatch.setattr(llm_client, "_an_client",
                         types.SimpleNamespace(messages=FakeMessages()))
-    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     text, usage, stop = llm_client.call_claude(model="m", max_tokens=32000,
                                                user="u")
     assert stop == "ok" and text == '{"ok": 1}'
@@ -255,7 +279,7 @@ def test_a_refusal_does_not_leave_the_previous_reply_behind(monkeypatch):
             return False
     monkeypatch.setattr(llm_client, "_an_client", types.SimpleNamespace(
         messages=types.SimpleNamespace(stream=lambda **kw: Stream())))
-    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     llm_client.call_claude(model="m", max_tokens=1, user="u")
     assert llm_client.LAST_RAW == '{"first": 1}'
     assert llm_client.call_claude(model="m", max_tokens=1, user="u")[2] == "refusal"
@@ -289,7 +313,7 @@ def _fake_batches(monkeypatch, answers=None, fail=()):
     monkeypatch.setattr(llm_client, "batch_submit", submit)
     monkeypatch.setattr(llm_client, "batch_status", lambda bid: ("ended", {}))
     monkeypatch.setattr(llm_client, "batch_results", results)
-    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     return sent
 
 
@@ -375,7 +399,7 @@ def _stream_returning(monkeypatch, *replies):
             return False
     monkeypatch.setattr(llm_client, "_an_client", types.SimpleNamespace(
         messages=types.SimpleNamespace(stream=lambda **kw: Stream())))
-    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
 
 
 def test_every_direct_call_is_logged_with_request_and_raw_answer(monkeypatch,
@@ -449,7 +473,7 @@ def test_a_refused_batch_call_logs_anthropics_reason(monkeypatch, tmp_path):
     monkeypatch.setattr(llm_client, "batch_submit", submit)
     monkeypatch.setattr(llm_client, "batch_status", lambda bid: ("ended", {}))
     monkeypatch.setattr(llm_client, "batch_results", results)
-    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     log = tmp_path / "calls.jsonl"
     with llm_client.call_log(log), llm_client.batch_gate(
             flush_after_s=0.2, poll_s=0, manifest_dir=tmp_path / "batches"):

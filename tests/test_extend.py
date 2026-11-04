@@ -445,6 +445,74 @@ def test_strip_diff_decoration_leaves_plain_verilog_alone():
     assert strip_diff_decoration(plain) == plain
 
 
+GIT_DECORATED = """\
+diff --git a/design.sv b/design.sv
+new file mode 100644
+index 0000000..1a2b3c4
+--- /dev/null
++++ b/design.sv
+@@ -0,0 +1,3 @@
++module wrapped_top (input wire clk);
++    reg r;
++endmodule
+"""
+
+
+def test_strip_diff_decoration_drops_git_header_lines():
+    """27 Oct 2026: two GPT-6.1 Sol answers kept git's `diff --git`,
+    `new file mode` and `index` lines, and yosys failed on them."""
+    from extend import strip_diff_decoration
+    assert strip_diff_decoration(GIT_DECORATED) == \
+        "module wrapped_top (input wire clk);\n    reg r;\nendmodule\n"
+
+
+def test_an_unreadable_child_sends_yosys_own_error_to_the_retry(monkeypatch):
+    """27 Oct 2026: the retry heard only "child does not read in yosys";
+    yosys's own line (two output ports with starting values on one line,
+    a size from a localparam declared later) says what to fix."""
+    import extend
+    monkeypatch.setattr(extend, "state_bits",
+                        lambda v, top: None if "c <=" in v else 1)
+    monkeypatch.setattr(extend, "yosys_read_error",
+                        lambda v, top: "line 4: syntax error, unexpected TOK_ID")
+    parent = {"verilog": ("module m (input wire clk, input wire b, "
+                          "output reg a);\n"
+                          "always @(posedge clk)\n"
+                          "    assert (a == 1'b0);\nendmodule"),
+              "property": ["a == 1'b0"], "invariants": [], "top_module": "m",
+              "clock": "clk", "antecedents": [], "sanity_covers": []}
+    out = {"patch": ("@@     assert (a == 1'b0); @@\n"
+                     "+ reg c = 0;\n"
+                     "+ always @(posedge clk) c <= b;\n"
+                     "+ always @(posedge clk)\n"
+                     "+     assert (!c || !a);"),
+           "invariants": [], "dispositions": []}
+    record = {}
+    extend.grade_step4(parent, "second", out, record)
+    assert record["verdict"] == "YOSYS_ERROR"
+    assert record["error"] == ("child does not read in yosys: line 4: "
+                               "syntax error, unexpected TOK_ID")
+
+
+def test_yosys_error_text_names_the_line_and_what_it_reads():
+    from extender.build_corpus import yosys_error_text
+    out = ("/tmp/x1/design.sv:3: ERROR: SystemVerilog interface in module "
+           "port list cannot have a default value.\n")
+    src = "module m (\n  input clk,\n  output reg [1:0] a = 0, b = 0\n);\n"
+    assert yosys_error_text(out, "/tmp/x1/design.sv", src) == (
+        "line 3: SystemVerilog interface in module port list cannot have a "
+        "default value. Line 3 reads: output reg [1:0] a = 0, b = 0")
+
+
+def test_yosys_error_text_without_a_line_number_drops_the_temporary_path():
+    from extender.build_corpus import yosys_error_text
+    out = ("ERROR: Failed to get a constant init value for \\x: "
+           "$16\\f$func$/tmp/x1/design.sv:5$95.crc\n")
+    assert yosys_error_text(out, "/tmp/x1/design.sv", "") == (
+        "Failed to get a constant init value for \\x: "
+        "$16\\f$func$design.sv:5$95.crc")
+
+
 # 27 Oct 2026: GPT-6.1 Sol wrote both tries of a combination this way, and
 # the header lines reached yosys ("unexpected OP_POW" at *** Begin Patch)
 OPENAI_PATCH_DECORATED = """\

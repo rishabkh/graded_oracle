@@ -266,16 +266,54 @@ def state_bits(verilog, top_module):
     with tempfile.TemporaryDirectory() as d:
         f = Path(d) / "design.sv"
         f.write_text(verilog)
-        script = (f"read_verilog -sv {f}; hierarchy -top {top_module}; "
-                  "proc; flatten; opt; memory; opt; techmap; opt; stat")
         try:
-            out = subprocess.run(["yosys", "-p", script], capture_output=True,
-                                 text=True, timeout=300)
+            out = subprocess.run(["yosys", "-p", _state_script(f, top_module)],
+                                 capture_output=True, text=True, timeout=300)
         except subprocess.TimeoutExpired:
             return None
     if out.returncode != 0:
         return None
     return count_dff_bits(out.stdout)
+
+
+def _state_script(path, top_module):
+    return (f"read_verilog -sv {path}; hierarchy -top {top_module}; "
+            "proc; flatten; opt; memory; opt; techmap; opt; stat")
+
+
+def yosys_read_error(verilog, top_module):
+    """Why state_bits got nothing back, in yosys's own words, for the
+    retry's lesson: until 27 Oct 2026 the retry heard only that the child
+    "does not read in yosys". "" when yosys is missing or says nothing."""
+    if shutil.which("yosys") is None:
+        return ""
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "design.sv"
+        f.write_text(verilog)
+        try:
+            out = subprocess.run(["yosys", "-p", _state_script(f, top_module)],
+                                 capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            return "yosys took more than 300 s to read it"
+    return yosys_error_text(out.stdout + out.stderr, f, verilog)
+
+
+def yosys_error_text(output, path, source):
+    """yosys's first error, said so a retry can act on it: the line number
+    and what that line of the design reads, and never the temporary
+    file's path."""
+    line = next((l.strip() for l in output.splitlines() if "ERROR" in l), "")
+    if not line:
+        return ""
+    m = re.match(rf"^{re.escape(str(path))}:(\d+): ERROR: (.*)$", line)
+    if m:
+        n, text = int(m.group(1)), f"line {m.group(1)}: {m.group(2).strip()}"
+        lines = source.splitlines()
+        if 0 < n <= len(lines):
+            text += f" Line {n} reads: {lines[n - 1].strip()}"
+        return text
+    return line.split("ERROR:", 1)[-1].strip().replace(str(path),
+                                                       Path(path).name)
 
 
 # --- flatten ---

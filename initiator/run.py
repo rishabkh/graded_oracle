@@ -379,7 +379,7 @@ IDEA_SCHEMA = {"type": "object", "properties": {"idea": {"type": "string"}},
 
 
 def call_model(user_msg, model=None, system=None, schema=None):
-    """One API call (Anthropic direct or OpenRouter, per CLAUDE_PROVIDER).
+    """One API call (Anthropic direct, OpenRouter or OpenAI, per LLM_PROVIDER).
     Returns (raw_json_text or None, usage, stop). The default is the
     generator's own question: SYSTEM_PROMPT and the triple schema."""
     return llm_client.call_claude(

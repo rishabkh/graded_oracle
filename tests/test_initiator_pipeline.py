@@ -159,7 +159,7 @@ def test_the_pipeline_goes_through_the_batch_gate(monkeypatch, tmp_path):
         seen["gate"] = llm_client._gate is not None
         return json.dumps(TRIPLE), {"input": 1, "output": 1}, "ok"
     monkeypatch.setattr(f.R, "call_model", gated)
-    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     [row], _ = f.run(batch=True, flush_after=0.1)
     assert seen["gate"] is True and row["batch"] is True
     assert llm_client._gate is None
@@ -242,7 +242,7 @@ def test_a_pipeline_run_logs_every_call_with_its_batch(monkeypatch, tmp_path):
     monkeypatch.setattr(llm_client, "batch_submit", submit)
     monkeypatch.setattr(llm_client, "batch_status", lambda b: ("ended", {}))
     monkeypatch.setattr(llm_client, "batch_results", results)
-    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     rows, ex = f.run(n=2, workers=2, batch=True, flush_after=0.1)
     calls = [json.loads(l) for l in (tmp_path / "calls_log.jsonl").read_text().splitlines()]
     assert len(calls) == 2 and all(c["batch_id"] and c["custom_id"] for c in calls)

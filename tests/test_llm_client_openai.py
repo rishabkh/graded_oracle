@@ -83,7 +83,7 @@ class FakeOpenAI:
 
 @pytest.fixture
 def openai_route(monkeypatch):
-    monkeypatch.setenv("CLAUDE_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.delenv("OPENAI_MODEL", raising=False)
 
     def use(fake):
@@ -151,7 +151,7 @@ def test_effort_names_map_to_openais(ours, theirs):
 
 
 def test_the_model_can_be_chosen_and_is_named_in_the_logs(monkeypatch):
-    monkeypatch.setenv("CLAUDE_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.setenv("OPENAI_MODEL", "gpt-6-astra")
     assert llm_client.openai_request_body(max_tokens=1, user="u")["model"] \
         == "gpt-6-astra"
@@ -274,7 +274,7 @@ def test_the_gate_sends_openai_calls_as_one_half_price_batch(openai_route,
 
 
 def test_batches_still_refuse_a_route_without_them(monkeypatch):
-    monkeypatch.setenv("CLAUDE_PROVIDER", "openrouter")
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
     with pytest.raises(RuntimeError, match="Anthropic or OpenAI"):
         with llm_client.batch_gate():
             pass
@@ -308,10 +308,11 @@ def strict_problems(schema, path="$"):
 def every_schema():
     import batch
     import extend
+    import label_designs
     import sense_check
     import schema as initiator_schema
     found = {}
-    for mod in (extend, sense_check, batch, initiator_schema):
+    for mod in (extend, sense_check, batch, initiator_schema, label_designs):
         for name, value in vars(mod).items():
             if name.isupper() and isinstance(value, dict) \
                     and value.get("type") == "object":

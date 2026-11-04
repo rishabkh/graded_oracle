@@ -32,7 +32,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
-from build_corpus import extract_asserts, state_bits   # noqa: E402
+from build_corpus import (extract_asserts, state_bits,  # noqa: E402
+                          yosys_read_error)
 from patch import PatchError, apply_patch              # noqa: E402
 
 import llm_client                            # noqa: E402
@@ -388,7 +389,10 @@ def grade_extension(parent, patch_text, record):
     record["child_state_bits"] = child_bits
     if child_bits is None:
         record["verdict"] = "YOSYS_ERROR"
-        record["error"] = "child does not read in yosys"
+        # yosys's own error, for the retry (27 Oct 2026)
+        why = yosys_read_error(child_verilog, parent["top_module"])
+        record["error"] = "child does not read in yosys" + \
+            (f": {why}" if why else "")
         return record
     record["live"] = child_bits > parent_bits
 

@@ -8,8 +8,9 @@ Format (one directive per line):
   - text       delete — search forward for the line, delete it
   + text       add — insert at the cursor, advance past the insertion
 
-Matching compares stripped text, exactly like formal-disco's
-apply_text_diff. The one deliberate difference: THERE ARE NO SILENT
+Matching compares stripped text, like formal-disco's apply_text_diff,
+except that a run of spaces counts as one and a trailing comment is
+ignored. The one deliberate difference in behaviour: THERE ARE NO SILENT
 SKIPS. Their applier ignores a directive whose line is not found, which
 is how a drifted patch half-applies into garbage (the Stage-2 Fixer
 failure mode). Here every unmatched directive raises PatchError with
@@ -43,9 +44,11 @@ def apply_patch(text, diff):
         """What a line has to match on: the code, without any trailing
         comment. Models quote the code and drop the commentary, and a
         whole-line compare then misses every anchor in a commented file.
-        The file's own line keeps its comment; only the compare ignores
-        it."""
-        return line.split("//")[0].strip() or line.strip()
+        A run of spaces inside the code counts as one (27 Oct 2026: GPT-6.1
+        Sol quoted `wire empty_r   = ...` with its spacing changed). The
+        file's own line keeps its comment and spacing; only the compare
+        ignores them."""
+        return " ".join((line.split("//")[0].strip() or line.strip()).split())
 
     def find_forward(target, start):
         for idx in range(start, len(lines)):
@@ -82,8 +85,12 @@ def apply_patch(text, diff):
     for raw in diff_lines:
         if not raw.strip():
             continue
-        if raw.startswith("@@") and raw.endswith("@@") and len(raw) >= 4:
-            anchor = raw[2:-2]
+        if raw.startswith("@@"):
+            # a line that opens with @@ can only be an anchor, so one that
+            # lost its closing @@ is read as one (27 Oct 2026: GPT-6.1 Sol
+            # sent `@@ module ldpc_cnp #(`, refused as unknown)
+            closed = raw.endswith("@@") and len(raw) >= 4
+            anchor = raw[2:-2] if closed else raw[2:]
             if anchor.strip():
                 pending_anchors.append(anchor)
             continue   # @@@@ (or all-whitespace anchor) is a no-op sync point
@@ -102,7 +109,7 @@ def apply_patch(text, diff):
         elif op == "-":
             j = find_forward(payload, cursor)
             if j is None and cursor > 0 and \
-                    content(cursor - 1).strip() == payload.strip():
+                    key(content(cursor - 1)) == key(payload):
                 # Anchor-then-delete of the same line: the anchor already
                 # consumed it, so forward search misses. The intent is
                 # unambiguous — delete the just-anchored line.

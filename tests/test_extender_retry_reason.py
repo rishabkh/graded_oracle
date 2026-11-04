@@ -269,7 +269,7 @@ def test_a_compose_retry_skips_the_partner_and_asks_with_the_lesson(
 @pytest.fixture
 def api(monkeypatch):
     """The real client, with only the request to Anthropic faked."""
-    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     monkeypatch.setattr(llm_client, "_gate", None)
     monkeypatch.setattr(llm_client, "_call_log_path", None)
     sent = []

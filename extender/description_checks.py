@@ -25,7 +25,7 @@ A failed check only puts the design on a list to look at (flagged); it is
 never a label by itself.
 
   hwtools
-  export CLAUDE_PROVIDER=openai OPENAI_API_KEY=...
+  export LLM_PROVIDER=openai OPENAI_API_KEY=...
   venv/bin/python extender/description_checks.py ask --dry          # prompt + cost, no call
   venv/bin/python extender/description_checks.py ask --limit 5      # 5 paid calls
   venv/bin/python extender/description_checks.py run                # free
@@ -51,7 +51,7 @@ from oracle.sby import run_sby                                 # noqa: E402
 LOG_DIR = HERE / "logs" / "description_checks_2026-10-27"
 CHECKS = LOG_DIR / "checks.jsonl"      # ask writes, run reads
 RESULTS = LOG_DIR / "results.jsonl"    # run writes
-MODEL = "claude-opus-5-5"              # CLAUDE_PROVIDER=openai calls OPENAI_MODEL instead
+MODEL = "claude-opus-5-5"              # LLM_PROVIDER=openai calls OPENAI_MODEL instead
 EFFORT = "medium"
 MAX_TOKENS = 16000                     # counts GPT-6.1 Sol's hidden thinking too
 TRIES = 2

@@ -19,7 +19,7 @@ module with the additions is equivalent to the module without them
 go to CORPUS as starting designs like the initiator's.
 
   hwtools
-  export CLAUDE_PROVIDER=openai OPENAI_API_KEY=...
+  export LLM_PROVIDER=openai OPENAI_API_KEY=...
   venv/bin/python initiator/seed_designs.py --dry          # one question + cost, no call
   venv/bin/python initiator/seed_designs.py --limit 3      # 3 seeds (paid)
   venv/bin/python initiator/seed_designs.py                # all seeds (paid), resumable

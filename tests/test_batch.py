@@ -414,7 +414,7 @@ def test_batch_option_opens_the_gate_around_the_same_loop(monkeypatch, tmp_path)
         seen["workers"] = kw["workers"]
         return []
     monkeypatch.setattr(batch, "run_loop", fake_loop)
-    monkeypatch.delenv("CLAUDE_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     corpus = tmp_path / "corpus_catalog.jsonl"
     corpus.write_text(json.dumps({"id": "c0_000", "generation": 0}) + "\n")
     batch.main(["--max-calls", "8", "--corpus", str(corpus), "--log-dir",

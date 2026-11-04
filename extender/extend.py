@@ -51,7 +51,8 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
 from build_corpus import (_mask_comments, assert_spans,      # noqa: E402
-                          extract_asserts, honest_lines, state_bits)
+                          extract_asserts, honest_lines, state_bits,
+                          yosys_read_error)
 from distractor import (DIFF_FORMAT, MODEL, EFFORT,   # noqa: E402
                         Spinner, dump, grade_kwargs, load_parent,
                         necessity_check)
@@ -2004,7 +2005,22 @@ def wrappable(row):
 # both tries of task 1 in the GPT run came back that way and failed yosys
 _PATCH_HEADER = (r"\*\*\* (Begin Patch|End Patch|Add File:|Update File:|"
                  r"Delete File:|Move to:|End of File)")
-_DIFF_MARKER = re.compile(rf"^(---\s|\+\+\+\s|@@|{_PATCH_HEADER})", re.M)
+# git's own lines around a file's diff: two answers in the 27 Oct 2026 GPT
+# run kept `diff --git`, `new file mode` and `index`, and yosys failed
+_GIT_HEADER = (r"diff --git |index [0-9a-f]+\.\.[0-9a-f]+|new file mode |"
+               r"deleted file mode |old mode |new mode |similarity index |"
+               r"rename from |rename to ")
+_DECORATION = rf"^(---\s|\+\+\+\s|@@|{_PATCH_HEADER}|{_GIT_HEADER})"
+_DIFF_MARKER = re.compile(_DECORATION, re.M)
+
+
+def unreadable(which, verilog, top):
+    """A YOSYS_ERROR's message: which design failed, and for the model's
+    own child, yosys's error itself (27 Oct 2026), so the retry says what
+    to fix rather than only that it did not read."""
+    msg = f"{which} does not read in yosys"
+    why = yosys_read_error(verilog, top) if which == "child" else ""
+    return f"{msg}: {why}" if why else msg
 
 
 def strip_diff_decoration(text):
@@ -2018,8 +2034,7 @@ def strip_diff_decoration(text):
         return text
     out = []
     for line in text.splitlines():
-        if re.match(rf"^(---\s|\+\+\+\s|@@|{_PATCH_HEADER})", line) \
-                or line == "@@":
+        if re.match(_DECORATION, line) or line == "@@":
             continue
         if line.startswith("+"):
             out.append(line[1:])
@@ -2901,7 +2916,7 @@ def grade_compose(pa, pb, out, record):
     record["child_state_bits"] = child_bits
     if child_bits is None:
         record["verdict"] = "YOSYS_ERROR"
-        record["error"] = "child does not read in yosys"
+        record["error"] = unreadable("child", child, top)
         return record
 
     # the checker's own nothing-is-lost search: seconds, before the proof
@@ -3007,8 +3022,8 @@ def grade_replicate(parent, out, record, n):
     record["child_state_bits"] = child_bits
     if parent_bits is None or child_bits is None:
         record["verdict"] = "YOSYS_ERROR"
-        record["error"] = ("parent" if parent_bits is None else "child") + \
-            " does not read in yosys"
+        record["error"] = unreadable("parent", parent["verilog"], top) \
+            if parent_bits is None else unreadable("child", child, top)
         return record
 
     payload = {"verilog": child, "top_module": top,
@@ -3180,8 +3195,9 @@ def grade_step4(parent, ext_type, out, record):
     record["child_state_bits"] = child_bits
     if parent_bits is None or child_bits is None:
         record["verdict"] = "YOSYS_ERROR"
-        record["error"] = ("parent" if parent_bits is None else "child") + \
-            " does not read in yosys"
+        top = parent["top_module"]
+        record["error"] = unreadable("parent", parent["verilog"], top) \
+            if parent_bits is None else unreadable("child", child, top)
         return record
     record["state_grew"] = child_bits > parent_bits
 

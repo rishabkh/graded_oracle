@@ -240,7 +240,7 @@ def parse_invariants(text):
 
 def solve_opus(prompt_text):
     """Routed through llm_client (Anthropic direct or OpenRouter per
-    CLAUDE_PROVIDER), same as every other Opus call in the pipeline."""
+    LLM_PROVIDER), same as every other Opus call in the pipeline."""
     import llm_client
     text, usage, stop = llm_client.call_claude(
         model=OPUS_MODEL, max_tokens=16000, user=prompt_text,

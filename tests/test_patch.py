@@ -229,3 +229,20 @@ def test_anchor_matches_a_line_carrying_a_trailing_comment():
     out = apply_patch(text, diff)
     assert "output reg [3:0]  spent_total" in out
     assert "// closes the monitoring window" in out   # comment survives
+
+
+def test_extra_spaces_inside_a_line_still_match():
+    """27 Oct 2026: GPT-6.1 Sol quoted `wire empty_r   = (wc_r == rc_r);`
+    with its spacing changed, and only a line's ends were trimmed."""
+    text = "module m;\nwire empty_r = (wc_r == rc_r);\nendmodule\n"
+    out = apply_patch(text, "@@ wire empty_r   = (wc_r == rc_r); @@\n+wire x;")
+    assert out == ("module m;\nwire empty_r = (wc_r == rc_r);\nwire x;\n"
+                   "endmodule\n")
+
+
+def test_an_anchor_missing_its_closing_marks_is_still_an_anchor():
+    """27 Oct 2026: `@@ module ldpc_cnp #(` came back without its closing
+    @@ and was refused as an unknown directive."""
+    text = "module m #(\n) ();\nendmodule\n"
+    out = apply_patch(text, "@@ module m #(\n+ parameter D = 2")
+    assert out == "module m #(\nparameter D = 2\n) ();\nendmodule\n"
