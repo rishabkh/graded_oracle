@@ -17,6 +17,12 @@ designs)". Then, after that file scored hard 2.67 and easy 5.0 per pass on
              corpus (no good one in 32 labeled) and every grown design never
              labeled (September's grown ones were 63% wrong, Claude's October
              ones 48%).
+  unlabeled_good_weak  those 217 again, without the ones GPT-6.1 Sol labeled
+             wrong (5 Nov 2026, extender/label_designs.py, the 27 Oct rubric):
+             167 left; each keeps its id from the "unlabeled" group
+  remaining_good_weak  the 540 still unlabeled after them (September's, the
+             oldest corpus, Claude's October grown ones) that GPT-6.1 Sol
+             labeled good or weak (5 Nov 2026): 194
 
 Rows keep the fields the 1-step check and build_sft.py read (id, verilog,
 top_module, invariants, generation); ids say which group a row is from.
@@ -36,7 +42,14 @@ DESIGNS = EXT / "all_unique_designs_2026-10-27.jsonl"
 LABELS = EXT / "labels_good_weak_wrong_partial_2026-10-27.jsonl"
 MILD = EXT / "mildly_weak_30_for_training_2026-10-28.json"
 OPEN_SOURCE = EXT / "corpus_open_source_seeded_2026-10-28.jsonl"
-GROUPS = ("good", "mild", "weak", "wrong", "os", "unlabeled")   # and weak:N
+GPT_LABELS_217 = EXT / "labels_unlabeled_starting_designs_2026-11-04.jsonl"
+GPT_LABELS_540 = EXT / "labels_remaining_540_designs_2026-11-05.jsonl"
+GROUPS = ("good", "mild", "weak", "wrong", "os", "unlabeled",   # and weak:N
+          "unlabeled_good_weak", "remaining_good_weak")
+# a design keeps the id it had in an earlier file, so its 1-step check,
+# which is logged by id, is not run again
+ID_PREFIX = {"unlabeled_good_weak": "unlabeled",
+             "remaining_good_weak": "remaining"}
 WEAK_SEED = 20261029
 # the first two files' names are kept as they were made
 NAMES = {("good", "mild", "os"): "corpus_good_mild_open_source_2026-10-28.jsonl",
@@ -64,6 +77,10 @@ def keys_of(group, labels):
     if group == "unlabeled":
         return [r["key"] for r in labels if not r["label"] and r["steps_from_start"] == 0
                 and r["appears_in"][0]["file"] != OLDEST]
+    if group in ("unlabeled_good_weak", "remaining_good_weak"):
+        path = GPT_LABELS_217 if group == "unlabeled_good_weak" else GPT_LABELS_540
+        return [r["key"] for r in map(json.loads, open(path))
+                if r.get("label") in ("good", "weak")]
     return []
 
 
@@ -83,7 +100,7 @@ def rows(groups=("good", "mild", "os")):
             continue
         for k in keys_of(group, labels):
             d = designs[k]
-            g = group.split(":")[0]
+            g = ID_PREFIX.get(group, group.split(":")[0])
             out.append({"id": f"{g}_{k}", "group": group, "key": k,
                         "generation": d.get("generation", 0), "verilog": d["verilog"],
                         "top_module": d["top_module"], "clock": d.get("clock") or "clk",

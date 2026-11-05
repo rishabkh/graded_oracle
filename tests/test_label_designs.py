@@ -20,9 +20,15 @@ DESIGN = {"key": "k1", "verilog": "module q (input clk);\n  reg a = 0;\nendmodul
 
 
 def label_row(key, label=None, steps=0, file="initiator/logs/attempts.jsonl",
-              simulated=False):
+              simulated=False, parent=None, partner=None):
     return {"key": key, "label": label, "steps_from_start": steps,
-            "appears_in": [{"file": file}], "checked_by_simulation": simulated}
+            "appears_in": [{"file": file}], "checked_by_simulation": simulated,
+            "parent_key": parent, "partner_key": partner}
+
+
+GROWN = dict(DESIGN, key="k2", move="STAGE", ext_type="structural",
+             verilog="module q (input clk);\n  reg a = 0;\n  reg b = 0;\nendmodule\n")
+PARTNER = dict(DESIGN, key="k3", verilog="module r (input clk);\nendmodule\n")
 
 
 def reply(label="wrong"):
@@ -100,3 +106,107 @@ def test_the_dry_run_prices_the_run_and_calls_nothing(capsys):
     ld.estimate([DESIGN] * 10, call=call)
     out = capsys.readouterr().out
     assert "10 designs" in out and "$" in out
+
+
+# --- grown designs and the rest of the never-labeled ones (5 Nov 2026) ----
+
+def test_the_remaining_designs_are_every_one_still_without_a_label_parents_first():
+    labels = [label_row("a"), label_row("b", "good"), label_row("c", steps=2),
+              label_row("d", file=ptd.OLDEST), label_row("e")]
+    assert ld.remaining(labels, labeled_since={"a"}) == ["d", "e", "c"]
+
+
+def test_a_grown_design_is_judged_against_the_design_it_grew_from():
+    q = ld.question(GROWN, parent=DESIGN,
+                    parent_label={"label": "wrong",
+                                  "reason": "it drops a push when full"})
+    assert "reg b = 0;" in q                     # the design itself
+    assert "The design it grew from" in q and "a tiny queue" in q
+    assert "STAGE" in q
+    assert "breaks what the design used to do" in q
+    assert "it drops a push when full" in q      # its earlier label
+    assert "inherited_from" in q
+
+
+def test_a_combination_shows_both_designs_it_came_from():
+    q = ld.question(GROWN, parent=DESIGN, partner=PARTNER)
+    assert "module r (input clk);" in q and "partner" in q.lower()
+
+
+def test_a_grown_reply_keeps_which_design_a_bug_came_from():
+    def call(**kw):
+        call.kw = kw
+        return (json.dumps({"label": "wrong", "reason": "carries the drop",
+                            "concern": "line 2", "stored_data_facts": False,
+                            "inherited_from": "k1"}),
+                {"input": 10, "output": 5}, "ok")
+    row = ld.label_one(GROWN, call=call, effort="medium", parent=DESIGN)
+    assert row["label"] == "wrong" and row["inherited_from"] == "k1"
+    assert "inherited_from" in call.kw["schema"]["properties"]
+
+
+def test_parents_are_labeled_first_and_a_child_sees_its_parents_new_label():
+    labels = {"p": label_row("p"), "c": label_row("c", steps=1, parent="p")}
+    designs = {"p": dict(DESIGN, key="p"), "c": dict(GROWN, key="c")}
+    asked = []
+
+    def call(**kw):
+        asked.append(kw["user"])
+        grown = "The design it grew from" in kw["user"]
+        return (json.dumps({"label": "weak" if grown else "wrong",
+                            "reason": "child" if grown else "PARENT-BUG",
+                            "concern": "", "stored_data_facts": False,
+                            **({"inherited_from": ""} if grown else {})}),
+                {"input": 10, "output": 5}, "ok")
+    rows = ld.label_in_rounds(["c", "p"], designs, labels, {}, call=call,
+                              workers=4)
+    assert [r["key"] for r in rows] == ["p", "c"]
+    assert "PARENT-BUG" in asked[1]
+
+
+def test_grown_calibration_takes_labeled_grown_designs_evenly():
+    labels = ([label_row(f"g{i}", "good", steps=1, parent="x") for i in range(3)] +
+              [label_row(f"w{i}", "weak", steps=2, parent="x") for i in range(3)] +
+              [label_row(f"x{i}", "wrong", steps=1, parent="x") for i in range(3)] +
+              [label_row("start", "wrong")])
+    picked = ld.calibration_keys(labels, 6, grown=True)
+    assert len(picked) == 6 and "start" not in picked
+
+
+# --- two clarifications to the grown-design rules (5 Nov 2026) -----------
+# The grown calibration agreed with only 10 of GPT's 20 "wrong" calls; all
+# 10 misses had labels checked by simulation. GPT read a clock enable as a
+# local pause, and called normal design choices "breaking what it did".
+
+def test_the_grown_rules_say_a_clock_enable_pauses_everything():
+    q = ld.question(GROWN, parent=DESIGN)
+    assert "clock-enable input" in q and "sender and the receiver included" in q
+
+
+def test_the_grown_rules_say_normal_design_choices_are_not_breaking():
+    q = ld.question(GROWN, parent=DESIGN)
+    assert "normal design choices" in q
+    assert "a wrong value, a lost or repeated item" in q
+
+
+def test_the_starting_rules_stay_as_calibrated():
+    # the 217 starting designs were labeled with these, word for word
+    q = ld.question(DESIGN)
+    assert "clock-enable input" not in q and "normal design choices" not in q
+
+
+def test_a_fresh_calibration_leaves_out_designs_already_used():
+    labels = ([label_row(f"g{i}", "good", steps=1, parent="x") for i in range(4)] +
+              [label_row(f"w{i}", "weak", steps=1, parent="x") for i in range(4)] +
+              [label_row(f"x{i}", "wrong", steps=1, parent="x") for i in range(4)])
+    used = {"g0", "g1", "w0", "x3"}
+    picked = ld.calibration_keys(labels, 6, grown=True, exclude=used)
+    assert len(picked) == 6 and not used & set(picked)
+
+
+def test_call_logs_go_to_the_log_folder_git_leaves_out():
+    """5 Nov 2026: the 217 and 540 runs wrote their call logs (every
+    request, 9 MB) beside their label files, into the repo."""
+    assert ld.call_log_path(ld.OUT) == \
+        ld.HERE / "logs" / "calls_labels_unlabeled_starting_designs_2026-11-04.jsonl"
+    assert ld.call_log_path(ld.CALIBRATION_OUT).parent == ld.HERE / "logs"
