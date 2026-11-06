@@ -23,6 +23,11 @@ designs)". Then, after that file scored hard 2.67 and easy 5.0 per pass on
   remaining_good_weak  the 540 still unlabeled after them (September's, the
              oldest corpus, Claude's October grown ones) that GPT-6.1 Sol
              labeled good or weak (5 Nov 2026): 194
+  storage    storage designs written by a program (6 Nov 2026,
+             extender/storage_designs.py: queues, lookup tables, oldest-first
+             arbiters, ID pools, each with a fact for each slot), all judged
+             NECESSARY; the ones set aside for our own storage test never
+             come in
 
 Rows keep the fields the 1-step check and build_sft.py read (id, verilog,
 top_module, invariants, generation); ids say which group a row is from.
@@ -44,8 +49,9 @@ MILD = EXT / "mildly_weak_30_for_training_2026-10-28.json"
 OPEN_SOURCE = EXT / "corpus_open_source_seeded_2026-10-28.jsonl"
 GPT_LABELS_217 = EXT / "labels_unlabeled_starting_designs_2026-11-04.jsonl"
 GPT_LABELS_540 = EXT / "labels_remaining_540_designs_2026-11-05.jsonl"
+STORAGE = EXT / "corpus_storage_designs_2026-11-05.jsonl"
 GROUPS = ("good", "mild", "weak", "wrong", "os", "unlabeled",   # and weak:N
-          "unlabeled_good_weak", "remaining_good_weak")
+          "unlabeled_good_weak", "remaining_good_weak", "storage")
 # a design keeps the id it had in an earlier file, so its 1-step check,
 # which is logged by id, is not run again
 ID_PREFIX = {"unlabeled_good_weak": "unlabeled",
@@ -97,6 +103,12 @@ def rows(groups=("good", "mild", "os")):
                 r = json.loads(l)
                 out.append(dict(r, id="os_" + re.sub(r"\W", "_", r["open_source"]["seed"]),
                                 group="os"))
+            continue
+        if group == "storage":
+            for l in open(STORAGE):
+                r = json.loads(l)
+                if not r.get("held_out") and r.get("verdict") == "NECESSARY":
+                    out.append(dict(r, group="storage"))
             continue
         for k in keys_of(group, labels):
             d = designs[k]

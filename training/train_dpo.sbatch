@@ -8,7 +8,9 @@
 #SBATCH --partition=gpu
 #SBATCH --account=amin_lab
 #SBATCH --gres=gpu:2
-#SBATCH --cpus-per-task=2
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1        # one core: the GPUs do the work (FASRC's Job Defense Shield, 5 Nov 2026)
 #SBATCH --mem=128G
 #SBATCH --time=08:00:00
 #SBATCH --output=runs/dpo_%j.out

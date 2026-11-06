@@ -121,3 +121,28 @@ def test_solving_checks_get_the_deeper_look_but_keep_their_time_limit():
     limit stays, so earlier scores remain comparable."""
     import solver_baseline as sb
     assert sb.GRADE_KWARGS == {"timeout_s": 120, "cover_depth": "auto"}
+
+
+# --- our own storage test (6 Nov 2026) ---------------------------------------
+# The storage designs set aside from training, asked of a served model and
+# judged by the same checker, with the limit the designs were accepted at.
+
+def test_the_set_aside_storage_designs_can_be_asked(tmp_path, capsys):
+    import json
+    import solver_baseline as sb
+    corpus = tmp_path / "storage.jsonl"
+    rows = [dict(row(f"storage_queue_{i:03d}", 0), held_out=(i == 10),
+                 verdict="NECESSARY") for i in (0, 10, 21)]
+    rows[2]["held_out"] = True
+    corpus.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    sb.main(["--solver", "qwen", "--corpus", str(corpus), "--held-out", "--dry"])
+    out = capsys.readouterr().out
+    assert "2 set-aside" in out
+    assert "storage_queue_010" in out and "storage_queue_021" in out
+    assert "storage_queue_000" not in out
+
+
+def test_the_grading_limit_can_be_raised_to_the_one_designs_were_accepted_at():
+    import solver_baseline as sb
+    assert sb.grade_kwargs(None) == sb.GRADE_KWARGS
+    assert sb.grade_kwargs(300)["timeout_s"] == 300

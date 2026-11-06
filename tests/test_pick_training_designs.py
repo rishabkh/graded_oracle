@@ -54,3 +54,16 @@ def test_the_old_unlabeled_group_is_unchanged():
 
 def test_both_new_groups_can_be_asked_for():
     assert {"unlabeled_good_weak", "remaining_good_weak"} <= set(ptd.GROUPS)
+
+
+def test_the_storage_group_takes_the_programs_designs_but_never_the_held_out(
+        monkeypatch, tmp_path):
+    rows = [{"id": f"storage_queue_{i:03d}", "verilog": "module m; endmodule",
+             "top_module": "m", "invariants": ["1"], "generation": 0,
+             "held_out": i == 10, "verdict": "NECESSARY"} for i in (0, 1, 10)]
+    monkeypatch.setattr(ptd, "STORAGE", write(tmp_path / "s.jsonl", rows))
+    monkeypatch.setattr(ptd, "DESIGNS", write(tmp_path / "d.jsonl", []))
+    monkeypatch.setattr(ptd, "LABELS", write(tmp_path / "l.jsonl", []))
+    picked = ptd.rows(["storage"])
+    assert [r["id"] for r in picked] == ["storage_queue_000", "storage_queue_001"]
+    assert {r["group"] for r in picked} == {"storage"}

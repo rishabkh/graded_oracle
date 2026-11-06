@@ -4,7 +4,12 @@ Defense Shield flagged job 50445664 (v3 training): 8 cores allocated,
 and lengthens queues. Measured: training and serving use one to a few
 cores and about 44 GB of memory; EBMC build and the CPU merge really run
 in parallel. The repair-loop scoring runs many EBMC checks at once, so it
-asks for more on the sbatch line, not in the file."""
+asks for more on the sbatch line, not in the file.
+
+5 Nov 2026: the Shield flagged seven trainings of 29-30 Oct again: 2 cores
+allocated, about 45% used, so one core. Its email asks for exactly
+--nodes=1, --ntasks=1 and --cpus-per-task=1 in the job script; the GPUs
+do the work, and the trained model is saved from the GPUs too."""
 import re
 from pathlib import Path
 
@@ -16,9 +21,11 @@ def ask(name, key):
     return m.group(1) if m else None
 
 
-def test_training_jobs_ask_for_two_cores_and_128g():
+def test_training_jobs_ask_for_one_core_one_task_one_node_and_128g():
     for name in ("train32b.sbatch", "train_dpo.sbatch"):
-        assert ask(name, "cpus-per-task") == "2", name
+        assert ask(name, "cpus-per-task") == "1", name
+        assert ask(name, "ntasks") == "1", name
+        assert ask(name, "nodes") == "1", name
         assert ask(name, "mem") == "128G", name
 
 
@@ -28,8 +35,9 @@ def test_serving_jobs_ask_for_four_cores_and_128g():
         assert ask(name, "mem") == "128G", name
 
 
-def test_the_practice_run_asks_for_two_cores():
-    assert ask("smoke.sbatch", "cpus-per-task") == "2"
+def test_the_practice_run_asks_for_one_core():
+    # the same training code on a small model
+    assert ask("smoke.sbatch", "cpus-per-task") == "1"
 
 
 def test_repair_scoring_says_to_ask_for_more_on_the_command_line():

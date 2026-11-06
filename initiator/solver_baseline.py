@@ -188,8 +188,14 @@ def replay_slate(old_records, triples, baseline_id):
     return [by_key[k] for k in pairs]
 
 
-def load_corpus_rows():
-    return [json.loads(l) for l in CORPUS.read_text().splitlines()]
+def load_corpus_rows(path=None):
+    return [json.loads(l) for l in Path(path or CORPUS).read_text().splitlines()]
+
+
+def grade_kwargs(timeout_s):
+    """The grading settings, with the time limit raised when asked: the
+    storage designs were accepted at the generator's 300 s (6 Nov 2026)."""
+    return dict(GRADE_KWARGS, **({"timeout_s": timeout_s} if timeout_s else {}))
 
 
 def load_triples(run_id=None, limit=None):
@@ -314,7 +320,7 @@ def report(records):
           "(MALFORMED excluded: truncation, unparseable, yosys reject)")
 
 
-def main():
+def main(argv=None):
     import random
     p = argparse.ArgumentParser()
     p.add_argument("--solver", choices=["opus", "qwen"], required=True)
@@ -335,11 +341,25 @@ def main():
                    help="baseline_id of a previous run: rerun its exact "
                         "triples instead of sampling the corpus")
     p.add_argument("--dry", action="store_true", help="list inputs, call nothing")
-    args = p.parse_args()
+    p.add_argument("--corpus", default=None,
+                   help="the design file to ask from (default "
+                        "extender/corpus.jsonl)")
+    p.add_argument("--held-out", action="store_true",
+                   help="every design the file sets aside from training "
+                        "(the storage designs' own test, 6 Nov 2026)")
+    p.add_argument("--timeout", type=int, default=None,
+                   help="grading limit in seconds (default "
+                        f"{GRADE_KWARGS['timeout_s']}; the storage designs "
+                        "were accepted at 300)")
+    args = p.parse_args(argv)
 
-    if args.ids:
+    if args.held_out:
+        rows = [r for r in load_corpus_rows(args.corpus)
+                if r.get("held_out") and r.get("verdict", "NECESSARY") == "NECESSARY"]
+        print(f"{len(rows)} set-aside designs from {args.corpus or CORPUS}")
+    elif args.ids:
         wanted = args.ids.split(",")
-        by_id = {r["id"]: r for r in load_corpus_rows()}
+        by_id = {r["id"]: r for r in load_corpus_rows(args.corpus)}
         missing = [i for i in wanted if i not in by_id]
         if missing:
             sys.exit(f"not in corpus: {missing}")
@@ -353,7 +373,7 @@ def main():
         print(f"{len(rows)} triples replayed from baseline {args.replay}")
     else:
         gens = tuple(int(g) for g in args.gens.split(","))
-        rows = stratify(load_corpus_rows(), args.per_gen, gens,
+        rows = stratify(load_corpus_rows(args.corpus), args.per_gen, gens,
                         random.Random(args.seed))
         print(f"{len(rows)} rows stratified from {CORPUS.name} "
               f"(per-gen {args.per_gen}, gens {gens}, seed {args.seed})")
@@ -418,7 +438,7 @@ def main():
                        "invariants": invariants}
             with Spinner(f"[{i}] oracle grading ({t['top_module']})"):
                 result = grade_triple_generated(json.dumps(payload),
-                                                **GRADE_KWARGS)
+                                                **grade_kwargs(args.timeout))
             record["verdict"] = result.verdict.name
             record["reason"] = result.reason
             record["result"] = asdict(result)
