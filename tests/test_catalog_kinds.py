@@ -313,3 +313,65 @@ def test_the_split_is_fixed_by_its_seed_not_by_input_order():
     items, fam = _fam_items()
     assert ck.balanced_split(items, fam, 3) == \
         ck.balanced_split(list(reversed(items)), fam, 3)
+
+
+# --- drawing kinds nothing has used (8 Nov 2026) ------------------------------
+# The kinds lists of 25 and 26 Oct 2026 were drawn by one-off scripts, the
+# rule written in a note; this is that rule as code, so a draw can be
+# repeated: the newer checked kinds, minus the 10 adders with no state of
+# their own and the kinds the judges disagreed on, minus every kind a list,
+# a generator log or a design file has used, then the even draw.
+
+def _kind(name, cat="A1", source="oct8_drawn", j2=None):
+    return {"id": name, "name": name, "description": f"{name} does things",
+            "source": source, "category": cat,
+            "judge1": {"primary": cat, "also": []},
+            "judge2": {"primary": j2 or cat, "also": []}}
+
+
+def _catalog(tmp_path, kinds):
+    path = tmp_path / "kind_categories.json"
+    path.write_text(json.dumps({"kinds": kinds}))
+    return path
+
+
+def test_unused_kinds_leave_out_everything_already_used(tmp_path):
+    kinds = [_kind("Free one"), _kind("Listed one"), _kind("Logged one"),
+             _kind("Designed one"), _kind("Old one", source="original_32"),
+             _kind("Disputed one", j2="A2"), _kind("Ripple-carry adder")]
+    catalog = _catalog(tmp_path, kinds)
+    lists = tmp_path / "lists"
+    lists.mkdir()
+    (lists / "kinds_x.txt").write_text("Listed one: Listed one does things\n")
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "run.jsonl").write_text(json.dumps(
+        {"construct": "Logged one: Logged one does things"}) + "\n")
+    designs = tmp_path / "designs"
+    designs.mkdir()
+    (designs / "corpus.jsonl").write_text(json.dumps(
+        {"construct": "Designed one: whatever"}) + "\n")
+    left = ck.unused_kinds(catalog, lists=[lists / "kinds_x.txt"],
+                           logs=[logs, designs])
+    assert [k["name"] for _, k in left] == ["Free one"]
+
+
+def test_the_ten_adders_with_no_state_are_named_as_on_9_oct():
+    assert len(ck.STATELESS_ADDERS) == 10
+    assert "Kogge-Stone prefix adder" in ck.STATELESS_ADDERS
+    assert "Absolute-value unit" in ck.STATELESS_ADDERS
+
+
+def test_a_draw_of_unused_kinds_is_written_with_its_rule(tmp_path):
+    kinds = [_kind(f"K{i}", cat=f"A{i % 3}") for i in range(9)]
+    catalog = _catalog(tmp_path, kinds)
+    out = ck.draw_unused(4, seed=7, name="kinds_unused_4_even_test",
+                         out_dir=tmp_path, catalog=catalog, lists=[], logs=[])
+    lines = out.read_text().splitlines()
+    assert len(lines) == 4 and all(": " in l for l in lines)
+    note = json.loads((tmp_path / "kinds_unused_4_even_test_note.json").read_text())
+    assert note["seed"] == 7 and note["left"] == 9
+    assert "even_draw" in note["rule"]
+    again = ck.draw_unused(4, seed=7, name="again", out_dir=tmp_path,
+                           catalog=catalog, lists=[], logs=[])
+    assert again.read_text() == out.read_text()       # the same seed, the same kinds

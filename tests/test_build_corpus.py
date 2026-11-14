@@ -2,8 +2,10 @@
 template normalization, property extraction, record flattening. The yosys
 state-bits metric is exercised by the live build, not unit-tested here.
 """
+import io
 import json
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -290,3 +292,34 @@ endmodule
 def test_stored_bits_are_counted():
     from extender.build_corpus import state_bits
     assert state_bits(STORE16, "store16") == 16 * 8 + 4
+
+
+# --- a spinner while yosys measures each design (10 Nov 2026) -----------------
+
+class TTY(io.StringIO):
+    def isatty(self):
+        return True
+
+
+def test_measuring_each_design_shows_a_spinner(tmp_path, monkeypatch):
+    import extender.build_corpus as bc
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parent.parent
+                                    / "extender"))
+    import coi
+    monkeypatch.setattr(sys, "stderr", TTY())
+    drawn = "measuring c0_000 with yosys (1/1)"
+
+    def measured(verilog, top_module):
+        deadline = time.monotonic() + 5
+        while drawn not in sys.stderr.getvalue() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        return 7
+    monkeypatch.setattr(bc, "state_bits", measured)
+    monkeypatch.setattr(coi, "coi_ratio", lambda verilog, top_module: 1.0)
+    monkeypatch.setattr(bc.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(bc, "CORPUS", tmp_path / "main_corpus.jsonl")
+    log = tmp_path / "log.jsonl"
+    log.write_text(json.dumps(RECORD) + "\n")
+    bc.main(["--source", str(log), "--out", str(tmp_path / "corpus.jsonl"),
+             "--id-prefix", "c0"])
+    assert drawn in sys.stderr.getvalue()

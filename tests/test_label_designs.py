@@ -2,8 +2,10 @@
 the 217 starting designs in the biggest training set that nobody labeled,
 with the 27 Oct reading-only rubric, after a calibration run on designs
 that already have labels. The model is faked."""
+import io
 import json
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -189,12 +191,6 @@ def test_the_grown_rules_say_normal_design_choices_are_not_breaking():
     assert "a wrong value, a lost or repeated item" in q
 
 
-def test_the_starting_rules_stay_as_calibrated():
-    # the 217 starting designs were labeled with these, word for word
-    q = ld.question(DESIGN)
-    assert "clock-enable input" not in q and "normal design choices" not in q
-
-
 def test_a_fresh_calibration_leaves_out_designs_already_used():
     labels = ([label_row(f"g{i}", "good", steps=1, parent="x") for i in range(4)] +
               [label_row(f"w{i}", "weak", steps=1, parent="x") for i in range(4)] +
@@ -210,3 +206,129 @@ def test_call_logs_go_to_the_log_folder_git_leaves_out():
     assert ld.call_log_path(ld.OUT) == \
         ld.HERE / "logs" / "calls_labels_unlabeled_starting_designs_2026-11-04.jsonl"
     assert ld.call_log_path(ld.CALIBRATION_OUT).parent == ld.HERE / "logs"
+
+
+# --- a corpus file of new designs (8 Nov 2026) --------------------------------
+# The trial's designs are not in the 27 Oct collection: --corpus labels the
+# rows of a corpus file (the corpus builder's and the extender's), parents
+# first, each grown row against the row it grew from.
+
+def _corpus(tmp_path):
+    start = {"id": "t_000", "generation": 0, "parent": None,
+             "construct": "Burst queue: holds bursts until the bus is free",
+             "verilog": DESIGN["verilog"], "top_module": "q",
+             "property": ["a == 1'b0"], "invariants": ["!a"]}
+    grown = {"id": "t_001", "generation": 1, "parent": "t_000", "parent2": None,
+             "move": "STORAGE", "ext_type": "structural",
+             "added": "a 4-entry queue in front of the bus",
+             "verilog": GROWN["verilog"], "top_module": "q",
+             "property": ["a == 1'b0"], "invariants": ["!a", "!b"]}
+    path = tmp_path / "corpus.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in (grown, start)))
+    return path
+
+
+def test_a_corpus_file_is_read_as_designs_with_their_lineage(tmp_path):
+    designs, labels, keys = ld.corpus_designs(_corpus(tmp_path))
+    assert keys == ["t_000", "t_001"]                     # parents first
+    assert labels["t_001"]["parent_key"] == "t_000"
+    assert labels["t_001"]["steps_from_start"] == 1
+    assert designs["t_000"]["key"] == "t_000"
+    # a starting row says what it is meant to be through its kind line
+    assert "Burst queue" in ld.question(designs["t_000"])
+
+
+def test_a_grown_corpus_row_is_judged_against_its_parent(tmp_path):
+    designs, labels, keys = ld.corpus_designs(_corpus(tmp_path))
+    asked = []
+
+    def call(**kw):
+        asked.append(kw["user"])
+        grown = "The design it grew from" in kw["user"]
+        return (json.dumps({"label": "good", "reason": "fine",
+                            "concern": "", "stored_data_facts": True,
+                            **({"inherited_from": ""} if grown else {})}),
+                {"input": 10, "output": 5}, "ok")
+    rows = ld.label_in_rounds(keys, designs, labels, {}, call=call, workers=2)
+    assert [r["key"] for r in rows] == ["t_000", "t_001"]
+    assert "The design it grew from" in asked[1]
+    assert "a 4-entry queue in front of the bus" in asked[1]
+
+
+def test_labeling_a_corpus_file_needs_its_own_output(tmp_path):
+    import pytest
+    with pytest.raises(SystemExit) as e:
+        ld.main(["--corpus", str(_corpus(tmp_path)), "--dry"])
+    assert "--corpus needs --out" in str(e.value)
+
+
+# --- the clock-enable point for starting designs too (10 Nov 2026) ------------
+# GPT called 2 of the array trial's 28 starting designs wrong for a ready that
+# stays high while the clock enable is low: the reading the 5 Nov point
+# corrected for grown designs. The 217 starting designs of 4 Nov were labeled
+# without it. --keys asks again about only the named designs.
+
+def test_the_starting_rules_say_a_clock_enable_pauses_everything():
+    q = ld.question(DESIGN)
+    assert "clock-enable input" in q and "sender and the receiver included" in q
+    assert "normal design choices" not in q      # a point on check 4, grown only
+
+
+def test_keys_label_only_the_named_designs(tmp_path, monkeypatch):
+    asked = []
+
+    def call(**kw):
+        asked.append(kw["user"])
+        return (json.dumps({"label": "good", "reason": "fine", "concern": "",
+                            "stored_data_facts": False}),
+                {"input": 10, "output": 5}, "ok")
+    monkeypatch.setattr(ld.llm_client, "call_claude", call)
+    monkeypatch.setattr(ld, "call_log_path", lambda out: tmp_path / "calls.jsonl")
+    out = tmp_path / "relabel.jsonl"
+    ld.main(["--corpus", str(_corpus(tmp_path)), "--out", str(out),
+             "--keys", "t_000"])
+    assert [json.loads(l)["key"] for l in out.read_text().splitlines()] == ["t_000"]
+    assert len(asked) == 1 and "clock-enable input" in asked[0]
+
+
+def test_an_unknown_key_stops_the_run_before_anything_is_labeled(tmp_path):
+    import pytest
+    with pytest.raises(SystemExit) as e:
+        ld.main(["--corpus", str(_corpus(tmp_path)), "--out",
+                 str(tmp_path / "relabel.jsonl"), "--keys", "t_000", "t_009",
+                 "--dry"])
+    assert "t_009" in str(e.value)
+
+
+# --- one spinner for the run (10 Nov 2026) ------------------------------------
+# Rishab asked for a spinner on every script he runs; the initiator and the
+# extender had one, the labeler did not.
+
+class TTY(io.StringIO):
+    def isatty(self):
+        return True
+
+
+def _until_drawn(text):
+    """Wait, as a model call would, until the spinner has drawn `text`."""
+    deadline = time.monotonic() + 5
+    while text not in sys.stderr.getvalue() and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+
+def test_a_run_shows_one_spinner_with_the_designs_done(tmp_path, monkeypatch,
+                                                         capsys):
+    monkeypatch.setattr(sys, "stderr", TTY())
+
+    def call(**kw):
+        _until_drawn("labeling: 0/1 done")
+        return (json.dumps({"label": "good", "reason": "fine", "concern": "",
+                            "stored_data_facts": False}),
+                {"input": 10, "output": 5}, "ok")
+    monkeypatch.setattr(ld.llm_client, "call_claude", call)
+    monkeypatch.setattr(ld, "call_log_path", lambda out: tmp_path / "calls.jsonl")
+    ld.main(["--corpus", str(_corpus(tmp_path)), "--out",
+             str(tmp_path / "labels.jsonl"), "--keys", "t_000"])
+    assert "labeling: 0/1 done" in sys.stderr.getvalue()
+    assert "\r\033[K" in sys.stderr.getvalue()     # its line wiped for a print
+    assert "[1/1] t_000: good" in capsys.readouterr().out

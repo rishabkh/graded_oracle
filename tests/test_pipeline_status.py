@@ -46,12 +46,39 @@ def test_the_line_says_how_long_a_batch_has_been_out(tmp_path):
     assert "1 batch out for 4:1" in line
 
 
-def test_the_line_shows_what_the_run_has_spent(tmp_path):
+def test_the_line_shows_what_the_run_has_spent(tmp_path, monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)       # Claude called
     s = _status(tmp_path, batch=True)
     s.records = [{"usage": {"input": 1_000_000, "output": 100_000}},
                  {"usage": {"input": 0, "output": 0}}, {}]
     # Opus 5.5 at half price: $2 per million in, $10 per million out
     assert "$3.00 so far" in s.label()
+
+
+# 8 Nov 2026: with GPT-6.1 Sol called, the line and the run's last line
+# priced its words at Opus 5.5's list price, twice what the run had spent
+
+def test_the_line_prices_the_model_actually_called(tmp_path, monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    s = _status(tmp_path)
+    s.records = [{"usage": {"input": 1_000_000, "output": 100_000}}]
+    # GPT-6.1 Sol: $2 per million in, $10 per million out
+    assert "$3.00 so far" in s.label()
+
+
+def test_the_last_line_prices_the_model_actually_called(monkeypatch, tmp_path,
+                                                        capsys):
+    import run as R
+    from tests.test_initiator_pipeline import TRIPLE
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    f = Fake(monkeypatch, tmp_path, ["NECESSARY"])
+    monkeypatch.setattr(R, "call_model", lambda user_msg, **kw: (
+        json.dumps(TRIPLE), {"input": 1_000_000, "output": 100_000}, "ok"))
+    f.run()
+    assert "tokens: 1,000,000 in, 100,000 out = $3.00" in \
+        capsys.readouterr().out
 
 
 def test_a_pipeline_run_shows_one_status_line_and_no_check_spinners(

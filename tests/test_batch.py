@@ -414,6 +414,9 @@ def test_batch_option_opens_the_gate_around_the_same_loop(monkeypatch, tmp_path)
         seen["workers"] = kw["workers"]
         return []
     monkeypatch.setattr(batch, "run_loop", fake_loop)
+    # main() quiets the shared spinner for its workers: put it back after,
+    # or every later test's spinner stays silent (10 Nov 2026)
+    monkeypatch.setattr(batch.Spinner, "quiet", False)
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
     corpus = tmp_path / "corpus_catalog.jsonl"
     corpus.write_text(json.dumps({"id": "c0_000", "generation": 0}) + "\n")

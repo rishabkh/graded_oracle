@@ -60,6 +60,7 @@ from patch import PatchError, apply_patch                 # noqa: E402
 
 from fact_format import SYSTEM_FUNCTION                         # noqa: E402
 from reset_reads import step_reset_error                        # noqa: E402
+import freeze_check                                             # noqa: E402
 import llm_client                                               # noqa: E402
 from oracle import PropertyInfo, grade, grade_triple_generated  # noqa: E402
 
@@ -2925,6 +2926,9 @@ def grade_compose(pa, pb, out, record):
             record, child, top, pa.get("clock") or "clk", [pa, pb],
             wrapper=wrapper):
         return record
+    # a slow receiver must not freeze it (8 Nov 2026), when the run asks
+    if freeze_check.gate(record, child, top, pa.get("clock") or "clk"):
+        return record
 
     payload = {"verilog": child, "top_module": top, "clock": pa["clock"],
                "antecedents": out["antecedents"],
@@ -3221,6 +3225,10 @@ def grade_step4(parent, ext_type, out, record):
         if nothing_lost.check(record, child, parent["top_module"],
                               parent.get("clock") or "clk", [parent]):
             return record
+    # a slow receiver must not freeze it (8 Nov 2026), when the run asks
+    if freeze_check.gate(record, child, parent["top_module"],
+                         parent.get("clock") or "clk"):
+        return record
 
     if ext_type == "second" or sideways:
         # P2 alone, no invariants: PROVEN here means it teaches nothing.

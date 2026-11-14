@@ -449,11 +449,14 @@ def main(argv=None):
             sys.exit("yosys not on PATH - run `hwtools` first, "
                      "or pass --no-yosys")
         from coi import coi_ratio
-        for row in rows:
-            row["metrics"]["state_bits"] = state_bits(
-                row["verilog"], row["top_module"])
-            row["metrics"]["coi_ratio"] = coi_ratio(
-                row["verilog"], row["top_module"])
+        # here, not at the top: distractor imports this module
+        from distractor import Spinner
+        for n, row in enumerate(rows, 1):
+            with Spinner(f"measuring {row['id']} with yosys ({n}/{len(rows)})"):
+                row["metrics"]["state_bits"] = state_bits(
+                    row["verilog"], row["top_module"])
+                row["metrics"]["coi_ratio"] = coi_ratio(
+                    row["verilog"], row["top_module"])
             print(f"  {row['id']} {row['top_module']:24s} "
                   f"state_bits={row['metrics']['state_bits']} "
                   f"coi={row['metrics']['coi_ratio']}")

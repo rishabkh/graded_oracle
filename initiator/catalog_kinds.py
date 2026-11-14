@@ -386,6 +386,99 @@ def use_all(record_path, out_dir):
     return lines
 
 
+# --- drawing kinds nothing has used (8 Nov 2026) ------------------------------
+# The rule of the 25 and 26 Oct 2026 draws (their notes:
+# logs/kinds_unused_40_even_2026-10-2*_note.json), drawn then by one-off
+# scripts, as code, so a draw can be repeated and checked.
+CATEGORIES = OUT_DIR / "kind_categories_2026-10-09.json"
+# the 9 Oct 2026 choice (catalog/constructs_150_even_2026-10-09_note.json):
+# "the same job (a + b) with a different speed trick, or a trivial piece,
+# holding no state; our designs are about relations between stored values"
+STATELESS_ADDERS = ("Ripple-carry adder", "Carry-select adder",
+                    "Kogge-Stone prefix adder", "Sparse-tree adder",
+                    "Carry-increment adder", "Full subtractor",
+                    "Borrow-propagate subtractor", "Incrementer",
+                    "Absolute-value unit", "Signed-digit redundant adder")
+# the 300 kinds of 9 Oct 2026 (the onestep/twostep files split them)
+USED_LISTS = (OUT_DIR / "constructs_150_even_2026-10-09.txt",
+              OUT_DIR / "constructs_150_even_2026-10-09_round2.txt")
+LOGS = HERE / "logs"
+DESIGNS = HERE.parent / "extender"
+
+
+def _names(lines):
+    return {l.split(":", 1)[0].strip() for l in lines
+            if ":" in l and not l.lstrip().startswith("#")}
+
+
+def used_names(lists, logs):
+    """Kind names in the kinds lists `lists`, and in the "construct" of
+    every record of every .jsonl file in the folders `logs`."""
+    names = set()
+    for path in lists:
+        names |= _names(Path(path).read_text().splitlines())
+    for folder in logs:
+        for path in sorted(Path(folder).glob("*.jsonl")):
+            with open(path, errors="replace") as fh:
+                for line in fh:
+                    if '"construct"' not in line:
+                        continue
+                    try:
+                        c = json.loads(line).get("construct")
+                    except ValueError:
+                        continue
+                    if isinstance(c, str):
+                        names |= _names([c])
+    return names
+
+
+def unused_kinds(catalog=CATEGORIES, lists=None, logs=None):
+    """(category, kind) pairs no design, training file or test has used:
+    the newer checked kinds (not the original 32 the September designs
+    used), minus the 10 adders with no state of their own, minus the kinds
+    the two judges put in different areas, minus every kind in the 9 Oct
+    lists or a kinds list in logs/, minus any construct in a generator log
+    or an extender design file."""
+    if lists is None:
+        lists = list(USED_LISTS) + sorted(LOGS.glob("kinds_*.txt"))
+    used = used_names(lists, [LOGS, DESIGNS] if logs is None else logs)
+    out = []
+    for k in json.loads(Path(catalog).read_text())["kinds"]:
+        if k["source"] == "original_32" or k["name"] in STATELESS_ADDERS \
+                or k["name"] in used:
+            continue
+        if (k.get("judge1") or {}).get("primary") != \
+                (k.get("judge2") or {}).get("primary"):
+            continue
+        out.append((k["category"], k))
+    return out
+
+
+def draw_unused(n, seed, name, out_dir=LOGS, catalog=CATEGORIES, lists=None,
+                logs=None):
+    """even_draw(unused_kinds(), n, seed) written as generator lines to
+    out_dir/<name>.txt, with a note of the pool, the rule and the seed
+    beside it, as the earlier draws were. Returns the list's path."""
+    left = unused_kinds(catalog, lists, logs)
+    drawn = even_draw(left, n, seed)
+    out = Path(out_dir) / f"{name}.txt"
+    out.write_text("".join(construct_line(k) + "\n" for _, k in drawn))
+    note = {"timestamp": datetime.now(timezone.utc).isoformat(),
+            "what": f"{n} kinds none of which any design, training file or "
+                    "test has used",
+            "pool": "the newer checked kinds, minus the 10 adders with no "
+                    "state, minus the kinds the judges disagreed on, minus "
+                    "the 300 used on 9 Oct and every kinds list in "
+                    "initiator/logs, minus any construct in a generator log "
+                    "or an extender design file (catalog_kinds.unused_kinds)",
+            "left": len(left), "rule": f"catalog_kinds.even_draw(left, {n}, seed)",
+            "seed": seed,
+            "categories_covered": len({c for c, _ in drawn})}
+    (Path(out_dir) / f"{name}_note.json").write_text(json.dumps(note, indent=1)
+                                                    + "\n")
+    return out
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(
         description="Choose new hardware kinds with one call to a fresh model.")
@@ -407,7 +500,19 @@ def main(argv=None):
                    help="apply near-repeat verdicts to a by-category record "
                         "and draw --pick kinds; no call")
     p.add_argument("--verdicts", default=None)
+    p.add_argument("--draw-unused", type=int, default=None, metavar="N",
+                   help="draw N kinds nothing has used, with --seed, into "
+                        "logs/<--name>.txt and its note; no call")
+    p.add_argument("--name", default=None,
+                   help="with --draw-unused: the list's name, e.g. "
+                        "kinds_unused_20_even_2026-11-08")
     args = p.parse_args(argv)
+    if args.draw_unused:
+        if not args.name:
+            sys.exit("--draw-unused needs --name; nothing was drawn")
+        out = draw_unused(args.draw_unused, args.seed, args.name)
+        print(f"{args.draw_unused} kinds -> {out}")
+        return
     if args.use_all:
         use_all(args.use_all, args.out_dir)
         return

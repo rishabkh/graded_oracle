@@ -37,6 +37,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parent / "training"))
 import llm_client                                                # noqa: E402
 import pick_training_designs as ptd                              # noqa: E402
+from distractor import Spinner                                   # noqa: E402
 
 MODEL = "claude-opus-5-5"     # LLM_PROVIDER=openai calls OPENAI_MODEL instead
 EFFORT = "medium"
@@ -55,7 +56,11 @@ OUTPUT_GUESS = 300
 
 # The 27 Oct first-pass rubric for one starting design: its context,
 # failure checks and labels, word for word, without the parts about
-# batches, files and grown designs.
+# batches, files and grown designs. Plus the grown rules' clock-enable point
+# after check 3 (10 Nov 2026, Rishab's yes): GPT called 2 of the array
+# trial's 28 starting designs wrong for a ready that stays high while the
+# clock enable is low, the reading that point corrected for grown designs.
+# The 217 starting designs of 4 Nov were labeled without it.
 RUBRIC = """\
 You are labeling hardware designs for a formal-verification research project.
 
@@ -65,6 +70,9 @@ Failures to check for by reading the code (the property usually cannot see them)
 1. When a buffer, queue or table is full or busy, is the sender told to wait, or is an item dropped or overwritten?
 2. Can a handshake lose an item or deliver it twice (valid without ready, ready ignored, an item taken while paused, a push and pop in the same cycle miscounted)?
 3. Can any part get stuck forever or starve? A receiver is allowed to wait until it sees valid before it raises ready; a design that freezes with such a receiver is wrong (for example a valid that depends on ready, or a side queue that only empties on another output's ready). Also check that credits or tokens come back after an abort, flush, error or reset.
+
+One point on checks 2 and 3:
+- A clock-enable input (such as en, ce or i_ce) pauses the whole system, the sender and the receiver included: a ready or valid that stays high while it is low is not a lost or repeated item.
 
 Labels:
 - good: a real hardware feature or block a real chip would have, built sensibly, with facts that state real relations about its state (counts against pointers, stored entries against what was written, who holds a token, a state machine's phase against its counters).
@@ -138,6 +146,24 @@ def remaining(labels, labeled_since):
         r.get("steps_from_start") or 0, r["key"]))
         if not r["label"] and r["key"] not in labeled_since]
 
+
+def corpus_designs(path):
+    """A corpus file's rows as the labeler reads designs (8 Nov 2026: the
+    trial's new designs are not in the 27 Oct collection): (designs by row
+    id, each row's place in its lineage, the ids parents first). A grown
+    row names its parent and partner rows by id; a starting row says what
+    it is meant to be through the kind line it was made from."""
+    rows = [json.loads(l) for l in open(path) if l.strip()]
+    designs, places = {}, {}
+    for r in rows:
+        designs[r["id"]] = dict(r, key=r["id"], description=r.get(
+            "description") or r.get("construct") or "")
+        places[r["id"]] = {"key": r["id"], "label": None,
+                           "parent_key": r.get("parent"),
+                           "partner_key": r.get("parent2"),
+                           "steps_from_start": r.get("generation") or 0}
+    keys = sorted(places, key=lambda k: (places[k]["steps_from_start"], k))
+    return designs, places, keys
 
 def _numbered(verilog):
     return "\n".join(f"{i:4d}| {line}" for i, line in
@@ -251,6 +277,15 @@ def call_log_path(out):
     return HERE / "logs" / ("calls_" + Path(out).name)
 
 
+def say(line):
+    """A line printed clear of the spinner: its line is wiped first, and
+    the spinner redraws below on its next frame."""
+    if sys.stderr.isatty():
+        sys.stderr.write("\r\033[K")
+        sys.stderr.flush()
+    print(line, flush=True)
+
+
 def already_labeled(path):
     path = Path(path)
     if not path.exists():
@@ -330,28 +365,46 @@ def main(argv=None):
                     help="label every design still without a label "
                          "(September's, the oldest corpus, October's grown "
                          "ones), parents first")
+    ap.add_argument("--corpus", default=None,
+                    help="label every row of this corpus file, parents "
+                         "first (needs --out)")
     ap.add_argument("--out", help="one row per design; a rerun carries on")
+    ap.add_argument("--keys", nargs="+", metavar="KEY",
+                    help="label only these designs (such as t0_003 t0_014)")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--effort", default=EFFORT)
     ap.add_argument("--limit", type=int)
     ap.add_argument("--dry", action="store_true",
                     help="price the run; call nothing")
     args = ap.parse_args(argv)
+    if args.corpus and not args.out:
+        sys.exit("--corpus needs --out: a corpus file's labels go in their "
+                 "own file; nothing was labeled")
 
-    label_list = [json.loads(l) for l in open(ptd.LABELS)]
-    labels = {r["key"]: r for r in label_list}
-    designs = {json.loads(l)["key"]: json.loads(l) for l in open(ptd.DESIGNS)}
-    known = {} if args.calibrate else _labeled_rows(OUT)
-    if args.calibrate:
-        used = set(_labeled_rows(CALIBRATION_GROWN_OUT)) if args.fresh else set()
-        keys = calibration_keys(label_list, args.calibrate, grown=args.grown,
-                                exclude=used)
-        default = CALIBRATION_GROWN_FRESH_OUT if args.fresh else \
-            CALIBRATION_GROWN_OUT if args.grown else CALIBRATION_OUT
-    elif args.remaining:
-        keys, default = remaining(label_list, labeled_since=set(known)), OUT_REMAINING
+    if args.corpus:
+        designs, labels, keys = corpus_designs(args.corpus)
+        known, default = {}, None
     else:
-        keys, default = to_label(label_list), OUT
+        label_list = [json.loads(l) for l in open(ptd.LABELS)]
+        labels = {r["key"]: r for r in label_list}
+        designs = {json.loads(l)["key"]: json.loads(l) for l in open(ptd.DESIGNS)}
+        known = {} if args.calibrate else _labeled_rows(OUT)
+        if args.calibrate:
+            used = set(_labeled_rows(CALIBRATION_GROWN_OUT)) if args.fresh else set()
+            keys = calibration_keys(label_list, args.calibrate, grown=args.grown,
+                                    exclude=used)
+            default = CALIBRATION_GROWN_FRESH_OUT if args.fresh else \
+                CALIBRATION_GROWN_OUT if args.grown else CALIBRATION_OUT
+        elif args.remaining:
+            keys, default = remaining(label_list, labeled_since=set(known)), OUT_REMAINING
+        else:
+            keys, default = to_label(label_list), OUT
+    if args.keys:
+        unknown = sorted(set(args.keys) - set(keys))
+        if unknown:
+            sys.exit(f"--keys: no design {', '.join(unknown)} in this run; "
+                     "nothing was labeled")
+        keys = [k for k in keys if k in set(args.keys)]
     out = Path(args.out or default)
     done = _labeled_rows(out)
     known.update(done)
@@ -368,15 +421,18 @@ def main(argv=None):
     out.parent.mkdir(parents=True, exist_ok=True)
     lock = threading.Lock()
     count = [0]
+    # one spinner for the whole run (10 Nov 2026): the calls share it
+    spinner = Spinner(f"labeling: 0/{len(todo)} done", always=True)
     with llm_client.call_log(call_log_path(out)), \
-            open(out, "a") as fh:
+            open(out, "a") as fh, spinner:
         def write(row):
             with lock:
                 count[0] += 1
                 fh.write(json.dumps(row) + "\n")
                 fh.flush()
-                print(f"[{count[0]}/{len(todo)}] {row['key']}: "
-                      f"{row['label'] or row.get('error')}", flush=True)
+                say(f"[{count[0]}/{len(todo)}] {row['key']}: "
+                    f"{row['label'] or row.get('error')}")
+                spinner.label = f"labeling: {count[0]}/{len(todo)} done"
         label_in_rounds(todo, designs, labels, known, effort=args.effort,
                         workers=args.workers, on_row=write)
     rows = _labeled_rows(out)

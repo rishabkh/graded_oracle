@@ -45,7 +45,7 @@ import llm_client                                              # noqa: E402
 from build_corpus import flatten_record                        # noqa: E402
 from oracle.inject import _insert_point                        # noqa: E402
 from prompts import SYSTEM_PROMPT                              # noqa: E402
-from run import EFFORT, MAX_TOKENS, MODEL, checker_notes, judge, timed_out  # noqa: E402
+from run import EFFORT, MAX_TOKENS, MODEL, Spinner, checker_notes, judge, timed_out  # noqa: E402
 
 SEEDS = HERE / "open_source_seeds_2026-10-28.jsonl"
 LOG = HERE / "logs" / "seeded_open_source_2026-10-28.jsonl"
@@ -415,8 +415,10 @@ def main(argv=None):
     lock = threading.Lock()
     print(f"{len(todo)} seeds with {llm_client.model_label(MODEL)}, effort {args.effort}, "
           f"{args.repairs} repair(s) each")
+    finished = [0]                     # one spinner for the whole run (10 Nov 2026)
     with llm_client.call_log(log.with_name("calls_" + log.name)), \
-            ThreadPoolExecutor(args.workers) as pool, open(log, "a") as fh:
+            ThreadPoolExecutor(args.workers) as pool, open(log, "a") as fh, \
+            Spinner(lambda: f"seeding: {finished[0]}/{len(todo)} done") as spinner:
         futs = {pool.submit(run_seed, s, proofs / s["name"].replace("/", "_"),
                             args.repairs, args.effort): s for s in todo}
         for i, fut in enumerate(as_completed(futs), 1):
@@ -427,8 +429,9 @@ def main(argv=None):
             with lock:
                 fh.write(json.dumps(rec) + "\n")
                 fh.flush()
-            print(f"[{i}/{len(todo)}] {rec['seed']}: {rec['verdict']} "
-                  f"(repairs {rec.get('repair_attempts', 0)})", flush=True)
+            finished[0] = i
+            spinner.say(f"[{i}/{len(todo)}] {rec['seed']}: {rec['verdict']} "
+                        f"(repairs {rec.get('repair_attempts', 0)})")
     n = write_corpus(log)
     print(f"{n} proved designs -> {CORPUS.relative_to(HERE.parent)}")
 

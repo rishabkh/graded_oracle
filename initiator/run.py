@@ -45,6 +45,7 @@ from schema import TRIPLE_SCHEMA                   # noqa: E402
 import llm_client                                            # noqa: E402
 import distill_log                                           # noqa: E402
 from fact_format import unreadable_facts                     # noqa: E402
+import freeze_check                                          # noqa: E402
 from oracle import NecessityVerdict, grade_triple_generated  # noqa: E402
 from oracle.contract import parse_generator_output           # noqa: E402
 # RESET_NAMES is kept here for callers of run.RESET_NAMES
@@ -252,7 +253,8 @@ def scope_gate(scope, triple):
 # (fact_format.py says which forms it cannot read); c0_144 reached the
 # corpus with `occ == $countones(valid)`.
 
-GATE_VERDICTS = ("SCOPE_UNARMED", "READS_RESET", "FACTS_NOT_PLAIN")
+# FREEZES (8 Nov 2026): the freeze check, when the run switches it on
+GATE_VERDICTS = ("SCOPE_UNARMED", "READS_RESET", "FACTS_NOT_PLAIN", "FREEZES")
 
 
 def _strings(value):
@@ -499,13 +501,13 @@ def sample_seeds(readme_s, construct_s, style_s, pattern_s, scope_s,
 
 
 def plan_attempts(n, *, cmd, grade, model, constructs_path, scales_path,
-                  even_seeds):
+                  even_seeds, traits_path=None):
     """Draw every attempt's seeds and build its question, before any call.
     Returns (exemplars, run_id, [(record, user_msg, scope)])."""
     exemplars, constructs, readmes, styles, patterns, scopes = load_pools(
         constructs_path, even=even_seeds)
     scale_s = BalancedSampler(_pool(Path(scales_path))) if scales_path else None
-    trait_s = BalancedSampler(load_traits())
+    trait_s = BalancedSampler(load_traits(traits_path))
     # One id per invocation: attempts from different runs (one, grade-one,
     # pilot, the 200) all append to the same file and stay separable.
     # e.g. "2026-08-14_15h30m42s" (local wall clock; cmd is its own field).
@@ -571,6 +573,19 @@ def judge(raw_json, stop, scope, grade=True, label="", proof_root=None,
             return dict(out, verdict=verdict, reason=reason)
     if not grade:
         return out
+    # seconds, before the proof takes minutes: a receiver that says ready
+    # only after it sees valid must not freeze the design (8 Nov 2026,
+    # freeze_check.py), when the run switches the check on. What it saw goes
+    # in the log for every design, so a log can tell "nothing froze" from
+    # "the check never ran"; with the check off the log is as before
+    seen = {}
+    if freeze_check.gate(seen, triple.get("verilog") or "",
+                         triple.get("top_module") or "",
+                         triple.get("clock") or "clk"):
+        return dict(out, verdict="FREEZES", reason=seen["error"],
+                    freeze_check=seen["freeze_check"])
+    kept = ({"freeze_check": seen["freeze_check"]}
+            if "freeze_check" in seen else {})
     t0 = time.monotonic()
     kw = dict(GRADE_KWARGS)
     if proof_root is not None:
@@ -581,7 +596,7 @@ def judge(raw_json, stop, scope, grade=True, label="", proof_root=None,
         result = grade_triple_generated(raw_json, **kw)
     return {"verdict": result.verdict.name, "reason": result.reason,
             "result": asdict(result),
-            "grade_wall_s": round(time.monotonic() - t0, 2)}
+            "grade_wall_s": round(time.monotonic() - t0, 2), **kept}
 
 
 def finish_attempt(i, record, raw_json, usage, stop, raw_text, *, grade,
@@ -600,6 +615,8 @@ def finish_attempt(i, record, raw_json, usage, stop, raw_text, *, grade,
     record["proof_dir"] = rel
     j = judge(raw_json, stop, record["scope"], grade, label=f"[{i}]",
               proof_root=root / "r0")
+    if "freeze_check" in j:
+        record["freeze_check"] = j["freeze_check"]
     if raw_json is None:
         record["verdict"] = j["verdict"]
         record["raw_text"] = raw_text
@@ -635,7 +652,7 @@ def finish_attempt(i, record, raw_json, usage, stop, raw_text, *, grade,
 
 def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
                  scales_path=None, log_path=None, model=None,
-                 even_seeds=False, distill_path=None):
+                 even_seeds=False, distill_path=None, traits_path=None):
     """`constructs_path`, `scales_path` and `log_path` are the catalog run's
     (task 5): its own kinds, a size seed per attempt, and its own log, so
     its designs never enter the main corpus. `model` swaps the writer
@@ -646,7 +663,8 @@ def run_attempts(n, grade=True, show_raw=False, cmd="", constructs_path=None,
     model = model or MODEL
     exemplars, run_id, plans = plan_attempts(
         n, cmd=cmd, grade=grade, model=model, constructs_path=constructs_path,
-        scales_path=scales_path, even_seeds=even_seeds)
+        scales_path=scales_path, even_seeds=even_seeds,
+        traits_path=traits_path)
     if grade:
         assert_exemplar_pool(exemplars, proof_root=proofs_dir(log_path)
                              / f"{run_id}_exemplars")
@@ -685,11 +703,12 @@ def _attempt_loop(plans, model, grade, show_raw, log_path, tally,
 
 def run_batch(n, grade=True, cmd="", constructs_path=None, scales_path=None,
               log_path=None, model=None, even_seeds=False, poll_s=60,
-              distill_path=None):
+              distill_path=None, traits_path=None):
     model = model or MODEL
     exemplars, run_id, plans = plan_attempts(
         n, cmd=cmd, grade=grade, model=model, constructs_path=constructs_path,
-        scales_path=scales_path, even_seeds=even_seeds)
+        scales_path=scales_path, even_seeds=even_seeds,
+        traits_path=traits_path)
     log = Path(log_path or LOG_PATH)
     if grade:
         assert_exemplar_pool(exemplars, proof_root=proofs_dir(log)
@@ -878,7 +897,11 @@ class PipelineStatus:
                        for r in self.records)
         spent_out = sum((r.get("usage") or {}).get("output", 0)
                         for r in self.records)
-        parts.append(f"${llm_client.dollars(self.model, spent_in, spent_out, batch=self.batch):.2f} so far")
+        # at the price of the model actually called (8 Nov 2026: GPT-6.1
+        # Sol's words were priced as Opus 5.5's, twice what was spent)
+        cost = llm_client.dollars(llm_client.model_label(self.model),
+                                  spent_in, spent_out, batch=self.batch)
+        parts.append(f"${cost:.2f} so far")
         return " | ".join(parts)
 
 
@@ -1031,6 +1054,8 @@ def design_pipeline(i, record, user_msg, extras, *, mode, repairs, model,
 
     record.update(verdict=j["verdict"], reason=j["reason"], result=j["result"],
                   grade_wall_s=j["grade_wall_s"], repair_attempts=attempt)
+    if "freeze_check" in j:             # the final design's, as each round's
+        record["freeze_check"] = j["freeze_check"]
     if current is not None:
         record["raw_json"] = current
     else:
@@ -1071,14 +1096,16 @@ def design_pipeline(i, record, user_msg, extras, *, mode, repairs, model,
 def run_pipeline(n, *, mode="initiate", repairs=0, workers=8, batch=False,
                  grade_slots=None, flush_after=30.0, grade=True, cmd="",
                  constructs_path=None, scales_path=None, log_path=None,
-                 model=None, even_seeds=False, distill_path=None):
+                 model=None, even_seeds=False, distill_path=None,
+                 traits_path=None):
     from concurrent.futures import ThreadPoolExecutor
     if mode not in ("initiate", "two-step"):
         raise ValueError(f"mode must be initiate or two-step, not {mode!r}")
     model = model or MODEL
     exemplars, run_id, plans = plan_attempts(
         n, cmd=cmd, grade=grade, model=model, constructs_path=constructs_path,
-        scales_path=scales_path, even_seeds=even_seeds)
+        scales_path=scales_path, even_seeds=even_seeds,
+        traits_path=traits_path)
     log = Path(log_path or LOG_PATH)
     if grade:
         assert_exemplar_pool(exemplars, proof_root=proofs_dir(log)
@@ -1129,8 +1156,9 @@ def run_pipeline(n, *, mode="initiate", repairs=0, workers=8, batch=False,
                                                        key=lambda kv: str(kv[0]))))
     spent = {"input": sum(r["usage"]["input"] for r in out if r.get("usage")),
              "output": sum(r["usage"]["output"] for r in out if r.get("usage"))}
+    called = llm_client.model_label(model)     # the model actually called
     print(f"tokens: {spent['input']:,} in, {spent['output']:,} out = $"
-          f"{llm_client.dollars(model, spent['input'], spent['output'], batch=batch):.2f}"
+          f"{llm_client.dollars(called, spent['input'], spent['output'], batch=batch):.2f}"
           + (" at batch price" if batch else ""))
     return out
 
@@ -1170,6 +1198,14 @@ def main():
                        help="draw each style, pattern and scope equally often")
     pilot.add_argument("--model", default=None,
                        help=f"model that writes the designs (default {MODEL})")
+    pilot.add_argument("--freeze-check", action="store_true",
+                       help="turn away a design that a receiver saying ready "
+                            "only after it sees valid freezes for good "
+                            "(freeze_check.py, 8 Nov 2026); off, as before")
+    pilot.add_argument("--traits", default=None,
+                       help="design traits file to draw from instead of "
+                            "design_traits.txt (8 Nov 2026: a trial that "
+                            "wants more of one trait)")
 
     col = sub.add_parser("collect")
     col.add_argument("--manifest", required=True,
@@ -1185,10 +1221,11 @@ def main():
     elif args.cmd == "grade-one":
         run_attempts(1, grade=True, show_raw=True, cmd="grade-one")
     elif args.cmd == "pilot":
+        freeze_check.ON = args.freeze_check
         common = dict(grade=True, cmd="pilot", constructs_path=args.constructs,
                       scales_path=args.scales, log_path=args.log,
                       model=args.model, even_seeds=args.even_seeds,
-                      distill_path=args.distill_log)
+                      distill_path=args.distill_log, traits_path=args.traits)
         if args.mode == "two-step" or args.repairs > 0:
             run_pipeline(args.n, mode=args.mode, repairs=args.repairs,
                          workers=args.workers, batch=args.batch,

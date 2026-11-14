@@ -69,6 +69,7 @@ from promote import (FIXER_QUEUE, children, history, lineage,     # noqa: E402
                      promote, ratchet, route, step_kind,
                      what_was_added)
 import distractor                                                # noqa: E402
+import freeze_check                                              # noqa: E402
 import gates                                                     # noqa: E402
 import sense_check                                               # noqa: E402
 
@@ -138,7 +139,8 @@ _rejected_lock = threading.Lock()
 # own search found lost (ITEMS_LOST) is remembered too, with its one-line
 # reason; a broken declaration (STREAM_INVALID) or a new input (NEW_INPUT)
 # is how the answer was written, retried with its lesson instead
-REMEMBERED = ("NONSENSE", "ITEMS_LOST") + gates.VERDICTS
+# 8 Nov 2026: and a step the freeze check saw stop for good (FREEZES)
+REMEMBERED = ("NONSENSE", "ITEMS_LOST", "FREEZES") + gates.VERDICTS
 
 
 def rejection_note(record):
@@ -1018,6 +1020,10 @@ def main(argv=None):
                    help="do not grow first the rows the automatic engine "
                         "(abc pdr) could not prove without facts "
                         "(metrics.engine_alone); the run's own order only")
+    p.add_argument("--freeze-check", action="store_true",
+                   help="send back a step that a receiver saying ready only "
+                        "after it sees valid freezes for good "
+                        "(freeze_check.py, 8 Nov 2026); off, as before")
     args = p.parse_args(argv)
     prefer = not args.no_prefer_engine_hard
     if args.start and args.start_largest:
@@ -1123,6 +1129,8 @@ def main(argv=None):
     # runs/ folder and a record's proof_dir was never written)
     before = distractor.PROOF_ROOT, distractor.RECHECK_TIMEOUT_S
     distractor.RECHECK_TIMEOUT_S = args.recheck_timeout_s
+    freeze_before = freeze_check.ON
+    freeze_check.ON = args.freeze_check
     if args.log_dir is not None:
         distractor.PROOF_ROOT = (args.log_dir / "proofs").resolve()
     # every answer a training example, next to the extension log (21 Oct
@@ -1145,6 +1153,7 @@ def main(argv=None):
     finally:
         GRADE_SLOTS = None
         distractor.PROOF_ROOT, distractor.RECHECK_TIMEOUT_S = before
+        freeze_check.ON = freeze_before
         DISTILL_LOG = examples_before
     print(f"\nrun complete: {len(new_rows)} promoted "
           f"(corpus now {len(corpus_rows) + len(new_rows)} rows); "

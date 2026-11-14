@@ -300,8 +300,9 @@ def test_the_gates_run_in_order_scope_reset_facts(monkeypatch):
         "verdict"] == "SCOPE_UNARMED"
     assert R.judge(json.dumps(both), "end_turn", GLOBAL, grade=False)[
         "verdict"] == "READS_RESET"
+    # then the freeze check, only when a run switches it on (8 Nov 2026)
     assert R.GATE_VERDICTS == ("SCOPE_UNARMED", "READS_RESET",
-                               "FACTS_NOT_PLAIN")
+                               "FACTS_NOT_PLAIN", "FREEZES")
 
 
 def test_a_design_that_passes_every_gate_reaches_the_checker(monkeypatch,

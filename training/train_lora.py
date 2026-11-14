@@ -71,7 +71,21 @@ def collate(batch, pad_id):
             "attention_mask": pad("attention_mask", 0)}
 
 
-def main():
+def count_each_pair_equally(trainer):
+    """Weigh every pair the same in a step, however long its answer (8 Nov
+    2026). Since transformers 4.46 the Trainer averages the loss over every
+    answer word of the pairs a step adds up (--grad-accum of them), so a
+    long answer counts for more: the storage set's answers were 24% of its
+    pairs but 79% of its answer text, and the easy score fell from 13.56 to
+    8.17 per try. With the library's word count off, each pair's loss is
+    its own average and the Trainer divides by the pairs in the step."""
+    if not hasattr(trainer, "model_accepts_loss_kwargs"):
+        sys.exit("this transformers has no model_accepts_loss_kwargs, so "
+                 "--count-each pair cannot be set; nothing was trained")
+    trainer.model_accepts_loss_kwargs = False
+
+
+def parser():
     p = argparse.ArgumentParser()
     p.add_argument("--pairs", required=True)
     p.add_argument("--model", required=True)
@@ -99,7 +113,15 @@ def main():
     p.add_argument("--load-4bit", action="store_true",
                    help="quantised base weights; needed for 32B on one "
                         "80GB card, not needed for the smoke test")
-    args = p.parse_args()
+    p.add_argument("--count-each", choices=["word", "pair"], default="word",
+                   help="what one step weighs equally: every answer word "
+                        "(the library's way, all runs before 8 Nov 2026) or "
+                        "every pair, however long its answer")
+    return p
+
+
+def main():
+    args = parser().parse_args()
 
     import torch
     from peft import LoraConfig, get_peft_model
@@ -157,6 +179,8 @@ def main():
         report_to=[], eval_strategy="no")
     trainer = Trainer(model=model, args=targs, train_dataset=train_rows,
                       data_collator=lambda b: collate(b, tok.pad_token_id))
+    if args.count_each == "pair":
+        count_each_pair_equally(trainer)
     result = trainer.train()
 
     out = Path(args.out)
@@ -170,6 +194,7 @@ def main():
     (out / "run.json").write_text(json.dumps(
         {"pairs": args.pairs, "model": args.model, "steps": args.steps,
          "epochs": args.epochs, "rank": args.rank, "lr": args.lr,
+         "count_each": args.count_each,
          "train_rows": len(train_rows), "max_len": args.max_len,
          "dropped": dropped, "dropped_eval": dropped_eval,
          "train_loss": result.training_loss}, indent=2))

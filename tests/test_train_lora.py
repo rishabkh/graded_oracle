@@ -59,5 +59,53 @@ def test_too_many_drops_stop_the_run():
 
 def test_the_length_limit_is_raised_for_bigger_designs():
     import inspect
-    src = inspect.getsource(tl.main)
+    src = inspect.getsource(tl.parser)
     assert '"--max-len", type=int, default=16384' in src
+
+
+# --- counting each pair equally (8 Nov 2026) ---------------------------------
+# The storage set's answers were 24% of its pairs but 79% of its answer text,
+# and the library averages the loss over every answer word in a step (8 pairs
+# added up), so those answers took most of what the model learned from; the
+# easy score fell from 13.56 to 8.17 per try.
+
+TRAINING = Path(__file__).resolve().parent.parent / "training"
+
+
+class FakeTrainer:
+    model_accepts_loss_kwargs = True
+
+
+def test_counting_each_pair_equally_turns_off_the_word_count():
+    trainer = FakeTrainer()
+    tl.count_each_pair_equally(trainer)
+    assert trainer.model_accepts_loss_kwargs is False
+
+
+def test_a_library_without_that_switch_stops_before_training():
+    class OldTrainer:
+        pass
+    with pytest.raises(SystemExit) as e:
+        tl.count_each_pair_equally(OldTrainer())
+    assert "nothing was trained" in str(e.value)
+
+
+def test_every_word_counts_unless_asked():
+    need = ["--pairs", "p", "--model", "m", "--out", "o"]
+    assert tl.parser().parse_args(need).count_each == "word"
+    assert tl.parser().parse_args(need + ["--count-each", "pair"]).count_each == "pair"
+    with pytest.raises(SystemExit):
+        tl.parser().parse_args(need + ["--count-each", "token"])
+
+
+def test_the_choice_is_used_and_saved_with_the_model():
+    import inspect
+    src = inspect.getsource(tl.main)
+    assert 'if args.count_each == "pair":' in src
+    assert "count_each_pair_equally(trainer)" in src
+    assert '"count_each": args.count_each' in src
+
+
+def test_the_training_job_passes_the_choice_on():
+    text = (TRAINING / "train32b.sbatch").read_text()
+    assert '--count-each "${COUNT_EACH:-word}"' in text

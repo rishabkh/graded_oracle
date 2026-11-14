@@ -7,10 +7,12 @@ checks, the question shows the module, the edits go where they should and a
 parameter is set without touching a localparam, and an answer runs through
 check, repair and the corpus with a stand-in for the model. The logic check
 and the grading run yosys and sby and skip without hwtools."""
+import io
 import json
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -128,3 +130,29 @@ def test_logic_check_passes_assertions_and_catches_a_changed_module():
     assert sd.same_logic(base, full, "top")[0] is True
     changed = full.replace("cnt != LAST", "cnt != LAST - 1")
     assert sd.same_logic(base, changed, "top")[0] is False
+
+
+# --- one spinner for the run (10 Nov 2026) ------------------------------------
+
+class TTY(io.StringIO):
+    def isatty(self):
+        return True
+
+
+def test_a_run_shows_one_spinner_with_the_seeds_done(monkeypatch, tmp_path,
+                                                       capsys):
+    monkeypatch.setattr(sys, "stderr", TTY())
+    drawn = "seeding: 0/1 done"
+
+    def seeded(seed, root, repairs, effort):
+        deadline = time.monotonic() + 5
+        while drawn not in sys.stderr.getvalue() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        return {"seed": seed["name"], "verdict": "NECESSARY", "repair_attempts": 0}
+    monkeypatch.setattr(sd, "run_seed", seeded)
+    monkeypatch.setattr(sd, "write_corpus", lambda log: 1)
+    seeds = tmp_path / "seeds.jsonl"
+    seeds.write_text(json.dumps(SEED) + "\n")
+    sd.main(["--seeds", str(seeds), "--log", str(tmp_path / "log.jsonl")])
+    assert drawn in sys.stderr.getvalue()
+    assert "[1/1] repo/top: NECESSARY (repairs 0)" in capsys.readouterr().out

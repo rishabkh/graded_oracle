@@ -48,24 +48,29 @@ def _share(marker):
 
 # --- the seed file -------------------------------------------------------------
 
-def test_the_trait_pool_loads_twenty_six_weighted_lines_without_comments():
-    assert len(LINES) == 26
+ARRAY = "data held in an array"
+
+
+def test_the_trait_pool_loads_thirty_weighted_lines_without_comments():
+    assert len(LINES) == 30
     assert not any(line.startswith("#") for line in LINES)
-    assert len(set(LINES)) == 8              # repeated lines carry the weights
+    assert len(set(LINES)) == 10             # repeated lines carry the weights
 
 
 def test_the_traits_are_weighted_like_the_decision():
     """Handshake on half the designs; independently, an asynchronous reset
-    on 3 in 13, named states on 3 in 13, a register loaded from an input on
-    1 in 13 (the measured 7.7%, Rishab's choice on 23 Oct 2026), and plain
-    synchronous style on the rest."""
-    assert _share("back-pressure") == 13
+    on 3 in 15, named states on 3 in 15, a register loaded from an input on
+    1 in 15 (Rishab chose the measured shares on 23 Oct 2026, then in 13),
+    data held in an array on 2 in 15 (8 Nov 2026: memory arrays are in 12%
+    of the 560 real modules), and plain synchronous style on the rest."""
+    assert _share("back-pressure") == 15
     assert _share("negedge rst_n") == 6
     assert _share("typedef enum") == 6
     assert _share("load command") == 2
-    others = ("negedge rst_n", "typedef enum", "load command")
+    assert _share(ARRAY) == 4
+    others = ("negedge rst_n", "typedef enum", "load command", ARRAY)
     plain = [l for l in LINES if not any(m in l for m in others)]
-    assert len(plain) == 12                  # 6 in 13: the rest
+    assert len(plain) == 12                  # 6 in 15: the rest
     # the two choices are crossed: with or without a handshake, the same
     # mix of the other traits
     for marker in others:
@@ -79,12 +84,51 @@ def test_every_trait_keeps_the_rules_that_make_proofs_sound():
     for line in set(LINES):
         assert "assume" not in line and "->" not in line, line
         if "negedge rst_n" in line or "typedef enum" in line \
-                or "load command" in line:
+                or "load command" in line or ARRAY in line:
             assert "initial value" in line, line
-        if "back-pressure" in line or "negedge rst_n" in line:
+        if "back-pressure" in line or "negedge rst_n" in line \
+                or ARRAY in line:
             assert "idle condition" in line, line
         if "load command" in line:
             assert "every value it can take" in line, line
+
+
+def test_an_array_is_built_the_way_real_storage_is_built():
+    """The extender's storage rules since 21 Oct 2026, after a hardware
+    expert's advice: pointers that wrap around, full and empty from the
+    pointers, the sender told to wait, nothing dropped or overwritten; and
+    facts about what the entries hold, one for each entry."""
+    lines = {l for l in LINES if ARRAY in l}
+    assert len(lines) == 2
+    for line in lines:
+        text = squash(line)
+        for words in ("when the design keeps several items at once",
+                      "depth is a parameter", "wrap around",
+                      "full and empty are worked out from the pointers",
+                      "a valid bit for each entry",
+                      "never dropped or overwritten",
+                      "the design makes the sender wait",
+                      "one for each entry"):
+            assert words in text, (words, line[:60])
+        assert "forall" not in text          # the initiator checks plain facts
+
+
+def test_the_array_facts_are_the_ones_the_extender_asks_for():
+    """One wording for the generator and the extender (8 Nov 2026): the
+    buffer facts of the Ibex core's own proofs, written out plainly here,
+    since the generator's checker reads no compact `forall` facts."""
+    sys.path.insert(0, str(ROOT / "extender"))
+    import extend
+    ibex = squash(extend.IBEX_FACT_PATTERNS)
+    lines = {l for l in LINES if ARRAY in l}
+    assert lines
+    for line in lines:
+        text = squash(line)
+        for words in ("never each older than the other",
+                      "still outstanding", "every older busy entry has finished",
+                      "address being sent out",
+                      "at most one bit set, written as a sum"):
+            assert words in text and words in ibex, words
 
 
 def test_the_file_records_where_the_weights_came_from():
@@ -100,7 +144,9 @@ def test_the_file_records_where_the_weights_came_from():
                  "43 (7.7%)", "182 (32.5%)",
                  "follows Ibex (20%) rather than the 5%",
                  "23 Oct 2026, Rishab chose the measured shares",
-                 "1 in 13 (7.7%"):
+                 "1 in 13 (7.7%",
+                 "8 Nov 2026", "memory arrays in 12% of the 560 modules",
+                 "2 in 15", "formal/icache/formal_tb.sv"):
         assert word in head, word
     assert "never from the test sets" not in head
 
@@ -209,12 +255,25 @@ def _plan(n, monkeypatch):
 
 
 def test_a_run_deals_every_trait_line_evenly(monkeypatch):
-    """Balanced turns, like the other seeds: over 52 designs every one of
-    the 26 lines is drawn exactly twice, so the shares are exact."""
-    plans = _plan(52, monkeypatch)
+    """Balanced turns, like the other seeds: over 60 designs every one of
+    the 30 lines is drawn exactly twice, so the shares are exact."""
+    plans = _plan(60, monkeypatch)
     drawn = Counter(record["trait"] for record, *_ in plans)
     assert drawn == Counter({line: 2 * k for line, k in Counter(LINES).items()})
-    assert sum("back-pressure" in t for t in drawn.elements()) == 26
+    assert sum("back-pressure" in t for t in drawn.elements()) == 30
+    assert sum(ARRAY in t for t in drawn.elements()) == 8
+
+
+def test_a_run_can_draw_from_another_trait_file(monkeypatch, tmp_path):
+    """--traits (8 Nov 2026), for a trial that wants more of one trait than
+    the real-hardware share; a run without it draws from the usual file."""
+    f = tmp_path / "traits.txt"
+    f.write_text("# a trial file\none: A\none: A\ntwo: B\n")
+    monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
+    _, _, plans = R.plan_attempts(6, cmd="test", grade=False, model=R.MODEL,
+                                  constructs_path=None, scales_path=None,
+                                  even_seeds=False, traits_path=f)
+    assert Counter(r["trait"] for r, *_ in plans) == {"one: A": 4, "two: B": 2}
 
 
 def test_planning_a_run_needs_no_model_call_and_puts_the_trait_in_each_question(
@@ -230,7 +289,7 @@ def test_even_seeds_leave_the_trait_weights_alone(monkeypatch):
     counted on the evaluation sets; the trait weights were not, so they
     stay (the file's header says where each came from)."""
     monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
-    _, _, plans = R.plan_attempts(26, cmd="test", grade=False, model=R.MODEL,
+    _, _, plans = R.plan_attempts(30, cmd="test", grade=False, model=R.MODEL,
                                   constructs_path=None, scales_path=None,
                                   even_seeds=True)
     assert Counter(r["trait"] for r, *_ in plans) == Counter(LINES)
