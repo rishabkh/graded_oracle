@@ -46,7 +46,8 @@ import llm_client                                            # noqa: E402
 import distill_log                                           # noqa: E402
 from fact_format import unreadable_facts                     # noqa: E402
 import freeze_check                                          # noqa: E402
-from oracle import NecessityVerdict, grade_triple_generated  # noqa: E402
+from oracle import (NecessityVerdict,                        # noqa: E402
+                    grade_triple_generated, ran_out_of_time)
 from oracle.contract import parse_generator_output           # noqa: E402
 # RESET_NAMES is kept here for callers of run.RESET_NAMES
 from reset_reads import (RESET_NAMES, describe,       # noqa: E402,F401
@@ -65,6 +66,17 @@ MAX_TOKENS = int(os.getenv("INITIATOR_MAX_TOKENS", "128000"))
 # second opinion and the sanity check keep 120 s; conditions unreached in
 # 20 steps get a deeper look first (oracle/depth.py).
 GRADE_KWARGS = dict(timeout_s=300, pdr_timeout_s=120, cover_depth="auto")
+# A design whose verdict came from the checker's time limit is checked once
+# more with this many seconds, as the extender has done since 21 Oct 2026
+# (distractor.necessity_check). 16 Nov 2026, Rishab: "alright let's do it":
+# 46 of the 300 starting designs of the 15 Nov pilot were lost to the 300 s
+# limit, and the extender's second check saved 11 of the 27 steps it ran
+# on. Only the main limit grows. 0 is off, as before; the pilot's
+# --recheck-timeout-s sets it.
+RECHECK_TIMEOUT_S = 0
+# what the second check adds to a judged design, kept on its log row
+RECHECK_KEYS = ("first_result", "rechecked", "recheck_timeout_s",
+                "recheck_wall_s")
 LOG_PATH = HERE / "logs" / "attempts.jsonl"
 # One design trait per design since 21 Oct 2026 (handshake, asynchronous
 # reset, named states, a register loaded from an input, or plain style);
@@ -594,9 +606,36 @@ def judge(raw_json, stop, scope, grade=True, label="", proof_root=None,
     with (Spinner(f"{label} oracle grading") if spin
           else contextlib.nullcontext()):
         result = grade_triple_generated(raw_json, **kw)
-    return {"verdict": result.verdict.name, "reason": result.reason,
-            "result": asdict(result),
-            "grade_wall_s": round(time.monotonic() - t0, 2), **kept}
+    out = {"verdict": result.verdict.name, "reason": result.reason,
+           "result": asdict(result),
+           "grade_wall_s": round(time.monotonic() - t0, 2), **kept}
+    if not RECHECK_TIMEOUT_S or not ran_out_of_time(result):
+        return out
+    # the time limit decided it: once more, never twice, with the longer
+    # limit, the proofs in a "recheck" folder beside the first ones; the
+    # second verdict stands and the first check is kept whole
+    t0 = time.monotonic()
+    kw["timeout_s"] = RECHECK_TIMEOUT_S
+    if proof_root is not None:
+        kw["workdir_root"] = Path(proof_root) / "recheck"
+    with (Spinner(f"{label} checking again with a {RECHECK_TIMEOUT_S} s "
+                  "limit") if spin else contextlib.nullcontext()):
+        result = grade_triple_generated(raw_json, **kw)
+    wall_s = round(time.monotonic() - t0, 2)
+    return dict(out, verdict=result.verdict.name, reason=result.reason,
+                result=asdict(result), grade_wall_s=wall_s,
+                first_result={k: out[k] for k in ("verdict", "reason",
+                                                  "grade_wall_s", "result")},
+                rechecked=True, recheck_timeout_s=RECHECK_TIMEOUT_S,
+                recheck_wall_s=wall_s)
+
+
+def recheck_note(j):
+    """What a status line adds for a design that was checked twice."""
+    if not j.get("rechecked"):
+        return ""
+    return (f" (checked again with a {j['recheck_timeout_s']} s limit; the "
+            f"first check said {j['first_result']['verdict']})")
 
 
 def finish_attempt(i, record, raw_json, usage, stop, raw_text, *, grade,
@@ -632,9 +671,10 @@ def finish_attempt(i, record, raw_json, usage, stop, raw_text, *, grade,
         record["verdict"] = j["verdict"]
         record["reason"] = j["reason"]
         record["result"] = j["result"]
+        record.update({k: j[k] for k in RECHECK_KEYS if k in j})
         tally[j["verdict"]] = tally.get(j["verdict"], 0) + 1
         print(f"[{i}] {j['verdict']:12s} ({record['grade_wall_s']}s) "
-              f"- {j['reason'][:100]}")
+              f"- {j['reason'][:100]}" + recheck_note(j))
     dump(record, log_path)
     if distill_path and extras is not None and user_msg is not None:
         distill_log.record(distill_path, "initiate",
@@ -1056,6 +1096,7 @@ def design_pipeline(i, record, user_msg, extras, *, mode, repairs, model,
                   grade_wall_s=j["grade_wall_s"], repair_attempts=attempt)
     if "freeze_check" in j:             # the final design's, as each round's
         record["freeze_check"] = j["freeze_check"]
+    record.update({k: j[k] for k in RECHECK_KEYS if k in j})
     if current is not None:
         record["raw_json"] = current
     else:
@@ -1089,7 +1130,8 @@ def design_pipeline(i, record, user_msg, extras, *, mode, repairs, model,
     stage(i, "done")
     say(f"[{i}] {mode:9s} {str(j['verdict']):12s} after {attempt} "
         f"repair(s)" + (" (checker ran out of time)"
-                        if record.get("repair_skipped") else ""))
+                        if record.get("repair_skipped") else "")
+        + recheck_note(j))
     return record
 
 
@@ -1202,6 +1244,11 @@ def main():
                        help="turn away a design that a receiver saying ready "
                             "only after it sees valid freezes for good "
                             "(freeze_check.py, 8 Nov 2026); off, as before")
+    pilot.add_argument("--recheck-timeout-s", type=int, default=0,
+                       metavar="S",
+                       help="check a design that ran out of time once more "
+                            "with this many seconds (the extender uses 900); "
+                            "0, the default, is no second check, as before")
     pilot.add_argument("--traits", default=None,
                        help="design traits file to draw from instead of "
                             "design_traits.txt (8 Nov 2026: a trial that "
@@ -1221,6 +1268,13 @@ def main():
     elif args.cmd == "grade-one":
         run_attempts(1, grade=True, show_raw=True, cmd="grade-one")
     elif args.cmd == "pilot":
+        first_s = GRADE_KWARGS["timeout_s"]
+        if args.recheck_timeout_s < 0 or \
+                0 < args.recheck_timeout_s <= first_s:
+            p.error("--recheck-timeout-s must be 0 (no second check) or "
+                    f"longer than the first check's {first_s} s")
+        global RECHECK_TIMEOUT_S
+        RECHECK_TIMEOUT_S = args.recheck_timeout_s
         freeze_check.ON = args.freeze_check
         common = dict(grade=True, cmd="pilot", constructs_path=args.constructs,
                       scales_path=args.scales, log_path=args.log,

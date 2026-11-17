@@ -34,6 +34,25 @@ INDUCTION_FAIL_NOTE = (
     "(CTI in evidence)")
 
 
+def ran_out_of_time(result) -> bool:
+    """Did this verdict of the checker come from its time limit? The proof
+    with the facts ran out of time (NOT_PROVEN), or the proof without them
+    did (INCONCLUSIVE). A false property, a proof that did not close, a
+    tool failure or a format error did not. Nor did a proof whose
+    induction step had already failed when the time ran out (the checker's
+    induction_failed_before_timeout note): more time cannot make it close.
+
+    The extender has asked this since 21 Oct 2026 before it checks a step
+    again with a longer limit; the initiator asks it too since 16 Nov 2026,
+    so the rule lives here, one copy for both."""
+    leg = {"NOT_PROVEN": result.with_invariants,
+           "INCONCLUSIVE": result.without_invariants}.get(result.verdict.name)
+    if leg is None or leg.tier.name != "TIMEOUT":
+        return False
+    return not any(str(note).startswith("induction_failed_before_timeout")
+                   for run in leg.runs for note in run.notes)
+
+
 def _evidence(mode: str, out: SbyOutcome, depth: int, *,
               timeout_source: str | None = None) -> RunEvidence:
     ev = RunEvidence(

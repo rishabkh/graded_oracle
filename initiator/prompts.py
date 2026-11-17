@@ -107,6 +107,17 @@ Three conditions, all required.
 - The design MUST have an enable or idle condition — an input that, when low, leaves
   all state unchanged (e.g. `i_ce`, `step`, or push and pop both low). Condition (2)
   depends on it: the state S must be one the design can sit in indefinitely.
+- Never drop or overwrite a request silently. When a new item, word or command
+  can arrive while the design is busy or full, give that input an output that
+  tells the sender to wait: a `ready` it must see before the item counts as
+  taken, or a `busy` or `full` flag that is high exactly while the item would be
+  refused. A design with no such output must take every item it is offered.
+- An item the design has accepted must reach the output without help: no later
+  input to push it along, and the output's valid must not wait for the
+  receiver's ready. The receiver may raise ready only after it sees valid, and
+  the sender may send one item and then nothing more; that item must still come
+  out. So never let a stage move only on `in_valid || out_ready`: a stage moves
+  when the next one is empty or is being read.
 - One property per module, unless the property style below asks for two.
 - Never write `assume`. Assumptions are not checked and would let a false premise
   carry the proof.
@@ -292,14 +303,20 @@ _CAP = re.compile(r"Keep the module under\s+(\d+)\s+lines")
 # it uses, so a stamp still cannot claim a rule its prompt lacks. The reset
 # rule's first wording (22 Oct 2026, every reset, stamped "no-reset-reads")
 # wrote no rows before it narrowed to asynchronous resets on 23 Oct 2026,
-# so only the narrow one has a stamp. The answer form of 26 Oct 2026 (the
-# explanation after the design) is the last.
+# so only the narrow one has a stamp. Then the answer form of 26 Oct 2026
+# (the explanation after the design). The last two came on 16 Nov 2026
+# (Rishab: "alright let's do it"): of the 42 really wrong starting designs
+# in the 15 Nov pilot, 21 dropped or overwrote a request with no output
+# telling the sender to wait, and 4 froze because a stage moved only on
+# `in_valid || out_ready`, so a lone item never reached the output.
 STAMPED_RULES = (
     ("size-params", "Declare the design's sizes as parameters"),
     ("plain-facts", "boolean expression over the design's signals, with no "
                     "system function"),
     ("no-async-reset-reads", "never read an asynchronous reset"),
     ("explanation-after-design", "a short explanation of the finished answer"),
+    ("senders-told-to-wait", "Never drop or overwrite a request silently"),
+    ("items-delivered-unaided", "must reach the output without help"),
 )
 
 

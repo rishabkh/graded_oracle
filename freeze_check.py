@@ -35,6 +35,20 @@ held every i_ input with its items, the clock enable i_ce too, so a good
 design looked frozen; 2 designs that took items only while their output's
 receiver already said ready never moved, which passed; and, once checked,
 a slow design looked frozen.
+
+A sender that goes quiet (16 Nov 2026, Rishab: "alright let's do it"). Four
+starting designs of the 15 Nov pilot passed this check and were then
+labeled wrong for one pattern: a pipeline that moves only when a new input
+arrives or the receiver is already ready (`advance = in_ready && (in_valid
+|| out_ready)`), so a lone item never reaches a receiver that waits to see
+valid. The check's senders never stopped, and the next input pushed the
+item along. So a design that moves, with a sender and a receiver, runs
+again for bursts of 1, 2 and 4 items after which every sender stays quiet:
+once with the waiting receivers and once with receivers always ready, on
+the same inputs. "stuck_when_quiet" when, under every seed, the always-
+ready receivers got more items out than the waiting ones and both runs
+had long gone still; it is turned away like a freeze. Comparing the two
+runs leaves alone a design that rightly holds part of an item, or is slow.
 """
 import json
 import re
@@ -59,6 +73,7 @@ LONGER = 10         # a design that looks frozen runs again 10 times as long,
                     # cycles of that run too (8 Nov 2026: a slow design, about
                     # 1,550 cycles an item, looked frozen)
 SEEDS = (1, 2, 3)   # frozen only when frozen under every one
+QUIET_BURSTS = (1, 2, 4)    # items each sender offers before it goes quiet
 TIMEOUT_S = 60
 PREFIX = "oracle_fz"
 
@@ -197,10 +212,13 @@ def _random(name, width):
     return f"{name} <= $random({PREFIX}_seed);"
 
 
-def testbench(top, ports, clock, seed, cycles, always_ready=False):
+def testbench(top, ports, clock, seed, cycles, always_ready=False,
+              quiet_after=None):
     """A testbench module `oracle_fz_tb` for `top`: it prints one line,
     ORACLE_FZ followed by the counts, and stops after `cycles` cycles.
-    With `always_ready` every receiver says ready on every cycle."""
+    With `always_ready` every receiver says ready on every cycle. With
+    `quiet_after` every sender offers nothing more once that many of its
+    items were taken."""
     chans = channels(ports)
     valids = {c["valid"]: c for c in chans}
     readies = {c["ready"]: c for c in chans}
@@ -217,6 +235,7 @@ def testbench(top, ports, clock, seed, cycles, always_ready=False):
              f"    integer {p}_cycle = 0;",
              f"    integer {p}_moves = 0, {p}_first = -1, {p}_last = -1;",
              f"    integer {p}_still = 0;",
+             f"    integer {p}_outs = 0, {p}_last_out = -1;",
              f"    reg {clock} = 1'b0;",
              f"    always #5 {clock} = ~{clock};"]
     for name, (direction, width) in sorted(ports.items()):
@@ -230,6 +249,8 @@ def testbench(top, ports, clock, seed, cycles, always_ready=False):
     for c in chans:
         if c["side"] == "in":
             lines.append(f"    reg {p}_took_{c['name']} = 1'b0;")
+            if quiet_after is not None:
+                lines.append(f"    integer {p}_sent_{c['name']} = 0;")
     moves = " || ".join(f"({c['valid']} && {c['ready']})" for c in chans) \
         or "1'b0"
     lines.append(f"    wire {p}_move = {moves};")
@@ -251,8 +272,17 @@ def testbench(top, ports, clock, seed, cycles, always_ready=False):
             # nothing offered before the count starts, after the reset
             lines.append(f"        if ({p}_cycle < 3) {name} <= 1'b0;")
             lines.append(f"        else if (!{name} || {p}_took_{c['name']}) begin")
-            lines.append(f"            {_random(name, width)}")
-            lines += [f"            {_random(d, ports[d][1])}" for d in sorted(held)]
+            offer = [_random(name, width)] + [_random(d, ports[d][1])
+                                              for d in sorted(held)]
+            if quiet_after is None:
+                lines += [f"            {line}" for line in offer]
+            else:
+                # the burst is over: this sender stays quiet from here on
+                lines.append(f"            if ({p}_sent_{c['name']} >= "
+                             f"{quiet_after}) {name} <= 1'b0;")
+                lines.append("            else begin")
+                lines += [f"                {line}" for line in offer]
+                lines.append("            end")
             lines.append("        end")
         else:
             lines.append(f"        {_random(name, width)}")
@@ -271,11 +301,25 @@ def testbench(top, ports, clock, seed, cycles, always_ready=False):
         f"                {p}_still = 0;",
         f"            end else if ({p}_first >= 0)",
         f"                {p}_still = {p}_still + 1;",
+    ]
+    for c in chans:
+        hand_over = f"({c['valid']} && {c['ready']})"
+        if c["side"] == "out":
+            # the items that came out, apart from the ones taken in
+            lines += [f"            if {hand_over} begin",
+                      f"                {p}_outs = {p}_outs + 1;",
+                      f"                {p}_last_out = {p}_cycle;",
+                      "            end"]
+        elif quiet_after is not None:
+            lines.append(f"            if {hand_over} {p}_sent_{c['name']} = "
+                         f"{p}_sent_{c['name']} + 1;")
+    lines += [
         "        end",
         f"        {p}_cycle = {p}_cycle + 1;",
         f"        if ({p}_cycle == {cycles}) begin",
         f'            $display("ORACLE_FZ moves=%0d first=%0d last=%0d '
-        f'still=%0d", {p}_moves, {p}_first, {p}_last, {p}_still);',
+        f'still=%0d outs=%0d last_out=%0d", {p}_moves, {p}_first, '
+        f'{p}_last, {p}_still, {p}_outs, {p}_last_out);',
         "            $finish;",
         "        end",
         "    end",
@@ -314,11 +358,14 @@ def _read(design, top, work):
 
 
 def _run(design, top, ports, clock, seed, work, always_ready=False,
-         cycles=CYCLES):
+         cycles=CYCLES, quiet_after=None):
     tag = (f"{seed}" + ("_always_ready" if always_ready else "")
-           + (f"_{cycles}_cycles" if cycles != CYCLES else ""))
+           + (f"_{cycles}_cycles" if cycles != CYCLES else "")
+           + (f"_quiet_after_{quiet_after}" if quiet_after is not None
+              else ""))
     tb = work / f"tb_{tag}.v"
-    tb.write_text(testbench(top, ports, clock, seed, cycles, always_ready))
+    tb.write_text(testbench(top, ports, clock, seed, cycles, always_ready,
+                            quiet_after))
     sim = work / f"sim_{tag}.vvp"
     r = subprocess.run(["iverilog", "-g2012", "-o", str(sim), "-s",
                         f"{PREFIX}_tb", str(tb), str(design)],
@@ -331,16 +378,44 @@ def _run(design, top, ports, clock, seed, work, always_ready=False,
     except subprocess.TimeoutExpired:
         return {"error": f"the simulation ran past {TIMEOUT_S} s"}
     m = re.search(r"ORACLE_FZ moves=(\d+) first=(-?\d+) last=(-?\d+) "
-                  r"still=(\d+)", r.stdout)
+                  r"still=(\d+) outs=(\d+) last_out=(-?\d+)", r.stdout)
     if not m:
         return {"error": (r.stdout + r.stderr).strip()[-300:]}
-    moves, first, last, still = map(int, m.groups())
-    return {"moves": moves, "first": first, "last": last, "still": still}
+    moves, first, last, still, outs, last_out = map(int, m.groups())
+    return {"moves": moves, "first": first, "last": last, "still": still,
+            "outs": outs, "last_out": last_out}
+
+
+def _quiet(design, top, ports, clock, seeds, work):
+    """What the quiet-sender runs saw: for the first burst size that left
+    the design stuck, how many items came out for the waiting receivers
+    and for receivers always ready (the fewest over the seeds); otherwise
+    that none did. Stuck means, under every seed, more came out with
+    receivers always ready, both runs still for the last STILL cycles."""
+    for burst in QUIET_BURSTS:
+        pairs = []
+        for seed in seeds:
+            waiting = _run(design, top, ports, clock, seed, work,
+                           quiet_after=burst)
+            if "error" in waiting or waiting["still"] < STILL:
+                break                       # not stuck under this seed
+            ready = _run(design, top, ports, clock, seed, work,
+                         always_ready=True, quiet_after=burst)
+            if "error" in ready or ready["still"] < STILL \
+                    or ready["outs"] <= waiting["outs"]:
+                break
+            pairs.append((waiting, ready))
+        if len(pairs) == len(seeds):
+            return {"burst": burst,
+                    "delivered": min(w["outs"] for w, _ in pairs),
+                    "always_ready_delivered": min(r["outs"] for _, r in pairs)}
+    return {"bursts": list(QUIET_BURSTS), "stuck": False}
 
 
 def check(verilog, top, clock="clk", work=None, seeds=SEEDS):
-    """{"result": "frozen" | "waits_for_ready" | "moves" | "never_moved" |
-    "not_checked" | "error", ...}; see the top of this file."""
+    """{"result": "frozen" | "waits_for_ready" | "stuck_when_quiet" |
+    "moves" | "never_moved" | "not_checked" | "error", ...}; see the top of
+    this file."""
     if not _might_have_channels(verilog):
         return {"result": "not_checked", "why": "no valid/ready pair"}
     if shutil.which("iverilog") is None or shutil.which("yosys") is None:
@@ -376,6 +451,16 @@ def check(verilog, top, clock="clk", work=None, seeds=SEEDS):
                 # still to the end: slow, or stopped for good?
                 longer = [_run(design, top, ports, clock, s, work,
                                cycles=CYCLES * LONGER) for s in seeds]
+            quiet = None
+            moving = (not any("error" in r for r in runs)
+                      and any(r["first"] >= 0 for r in runs)
+                      and (longer is None or (
+                          not any("error" in r for r in longer)
+                          and min(r["still"] for r in longer)
+                          < STILL * LONGER)))
+            if moving and {c["side"] for c in chans} == {"in", "out"}:
+                # it moves while items keep coming: and when they stop?
+                quiet = _quiet(design, top, ports, clock, seeds, work)
         except subprocess.TimeoutExpired:
             return {"result": "error", "why": f"iverilog ran past {TIMEOUT_S} s"}
     bad = [r["error"] for r in runs if "error" in r]
@@ -390,14 +475,18 @@ def check(verilog, top, clock="clk", work=None, seeds=SEEDS):
             if out["always_ready_moved"] > 0:
                 return dict(out, result="waits_for_ready")
         return dict(out, result="never_moved")
-    if longer is None:
-        return dict(out, result="moves")
-    bad = [r["error"] for r in longer if "error" in r]
-    if bad:
-        return dict(out, result="error", why=bad[0])
-    out["long_run_still"] = min(r["still"] for r in longer)
-    frozen = out["long_run_still"] >= STILL * LONGER
-    return dict(out, result="frozen" if frozen else "moves")
+    if longer is not None:
+        bad = [r["error"] for r in longer if "error" in r]
+        if bad:
+            return dict(out, result="error", why=bad[0])
+        out["long_run_still"] = min(r["still"] for r in longer)
+        if out["long_run_still"] >= STILL * LONGER:
+            return dict(out, result="frozen")
+    if quiet is not None:
+        out["quiet"] = quiet
+        if "burst" in quiet:
+            return dict(out, result="stuck_when_quiet")
+    return dict(out, result="moves")
 
 
 def lesson(result):
@@ -407,6 +496,16 @@ def lesson(result):
     seen = (f"With every receiver that says ready only after it sees valid "
             f"(allowed: a receiver may wait to see an item before taking it) "
             f"on {named}, ")
+    if result["result"] == "stuck_when_quiet":
+        q = result["quiet"]
+        sent = "1 item was" if q["burst"] == 1 else f"{q['burst']} items were"
+        return seen + (
+            f"{sent} sent and then nothing more: {q['delivered']} came out; "
+            f"with receivers that are always ready, "
+            f"{q['always_ready_delivered']} came out. An item the design "
+            f"has taken must come out by itself: move it on to the output "
+            f"and hold its valid until it is taken, without waiting for "
+            f"another input or for the receiver's ready.")
     if result["result"] == "waits_for_ready":
         return seen + (
             f"nothing moved in the whole {CYCLES}-cycle run; with receivers "
@@ -425,6 +524,12 @@ def lesson(result):
 
 def reason(result):
     """One line for the reviewer and the next question about the design."""
+    if result["result"] == "stuck_when_quiet":
+        q = result["quiet"]
+        return (f"stuck when the sender goes quiet: after {q['burst']} "
+                f"item(s) and no more, {q['delivered']} came out for "
+                f"receivers that say ready only after they see valid and "
+                f"{q['always_ready_delivered']} for receivers always ready")
     if result["result"] == "waits_for_ready":
         return (f"waits for ready: with receivers that say ready only after "
                 f"they see valid nothing moved; with receivers always ready, "
@@ -435,8 +540,8 @@ def reason(result):
 
 
 KEPT = ("result", "moved", "still", "last_move", "long_run_still",
-        "always_ready_moved", "why", "channels")
-TURNED_AWAY = ("frozen", "waits_for_ready")
+        "always_ready_moved", "quiet", "why", "channels")
+TURNED_AWAY = ("frozen", "waits_for_ready", "stuck_when_quiet")
 
 
 def gate(record, verilog, top, clock):

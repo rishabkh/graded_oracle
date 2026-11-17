@@ -403,9 +403,11 @@ def test_every_asynchronous_reset_trait_line_says_the_same():
 
 
 def test_the_stamp_names_each_rule_the_prompt_holds():
+    # two more rules since 16 Nov 2026 (test_initiator_senders_told_to_wait)
     assert P.prompt_version() == \
         "nocap+size-params+plain-facts+no-async-reset-reads" \
-        "+explanation-after-design"
+        "+explanation-after-design+senders-told-to-wait" \
+        "+items-delivered-unaided"
     size = "- Declare the design's sizes as parameters, as real hardware does"
     plain = ("Each clause is a same-cycle\n  boolean expression over the "
              "design's signals, with no system function")
@@ -431,7 +433,8 @@ def test_rows_carry_the_new_stamp(monkeypatch):
                                   even_seeds=False)
     assert {r["prompt_version"] for r, *_ in plans} == \
         {"nocap+size-params+plain-facts+no-async-reset-reads"
-         "+explanation-after-design"}
+         "+explanation-after-design+senders-told-to-wait"
+         "+items-delivered-unaided"}
 
 
 # --- the two checkers on asynchronous-reset designs (sby and EBMC) ----------

@@ -302,6 +302,14 @@ def _labeled_rows(path):
             if r.get("label")}
 
 
+def labels_by_key(path):
+    """Each labeled design's label, by key. A key labeled twice counts by
+    its last label, and a row with no label (a call that failed) is not
+    one. The extender reads this to leave wrong designs out (batch.py
+    --labels, 16 Nov 2026)."""
+    return {key: row["label"] for key, row in _labeled_rows(path).items()}
+
+
 def calibration_keys(labels, n, seed=CALIBRATION_SEED, grown=False,
                      exclude=()):
     """n designs that already have labels, a third each good, weak and

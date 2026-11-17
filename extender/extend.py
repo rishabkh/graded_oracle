@@ -194,6 +194,9 @@ MOVES = {
     # two separate queues. The new lane now has its own input stream (the
     # one exception to SYSTEM_PROMPT rule 3), shares one real thing through
     # an arbiter, and the lane that loses waits.
+    # 16 Nov 2026 (Rishab: "alright let's do it"): the arbiter takes turns.
+    # The text offered "round robin or fixed priority", and 8 grown designs
+    # of the 15 Nov pilot let steady traffic on one lane starve the other.
     "PEER": ("Add a second lane beside the existing one: similar logic with "
              "an input stream of its OWN (new input ports for its valid, its "
              "data and the like; this is the one step that may add inputs) "
@@ -203,12 +206,17 @@ MOVES = {
              "it did. The two lanes share ONE real thing: the same storage "
              "array, the same output port or the same data path (one adder, "
              "one memory port, one bus), and an arbiter written as real "
-             "logic (round robin or fixed priority) decides each cycle "
-             "which lane uses it. The lane that loses waits: it keeps its "
-             "item, its sender is told to wait through a ready or busy "
-             "output, and the item is never dropped or overwritten, counted "
-             "or not. If the existing lane has no way to make its sender "
-             "wait, it wins every conflict, or you give it a ready output. "
+             "logic decides each cycle which lane uses it. The arbiter is "
+             "round robin: the lane that waited goes next, so steady "
+             "traffic on one lane cannot shut the other out; never fixed "
+             "priority, with the one exception below. The lane that loses "
+             "waits: it keeps its item, its sender is told to wait through "
+             "a ready or busy output, and the item is never dropped or "
+             "overwritten, counted or not. If the existing lane has no way "
+             "to make its sender wait, it wins every conflict (the "
+             "exception), or you give it a ready output; the new lane then "
+             "takes an item only in a cycle it can be served, so nothing it "
+             "has taken is left waiting inside. "
              "Two separate queues joined only by a counter or a credit "
              "count do not share a real thing. Declare how many lanes there "
              "are as a parameter or localparam (localparam CHANNELS = 2), "
@@ -311,6 +319,23 @@ MOVES = {
 
 # the moves that add a whole piece of design; their question says how big
 BIG_MOVES = ("SUBUNIT", "STORAGE", "PEER")
+
+# The size a big step gives the storage it adds, drawn for each step by the
+# run (batch.sample_task) and written into its question (16 Nov 2026,
+# Rishab: "alright let's do it"). The questions' example is `#(parameter
+# DEPTH = 4)`, and 78 of the stores the 86 kept designs of the 15 Nov pilot
+# declare hold exactly 4 entries. The range is the one rule 11 keeps the
+# proofs to (4 to 8); two lanes of 8 still fit MAX_NEW_DEPTH.
+NEW_DEPTHS = (4, 5, 6, 7, 8)
+
+DEPTH_TEXT = """
+        Size of what you add: {depth} entries. A storage array or queue
+        this step adds holds that many entries (for each lane, when there
+        is one per lane), declared as a parameter or localparam with that
+        value, unless it holds one entry for each of the same things as an
+        array the design already has. The 4 in the examples is only an
+        example: each step is handed its own size, so that designs
+        differ."""
 
 SIZE_TEXT = """
         Size: this is a substantial addition. The module now has {n} lines;
@@ -570,6 +595,11 @@ extension."""
 # the sender's enable low froze whole designs (run c2_004, step t033, lost
 # route-table writes). Big moves get this block; COMPOSE and the partner
 # question say the same in their own words.
+# 16 Nov 2026 (Rishab: "alright let's do it"): its last paragraph. In the 15
+# Nov pilot 8 grown designs starved an added lane or queue (the new queue
+# emptied only while the old input was idle, `start_peer = in_ready &&
+# !in_valid && ...`) and 2 froze because an added side queue emptied only
+# on another output's ready.
 WAITING_RULE = """\
 WAITING. Never drop work, counted or not. When a part is full or busy, or
 takes an item only in some states, the item waits and its sender is made
@@ -585,6 +615,11 @@ Make the sender wait on the stream's own path only:
   writes and other inputs that arrive meanwhile;
 - whatever pause you add shows on an output, so whoever drives an input
   that is not taken while paused knows to wait.
+What a part has taken must also get out. When two streams share a part or
+an output they take turns, and the one that waited goes next, so steady
+traffic on one can never hold the other back for good. A queue you add
+empties on its own turn and its own receiver's ready: never only while
+another stream is idle, and never on another output's ready.
 
 """
 
@@ -2752,11 +2787,13 @@ def step_reads_reset(record, child, clock, facts, antecedents, parents):
 # --- prompt / call / grade ---
 
 def build_prompt(parent, ext_type, move=None, n=6, k=1, history=None,
-                 siblings=None, rejected=None):
+                 siblings=None, rejected=None, depth=None):
     """`history`: the family's earlier steps, oldest first, as
     promote.history gives them; `siblings`: what other designs grown from
     this one added (promote.children); `rejected`: what was tried on this
-    design and rejected (structural and second property only)."""
+    design and rejected (structural and second property only); `depth`:
+    the size drawn for a big step's new storage (NEW_DEPTHS), or None for
+    the question as it read before 16 Nov 2026."""
     if ext_type == "replicate":
         return REPLICATE_TEMPLATE.format(
             n=n, last=n - 1, verilog=parent["verilog"],
@@ -2795,6 +2832,8 @@ def build_prompt(parent, ext_type, move=None, n=6, k=1, history=None,
             n, lo, hi = size_target(parent["verilog"], move)
             fields["move"] += SIZE_TEXT.format(n=n, lo=lo, hi=hi,
                                                share=size_share(move, n))
+            if depth:
+                fields["move"] += DEPTH_TEXT.format(depth=depth)
         limit, biggest = new_array_limit(parent["verilog"],
                                          [parent.get("top_module", "")])
         if limit > MAX_NEW_DEPTH:

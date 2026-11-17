@@ -61,7 +61,8 @@ def test_the_example_answers_follow_the_answer_form():
 
 
 def test_the_stamp_names_the_new_answer_form():
-    assert prompt_version().endswith("+explanation-after-design")
+    # no longer the last stamp: two rules followed on 16 Nov 2026
+    assert "explanation-after-design" in prompt_version().split("+")
     old = ("Field order is deliberate: the reasoning fields come FIRST.\n"
            "- `cti_reasoning`: one or two sentences: why this state satisfies P")
     assert prompt_version(old) == "nocap"

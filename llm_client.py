@@ -599,6 +599,11 @@ def _openai_batch_results(batch_id):
 # direct reply. A failed entry raises in its own thread, as a failed direct
 # call would. Every batch is written to manifest_dir before it is sent, and
 # again with its id and token use, so paid work can always be traced.
+# A batch that is out runs on the service's side whatever happens to this
+# machine's connection, so a check on it, or the fetch of its answers, that
+# meets a network drop is asked again every poll_s until the connection is
+# back (15 Nov 2026; see _network_drop). Sending is not tried again: a
+# batch that may or may not have been made could be paid for twice.
 
 import contextlib                                              # noqa: E402
 import threading                                               # noqa: E402
@@ -608,11 +613,40 @@ from pathlib import Path                                       # noqa: E402
 
 _gate = None
 
+# How long a batch that is out is asked after with no answer at all before
+# the gate gives up on it: a day, the services' own limit for a batch.
+GIVE_UP_AFTER_S = 24 * 3600
+
+# The libraries' own list of answers worth asking for again: the request
+# timed out (408), a lock was held (409), too many requests (429), or the
+# service itself failed (500 and up).
+_BUSY_STATUS = (408, 409, 429)
+_DROP_NAMES = {"APIConnectionError", "TransportError", "ConnectionError",
+               "TimeoutError"}
+
+
+def _network_drop(exc):
+    """True for an error that says nothing about the batch itself: the
+    connection dropped or timed out, or the service was briefly too busy
+    to answer. A key that was turned away (401, 403), a batch the service
+    does not know (404) and a mistake of our own are never one, so they
+    still fail the batch at once. Told by the error's status code, or
+    with none by the names of its classes (the OpenAI and Anthropic
+    libraries both call a lost connection APIConnectionError, and httpx
+    calls a download cut off part-way a TransportError), so neither
+    library has to be installed for the other's route."""
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status in _BUSY_STATUS or status >= 500
+    return bool(_DROP_NAMES & {c.__name__ for c in type(exc).__mro__})
+
 
 class _Gate:
-    def __init__(self, flush_after_s, poll_s, manifest_dir, max_size):
+    def __init__(self, flush_after_s, poll_s, manifest_dir, max_size,
+                 give_up_after_s=GIVE_UP_AFTER_S):
         self.flush_after_s, self.poll_s, self.max_size = \
             flush_after_s, poll_s, max_size
+        self.give_up_after_s = give_up_after_s
         self.manifest_dir = Path(manifest_dir) if manifest_dir else None
         self.lock = threading.Lock()
         self.pending, self.senders = [], []
@@ -653,6 +687,28 @@ class _Gate:
         if path is not None:
             path.write_text(json.dumps(rec, indent=1))
 
+    def _through_drops(self, ask, rec, path):
+        """ask()'s answer, asked again every poll_s for as long as the
+        only trouble is a network drop, and for no longer than
+        give_up_after_s without one answer. Each drop is counted in the
+        batch's manifest. (26 Oct 2026: ten questions were failed, and
+        their paid answers never fetched, when one check on a batch that
+        had been out for twelve minutes met "Connection error".)"""
+        since = None
+        while True:
+            try:
+                return ask()
+            except Exception as exc:
+                now = time.monotonic()
+                since = now if since is None else since
+                if not _network_drop(exc) \
+                        or now - since >= self.give_up_after_s:
+                    raise
+                rec["network_drops"] = rec.get("network_drops", 0) + 1
+                rec["last_drop"] = f"{type(exc).__name__}: {exc}"[:200]
+                self._write(path, rec)
+            time.sleep(self.poll_s)
+
     def _send(self, take):
         items = [(cid, kw) for cid, kw, _ in take]
         slots = {cid: slot for cid, _, slot in take}
@@ -668,9 +724,12 @@ class _Gate:
         try:
             rec["batch_id"] = batch_submit(items)
             self._write(path, rec)
-            while batch_status(rec["batch_id"])[0] != "ended":
+            while self._through_drops(
+                    lambda: batch_status(rec["batch_id"]),
+                    rec, path)[0] != "ended":
                 time.sleep(self.poll_s)
-            got = dict(batch_results(rec["batch_id"]))
+            got = self._through_drops(
+                lambda: dict(batch_results(rec["batch_id"])), rec, path)
         except Exception as exc:
             rec["error"] = f"{type(exc).__name__}: {exc}"
             self._write(path, rec)
@@ -705,15 +764,17 @@ class _Gate:
 
 @contextlib.contextmanager
 def batch_gate(flush_after_s=20, poll_s=60, manifest_dir=None,
-               max_size=10000):
+               max_size=10000, give_up_after_s=GIVE_UP_AFTER_S):
     """Inside the block, call_claude calls from any thread go out as
     batches at half price (see the notes above): Anthropic's Message
-    Batches, or OpenAI's Batch API on that route (26 Oct 2026)."""
+    Batches, or OpenAI's Batch API on that route (26 Oct 2026). A batch
+    that is out waits through a network drop for up to give_up_after_s."""
     global _gate
     if provider() not in BATCH_PROVIDERS:
         raise RuntimeError("batch mode needs the Anthropic or OpenAI API, "
                            f"not {provider()}")
-    gate = _Gate(flush_after_s, poll_s, manifest_dir, max_size)
+    gate = _Gate(flush_after_s, poll_s, manifest_dir, max_size,
+                 give_up_after_s)
     _gate = gate
     try:
         yield gate

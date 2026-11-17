@@ -383,6 +383,188 @@ def test_with_the_gate_closed_calls_go_direct_again(monkeypatch, tmp_path):
     assert llm_client._gate is None
 
 
+# --- a batch that is out outlives a network drop (15 Nov 2026) --------------
+# On 26 Oct 2026 a batch of ten questions had been out for twelve minutes
+# when one check on it met "Connection error"; the gate failed all ten and
+# never fetched the answers, which the service finished and billed anyway.
+# A batch runs on the service's side whatever this machine's connection
+# does, so the gate keeps asking until the connection is back.
+
+def _drops_then(answer, times, calls):
+    """A check that meets a dropped connection `times` times, then works."""
+    def check(*args):
+        calls.append(args)
+        if len(calls) <= times:
+            raise ConnectionError("Connection error.")
+        return answer(*args)
+    return check
+
+
+def test_a_network_drop_while_a_batch_is_out_does_not_lose_its_answers(
+        monkeypatch, tmp_path):
+    _fake_batches(monkeypatch)
+    asked = []
+    monkeypatch.setattr(llm_client, "batch_status", _drops_then(
+        lambda bid: ("ended", {}), times=2, calls=asked))
+    with llm_client.batch_gate(flush_after_s=0.3, poll_s=0,
+                               manifest_dir=tmp_path):
+        out = _call_in_threads(3)
+    assert [o[0] for o in out] == [f'{{"echo": "q{i}"}}' for i in range(3)]
+    assert len(asked) == 3                      # two drops, then the answer
+    [m] = list(tmp_path.glob("batch_*.json"))
+    rec = json.loads(m.read_text())
+    assert rec["network_drops"] == 2
+    assert "Connection error." in rec["last_drop"]
+    assert rec["ended"] and "error" not in rec  # a finished batch, not a failed one
+    assert rec["usage"] == {"input": 3, "output": 6}
+
+
+def test_a_network_drop_while_fetching_the_answers_is_tried_again(
+        monkeypatch, tmp_path):
+    _fake_batches(monkeypatch)
+    fetched = []
+    monkeypatch.setattr(llm_client, "batch_results", _drops_then(
+        llm_client.batch_results, times=1, calls=fetched))
+    with llm_client.batch_gate(flush_after_s=0.3, poll_s=0,
+                               manifest_dir=tmp_path):
+        out = _call_in_threads(2)
+    assert [o[0] for o in out] == ['{"echo": "q0"}', '{"echo": "q1"}']
+    assert len(fetched) == 2
+    [m] = list(tmp_path.glob("batch_*.json"))
+    assert json.loads(m.read_text())["network_drops"] == 1
+
+
+def _errors_in_threads(n):
+    errors = [None] * n
+
+    def one(i):
+        try:
+            llm_client.call_claude(model="claude-opus-5-5", max_tokens=9,
+                                   user=f"q{i}")
+        except RuntimeError as e:
+            errors[i] = str(e)
+    threads = [threading.Thread(target=one, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    return errors
+
+
+def test_an_error_that_is_not_a_network_drop_still_fails_the_batch_at_once(
+        monkeypatch, tmp_path):
+    _fake_batches(monkeypatch)
+    asked = []
+
+    def refused(bid):
+        asked.append(bid)
+        raise PermissionError("the key was turned away")
+    monkeypatch.setattr(llm_client, "batch_status", refused)
+    # a short wait, so that asking again by mistake fails here, not hangs
+    with llm_client.batch_gate(flush_after_s=0.3, poll_s=0.01,
+                               manifest_dir=tmp_path, give_up_after_s=1):
+        errors = _errors_in_threads(2)
+    assert errors == ["batch failed: the key was turned away"] * 2
+    assert asked == ["batch_1"]                 # asked once, not again
+    [m] = list(tmp_path.glob("batch_*.json"))
+    rec = json.loads(m.read_text())
+    assert "the key was turned away" in rec["error"]
+    assert "network_drops" not in rec
+
+
+def test_a_drop_that_never_ends_gives_up_and_keeps_the_batch_id(
+        monkeypatch, tmp_path):
+    _fake_batches(monkeypatch)
+    asked = []
+
+    def down(bid):
+        asked.append(bid)
+        raise ConnectionError("Connection error.")
+    monkeypatch.setattr(llm_client, "batch_status", down)
+    started = _time.monotonic()
+    with llm_client.batch_gate(flush_after_s=0.2, poll_s=0.02,
+                               manifest_dir=tmp_path, give_up_after_s=0.3):
+        errors = _errors_in_threads(2)
+    assert errors == ["batch failed: Connection error."] * 2
+    assert len(asked) > 2                       # it kept asking meanwhile
+    assert 0.3 <= _time.monotonic() - started < 5
+    [m] = list(tmp_path.glob("batch_*.json"))
+    rec = json.loads(m.read_text())
+    assert rec["batch_id"] == "batch_1"         # still there to be fetched
+    assert "Connection error." in rec["error"]
+
+
+def test_the_gate_waits_a_day_for_the_connection_unless_told_otherwise(
+        monkeypatch, tmp_path):
+    _fake_batches(monkeypatch)
+    with llm_client.batch_gate(flush_after_s=0.2, poll_s=0,
+                               manifest_dir=tmp_path) as gate:
+        assert gate.give_up_after_s == 24 * 3600
+
+
+def _status_error(module, name, code):
+    httpx = pytest.importorskip("httpx")
+    response = httpx.Response(code, request=httpx.Request("GET", "https://x"))
+    return getattr(module, name)("x", response=response, body=None)
+
+
+def _sdk_errors():
+    """(label, maker, is it a network drop?) for the errors the OpenAI and
+    Anthropic libraries raise; built lazily so a missing library skips."""
+    cases = []
+    for lib in ("openai", "anthropic"):
+        def connection(lib=lib):
+            httpx = pytest.importorskip("httpx")
+            return pytest.importorskip(lib).APIConnectionError(
+                request=httpx.Request("GET", "https://x"))
+
+        def timeout(lib=lib):
+            httpx = pytest.importorskip("httpx")
+            return pytest.importorskip(lib).APITimeoutError(
+                request=httpx.Request("GET", "https://x"))
+        cases += [(f"{lib} connection lost", connection, True),
+                  (f"{lib} timed out", timeout, True)]
+        for name, code, drop in (("InternalServerError", 500, True),
+                                 ("InternalServerError", 503, True),
+                                 ("RateLimitError", 429, True),
+                                 ("ConflictError", 409, True),
+                                 ("APIStatusError", 408, True),
+                                 ("AuthenticationError", 401, False),
+                                 ("PermissionDeniedError", 403, False),
+                                 ("NotFoundError", 404, False),
+                                 ("BadRequestError", 400, False)):
+            cases.append((f"{lib} {code}",
+                          lambda lib=lib, name=name, code=code: _status_error(
+                              pytest.importorskip(lib), name, code), drop))
+    return cases
+
+
+@pytest.mark.parametrize("label,make,drop", _sdk_errors(),
+                         ids=[c[0] for c in _sdk_errors()])
+def test_which_library_errors_count_as_a_network_drop(label, make, drop):
+    assert llm_client._network_drop(make()) is drop
+
+
+@pytest.mark.parametrize("exc,drop", [
+    (ConnectionError("Connection error."), True),
+    (ConnectionResetError("reset by peer"), True),
+    (TimeoutError("timed out"), True),
+    (RuntimeError("OpenAI batch failed: a request it could not read"), False),
+    (PermissionError("the key was turned away"), False),
+    (KeyError("output_file_id"), False),
+    (ValueError("not JSON"), False),
+])
+def test_which_plain_errors_count_as_a_network_drop(exc, drop):
+    assert llm_client._network_drop(exc) is drop
+
+
+def test_a_broken_download_counts_as_a_network_drop():
+    httpx = pytest.importorskip("httpx")
+    assert llm_client._network_drop(httpx.ReadError("cut off")) is True
+    assert llm_client._network_drop(
+        httpx.RemoteProtocolError("peer closed")) is True
+
+
 # --- the call log (8 Oct 2026): every API call, saved at the source --------
 # Whatever script makes a call, the client itself appends one line: the
 # exact request, the raw answer (even a refusal or a cut-off one), tokens,

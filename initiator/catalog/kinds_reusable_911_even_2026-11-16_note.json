@@ -1,0 +1,12 @@
+{
+ "timestamp": "2026-11-16T04:02:34.468378+00:00",
+ "what": "911 kinds for a run that may use a kind again: they may already have designs, and none is held out for a test",
+ "pool": "every checked kind of the catalog, minus the 10 adders with no state, minus the kinds the judges disagreed on, minus every kind in a held-out list (catalog_kinds.reusable_kinds)",
+ "left": 911,
+ "held_out": {
+  "kinds_unseen_100_even_2026-10-12.txt": 100
+ },
+ "rule": "catalog_kinds.even_draw(reusable, 911, seed)",
+ "seed": 20261116,
+ "categories_covered": 102
+}

@@ -479,6 +479,82 @@ def draw_unused(n, seed, name, out_dir=LOGS, catalog=CATEGORIES, lists=None,
     return out
 
 
+# --- kinds a big run may use again (16 Nov 2026) --------------------------------
+# Rishab: "alright let's do it". Every draw so far took kinds nothing had
+# used, and 324 were left after the 15 Nov pilot; a run of thousands of
+# starting designs has to come back to kinds that already have designs (its
+# size and design-trait seeds still differ from try to try). The one thing
+# that must not happen is a kind held out for a test turning up in training
+# designs, so the held-out lists are read every time and, with none to
+# read, nothing is drawn.
+def held_out_lists(logs=LOGS):
+    """The kinds lists held out for a test: logs/kinds_unseen_*.txt (the
+    generation test's 100 kinds of 12 Oct 2026 are the first)."""
+    return sorted(Path(logs).glob("kinds_unseen_*.txt"))
+
+
+def reusable_kinds(catalog=CATEGORIES, keep_out=None):
+    """(category, kind) pairs a run may use whether or not designs of that
+    kind exist: every checked kind of the catalog, the original 32 too,
+    minus the 10 adders with no state of their own, minus the kinds the two
+    judges put in different areas, minus every kind a held-out list names
+    (`keep_out`, by default held_out_lists()). Raises ValueError when there
+    is no held-out list to read."""
+    lists = held_out_lists() if keep_out is None else list(keep_out)
+    if not lists:
+        raise ValueError("no held-out kinds list to keep out "
+                         "(initiator/logs/kinds_unseen_*.txt); nothing was "
+                         "drawn")
+    held = set()
+    for path in lists:
+        held |= _names(Path(path).read_text().splitlines())
+    out = []
+    for k in json.loads(Path(catalog).read_text())["kinds"]:
+        if k["name"] in STATELESS_ADDERS or k["name"] in held:
+            continue
+        if (k.get("judge1") or {}).get("primary") != \
+                (k.get("judge2") or {}).get("primary"):
+            continue
+        out.append((k["category"], k))
+    return out
+
+
+def draw_reusable(n, seed, name, out_dir=OUT_DIR, catalog=CATEGORIES,
+                  keep_out=None):
+    """even_draw(reusable_kinds(), n, seed) written as generator lines to
+    out_dir/<name>.txt, with a note of the pool, the held-out lists, the
+    rule and the seed beside it. `n` None takes every reusable kind.
+    Returns the list's path. The list goes to the catalog folder, which is
+    kept in git, so it reaches the cluster with the code; initiator/logs,
+    where the held-out lists are, is not, so a draw is made on the laptop."""
+    lists = held_out_lists() if keep_out is None else list(keep_out)
+    pool = reusable_kinds(catalog, lists)
+    n = len(pool) if n is None else n
+    if n > len(pool):
+        raise ValueError(f"only {len(pool)} kinds can be reused; nothing "
+                         "was drawn")
+    drawn = even_draw(pool, n, seed)
+    out = Path(out_dir) / f"{name}.txt"
+    out.write_text("".join(construct_line(k) + "\n" for _, k in drawn))
+    note = {"timestamp": datetime.now(timezone.utc).isoformat(),
+            "what": f"{n} kinds for a run that may use a kind again: they "
+                    "may already have designs, and none is held out for a "
+                    "test",
+            "pool": "every checked kind of the catalog, minus the 10 adders "
+                    "with no state, minus the kinds the judges disagreed "
+                    "on, minus every kind in a held-out list "
+                    "(catalog_kinds.reusable_kinds)",
+            "left": len(pool),
+            "held_out": {Path(p).name: len(_names(
+                Path(p).read_text().splitlines())) for p in lists},
+            "rule": f"catalog_kinds.even_draw(reusable, {n}, seed)",
+            "seed": seed,
+            "categories_covered": len({c for c, _ in drawn})}
+    (Path(out_dir) / f"{name}_note.json").write_text(json.dumps(note, indent=1)
+                                                    + "\n")
+    return out
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(
         description="Choose new hardware kinds with one call to a fresh model.")
@@ -503,10 +579,22 @@ def main(argv=None):
     p.add_argument("--draw-unused", type=int, default=None, metavar="N",
                    help="draw N kinds nothing has used, with --seed, into "
                         "logs/<--name>.txt and its note; no call")
+    p.add_argument("--draw-reusable", type=int, default=None, metavar="N",
+                   help="draw N kinds for a big run, with --seed, into "
+                        "catalog/<--name>.txt and its note: a kind may already "
+                        "have designs, but never one held out for a test "
+                        "(logs/kinds_unseen_*.txt); 0 takes every such "
+                        "kind; no call")
     p.add_argument("--name", default=None,
-                   help="with --draw-unused: the list's name, e.g. "
-                        "kinds_unused_20_even_2026-11-08")
+                   help="with --draw-unused or --draw-reusable: the list's "
+                        "name, e.g. kinds_unused_20_even_2026-11-08")
     args = p.parse_args(argv)
+    if args.draw_reusable is not None:
+        if not args.name:
+            sys.exit("--draw-reusable needs --name; nothing was drawn")
+        out = draw_reusable(args.draw_reusable or None, args.seed, args.name)
+        print(f"reusable kinds -> {out}")
+        return
     if args.draw_unused:
         if not args.name:
             sys.exit("--draw-unused needs --name; nothing was drawn")

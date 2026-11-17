@@ -51,7 +51,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
-from extend import (MOVE_WEIGHTS, SECOND_PROPERTY_RATE,          # noqa: E402
+from extend import (BIG_MOVES, MOVE_WEIGHTS, NEW_DEPTHS,          # noqa: E402
+                    SECOND_PROPERTY_RATE,
                     REPLICATE_SCHEMA, SECOND_SCHEMA,
                     COMPOSE_SCHEMA, PARTNER_SCHEMA, SYSTEM_PROMPT,
                     build_prompt, call_model, compose_prompt, expand_facts,
@@ -74,11 +75,32 @@ import gates                                                     # noqa: E402
 import sense_check                                               # noqa: E402
 
 import contextlib
+import functools
 
 # How many answers are checked at once. None (no limit) unless --batch sets
 # it: a batch returns many answers together, and checking them all at the
 # same time would push checks past their time limit and change verdicts.
 GRADE_SLOTS = None
+
+# Designs the run does not grow from, as a parent or as a partner (16 Nov
+# 2026, Rishab: "alright let's do it"). In the pilot of 15 Nov the extender
+# grew designs nobody had labeled yet: 19 of its 86 kept designs came from a
+# parent later found wrong or borderline and 16 of those 19 were wrong
+# themselves, against 14 of the 67 grown from a sound parent. So the
+# starting designs are labeled first (label_designs.py) and --labels hands
+# the run that file: a design labeled wrong is left out, and so is a
+# starting design the labels do not mention, because nobody reviewed it. A
+# grown design with no label is grown as before; the run makes those itself.
+NOT_GROWN = frozenset()
+
+
+def left_out_by_labels(corpus_rows, labels):
+    """The ids `labels` (label_designs.labels_by_key) keep from growing."""
+    return frozenset(
+        r["id"] for r in corpus_rows
+        if labels.get(r["id"]) == "wrong"
+        or (not r.get("generation") and r["id"] not in labels))
+
 
 # The second-model review (sense_check.py) of every proved step; a step it
 # rejects is not kept, so only designs it keeps are grown further (every
@@ -161,6 +183,8 @@ def extendable(row, without_s, max_gen=MAX_GEN):
     """`without_s` is the time just measured; a row carried into a new run
     has its own on file (metrics.without_main_s), so the stop holds across
     runs as well as within one."""
+    if row.get("id") in NOT_GROWN:
+        return False
     if row.get("generation", 0) >= max_gen:
         return False
     if len(row["verilog"].splitlines()) > MAX_LINES:
@@ -325,6 +349,7 @@ def sample_task(rng, parent, corpus_rows):
 
     partners = [r for r in corpus_rows
                 if r["id"] != parent["id"]
+                and r["id"] not in NOT_GROWN
                 and r.get("generation", 0) == 0
                 and _honest(r) <= PARTNER_MAX_LINES
                 and r["top_module"] != parent["top_module"]
@@ -364,9 +389,14 @@ def sample_task(rng, parent, corpus_rows):
         return {"ext_type": rng.choice(rest), "parent_id": parent["id"],
                 "parent2_id": None, "move": None}
     move = rng.choice(moves)
-    return {"ext_type": "structural", "parent_id": parent["id"],
+    task = {"ext_type": "structural", "parent_id": parent["id"],
             "parent2_id": None, "move": move,
             "k": k if move == "STAGE" else 1}
+    # a big step is handed the size of the storage it adds, so the designs
+    # do not all copy the question's example of 4 (16 Nov 2026)
+    if move in BIG_MOVES:
+        task["depth"] = rng.choice(NEW_DEPTHS)
+    return task
 
 
 def largest_starts(corpus_rows, n, max_gen=MAX_GEN, prefer_engine_hard=True):
@@ -883,7 +913,8 @@ def _real_executor(task, corpus_rows):
                                   k=task.get("k", 1),
                                   history=history(parent, by_id),
                                   siblings=children(parent, by_id),
-                                  rejected=rejected) + section
+                                  rejected=rejected,
+                                  depth=task.get("depth")) + section
             # a big move's schema asks for its streams (26 Oct 2026, Rishab
             # approved, change 3)
             schema = (structural_schema(task.get("move"))
@@ -955,6 +986,25 @@ def report_after_run(log_dir, corpus):
         print(f"realism report not written: {type(exc).__name__}: {exc}")
 
 
+def _plural(n, word):
+    return f"{n} {word}" + ("" if n == 1 else "s")
+
+
+def _labels_put_back(run):
+    """What --labels left out is put back when the run ends, so a later
+    run in the same process starts from every design again."""
+    @functools.wraps(run)
+    def wrapped(argv=None):
+        global NOT_GROWN
+        before = NOT_GROWN
+        try:
+            return run(argv)
+        finally:
+            NOT_GROWN = before
+    return wrapped
+
+
+@_labels_put_back
 def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--max-calls", type=int, required=True,
@@ -1024,6 +1074,12 @@ def main(argv=None):
                    help="send back a step that a receiver saying ready only "
                         "after it sees valid freezes for good "
                         "(freeze_check.py, 8 Nov 2026); off, as before")
+    p.add_argument("--labels", type=Path, default=None, metavar="FILE",
+                   help="the labels of this corpus (label_designs.py's "
+                        "--out): a design labeled wrong is never grown from "
+                        "or combined, nor is a starting design the file "
+                        "does not mention; without it every design is "
+                        "grown, as before")
     args = p.parse_args(argv)
     prefer = not args.no_prefer_engine_hard
     if args.start and args.start_largest:
@@ -1036,6 +1092,9 @@ def main(argv=None):
     # v2's, so a later promote or fix run could copy another corpus's
     # designs into v2's corpus under clashing names.
     global QUEUE_LOG, FIXER_QUEUE, GRADE_SLOTS, SENSE_CHECK, DISTILL_LOG
+    global NOT_GROWN
+    if args.labels is not None and not args.labels.exists():
+        sys.exit(f"no labels file at {args.labels}; nothing was run")
     SENSE_CHECK = args.sense_check
     if not args.dry and args.log_dir is None and \
             args.corpus.resolve() != CORPUS.resolve():
@@ -1055,6 +1114,15 @@ def main(argv=None):
     for row in corpus_rows:
         if not row.get("property") and row.get("verilog"):
             row["property"] = extract_asserts(row["verilog"])
+    if args.labels is not None:
+        import label_designs
+        labels = label_designs.labels_by_key(args.labels)
+        NOT_GROWN = left_out_by_labels(corpus_rows, labels)
+        wrong = sum(1 for r in corpus_rows if labels.get(r["id"]) == "wrong")
+        print(f"labels: {len(NOT_GROWN)} of {len(corpus_rows)} designs are "
+              f"left out ({wrong} labeled wrong, "
+              + _plural(len(NOT_GROWN) - wrong, "starting design")
+              + " with no label)")
     rng = random.Random(args.seed)
     if args.start_largest:
         args.start = ",".join(largest_starts(corpus_rows, args.start_largest,

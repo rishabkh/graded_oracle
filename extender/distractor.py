@@ -37,7 +37,8 @@ from build_corpus import (extract_asserts, state_bits,  # noqa: E402
 from patch import PatchError, apply_patch              # noqa: E402
 
 import llm_client                            # noqa: E402
-from oracle import grade_triple_generated    # noqa: E402
+from oracle import (grade_triple_generated,  # noqa: E402
+                    ran_out_of_time)
 from reset_reads import step_reset_error     # noqa: E402
 
 CORPUS = HERE / "corpus.jsonl"
@@ -277,21 +278,6 @@ def call_model(prompt_text):
         model=MODEL, max_tokens=MAX_TOKENS, user=prompt_text,
         schema=EXT_SCHEMA, effort=EFFORT)
     return (None if text is None else json.loads(text)), usage, stop
-
-
-def ran_out_of_time(result):
-    """Did this verdict of the checker come from its time limit? The proof
-    with the facts ran out of time (NOT_PROVEN), or the proof without them
-    did (INCONCLUSIVE). A false property, a proof that did not close, a
-    tool failure or a format error did not. Nor did a proof whose
-    induction step had already failed when the time ran out (the checker's
-    induction_failed_before_timeout note): more time cannot make it close."""
-    leg = {"NOT_PROVEN": result.with_invariants,
-           "INCONCLUSIVE": result.without_invariants}.get(result.verdict.name)
-    if leg is None or leg.tier.name != "TIMEOUT":
-        return False
-    return not any(str(note).startswith("induction_failed_before_timeout")
-                   for run in leg.runs for note in run.notes)
 
 
 def _timed_check(check, payload, label, kwargs):

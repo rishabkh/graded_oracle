@@ -131,6 +131,38 @@ def test_the_array_facts_are_the_ones_the_extender_asks_for():
             assert words in text and words in ibex, words
 
 
+def test_an_array_design_counts_with_a_register_or_the_pointers():
+    """The time-out choice of 14 Nov 2026 (Rishab's yes to "one sentence in
+    the array trait"): in the 8 Nov 2026 trial of 40, 8 of the 20 array
+    designs ran past the proof's time limit against 2 of the 20 others,
+    and 4 of the 10 that ran out of time counted their filled entries with
+    running totals built from adders (1 of the 30 that passed did). The
+    array lines now say how the design keeps that count. It is about the
+    design's own logic: the facts may still add up over the entries."""
+    lines = {l for l in LINES if ARRAY in l}
+    assert len(lines) == 2
+    for line in lines:
+        text = squash(line)
+        for words in ("In the design's own logic",
+                      "a count of the filled entries",
+                      "in a register that steps up and down",
+                      "or is worked out from the pointers",
+                      "never by adding up the valid bits of the entries"):
+            assert words in text, (words, line[:60])
+        # the facts about work in flight still add up over the entries
+        assert "added up over the entries" in text
+
+
+def test_the_file_records_the_time_out_choice():
+    """Where the sentence came from is in the header, like every other
+    choice in this file: our own trial, never the test sets."""
+    head = squash(" ".join(l.lstrip("#") for l in
+                           FILE.read_text().splitlines() if l.startswith("#")))
+    for word in ("14 Nov 2026", "8 of the 20 array designs",
+                 "4 of the 10", "running totals built from adders"):
+        assert word in head, word
+
+
 def test_the_file_records_where_the_weights_came_from():
     """22 Oct 2026, review finding: the header said every weight came from
     the real-design numbers, but the loaded-register weight had none behind
